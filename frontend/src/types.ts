@@ -32,7 +32,7 @@ export interface GenerateResponse {
 /** 生成请求参数 */
 export interface GenerateParams {
   prompt: string;
-  files: File[];
+  image: File | null;
   size: string;
   quality: string;
   outputDir: string;

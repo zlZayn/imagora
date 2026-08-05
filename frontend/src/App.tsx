@@ -35,7 +35,7 @@ function TitleBar() {
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [image, setImage] = useState<File | null>(null);
   const [size, setSize] = useState("");
   const [quality, setQuality] = useState("low");
   const [outputDir, setOutputDir] = useState("");
@@ -78,7 +78,7 @@ export default function App() {
     // 实时计时：每秒刷新已等待秒数
     timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
     try {
-      const res = await generateImage({ prompt, files, size, quality, outputDir });
+      const res = await generateImage({ prompt, image, size, quality, outputDir });
       setResults(res.results);
       setLogs([...res.messages, `总用时 ${((Date.now() - startedAt) / 1000).toFixed(1)} 秒`]);
     } catch (err) {
@@ -124,7 +124,7 @@ export default function App() {
               placeholder="英文优先，减少歧义。例如：a red apple on white background, product photo"
               className="field-control resize-y"
             />
-            <UploadZone files={files} onChange={setFiles} />
+            <UploadZone file={image} onChange={setImage} />
           </div>
 
           <div className="panel-card">
