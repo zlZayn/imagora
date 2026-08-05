@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { generateImage, getConfig } from "./api";
 import type { AppConfig, ResultItem } from "./types";
 import UploadZone from "./components/UploadZone";
 import FolderPicker from "./components/FolderPicker";
 import Gallery from "./components/Gallery";
+import Select from "./components/Select";
 
 /** 顶部标题区：SVG 叶子图标 + 标题 + 副标题 */
 function TitleBar() {
@@ -52,6 +53,16 @@ export default function App() {
       .catch((err) => setLogs([`加载配置失败: ${String(err)}`]));
   }, []);
 
+  // 尺寸 / 质量下拉选项（由后端配置派生）
+  const sizeOptions = useMemo(
+    () => (config?.sizes ?? []).map((s) => ({ value: s.value, label: `${s.label}（${s.cost}元）` })),
+    [config],
+  );
+  const qualityOptions = useMemo(
+    () => (config?.qualities ?? []).map((q) => ({ value: q, label: q })),
+    [config],
+  );
+
   const handleGenerate = async () => {
     if (!prompt.trim()) {
       setLogs(["请先输入提示词"]);
@@ -95,34 +106,30 @@ export default function App() {
 
           <div className="panel-card">
             <div className="grid grid-cols-2 gap-3">
-              <label className="field-label">
-                尺寸
-                <select
+              <div>
+                <label className="field-label" htmlFor="size-select">
+                  尺寸
+                </label>
+                <Select
+                  id="size-select"
+                  options={sizeOptions}
                   value={size}
-                  onChange={(e) => setSize(e.target.value)}
-                  className="field-select mt-1"
-                >
-                  {config?.sizes.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}（{s.cost}元）
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-label">
-                质量
-                <select
+                  onChange={setSize}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="quality-select">
+                  质量
+                </label>
+                <Select
+                  id="quality-select"
+                  options={qualityOptions}
                   value={quality}
-                  onChange={(e) => setQuality(e.target.value)}
-                  className="field-select mt-1"
-                >
-                  {config?.qualities.map((q) => (
-                    <option key={q} value={q}>
-                      {q}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onChange={setQuality}
+                  className="mt-1"
+                />
+              </div>
             </div>
           </div>
 
