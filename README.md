@@ -2,9 +2,18 @@
 
 基于 OpenAI 兼容中转站 `2api.aiwanwu.cc` 的生图工具。文生图 / 图生图一体，网店商品图、详情页图批量化生成。
 
-## 架构
+## 它能做什么
 
-- 后端：FastAPI（`server.py`），复用 `core/` 生图逻辑
+- 网页界面一键生图：拖拽 / 粘贴 / 点击上传参考图，输入提示词即出图
+- 文生图与图生图自动切换：不传图 = 文生图，传图 = 按底图编辑换背景/场景
+- 生成结果实时显示：每张图标注**分辨率与费用**，底部汇总**本次总费用与用时**
+- 输出目录自由选择：手输路径或系统文件夹选择器，生成后一键"打开文件夹"定位
+- 批量生图：按产品配置一次生成多张详情页图（预览模式不花钱）
+- 命令行单张生图：适合脚本化调用
+
+## 架构概览
+
+- 后端：FastAPI（`server.py`）+ 核心逻辑 `core/`（配置 / 生图 / 批量）
 - 前端：Vite + React + TypeScript + Tailwind（`frontend/`），构建产物由 FastAPI 托管，单端口运行
 - 依赖管理：uv（Python）、npm（前端）
 
@@ -16,6 +25,7 @@ tools/
 ├── server.py          # FastAPI 后端：/api/* 路由 + 托管前端产物
 ├── core/              # 核心逻辑：config(配置) / api(生图) / batch(批量)
 ├── frontend/          # React 前端（npm run dev 开发 / npm run build 产物）
+├── tests/             # 单元测试（28 用例，纯函数零成本）
 ├── pyproject.toml     # Python 依赖（uv）
 ├── .env / .env.example
 └── 启动生图工具.cmd   # 双击启动：首次自动构建前端
@@ -58,6 +68,9 @@ uv run python -m main batch --config ..\薄荷脑皮肤抑菌乳膏\batch_prompt
 
 # 单张生图
 uv run python -m main gen "a red apple on white background" -o out.png
+
+# 运行测试（零成本，不调 API）
+uv run pytest
 ```
 
 ## 计费（A站）

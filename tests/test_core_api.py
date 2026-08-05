@@ -10,7 +10,24 @@ from pathlib import Path
 
 import pytest
 
-from core.api import build_default_output_path, resolve_size_with_ratio
+from core.api import build_default_output_path, format_error, resolve_size_with_ratio
+
+
+# ---------- format_error ----------
+
+def test_format_error_prefix_and_message():
+    """异常 -> 类型 + 消息"""
+    assert format_error(ValueError("boom")) == "ValueError: boom"
+
+
+def test_format_error_truncates_long_message():
+    """超长消息 -> 按 limit 截断"""
+    assert format_error(ValueError("x" * 500), limit=10) == "ValueError: xxxxxxxxxx"
+
+
+def test_format_error_custom_limit():
+    """limit 参数生效"""
+    assert format_error(RuntimeError("hello"), limit=3) == "RuntimeError: hel"
 
 
 # ---------- resolve_size_with_ratio ----------
