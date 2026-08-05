@@ -52,6 +52,10 @@ def log_generation(prompt: str, mode: str, refs: int, size: str, quality: str,
         "seconds": round(seconds, 1),
         "output": _display_path(output),
     }
-    LOGS_DIR.mkdir(exist_ok=True)
-    with open(LOGS_DIR / "generation.jsonl", "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    # 日志失败不影响主流程：写入出错静默跳过
+    try:
+        LOGS_DIR.mkdir(exist_ok=True)
+        with open(LOGS_DIR / "generation.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
