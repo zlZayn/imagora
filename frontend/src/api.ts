@@ -33,7 +33,7 @@ export async function openFolder(path: string): Promise<{ ok: boolean }> {
   });
 }
 
-/** 文生图 / 图生图（有 files 即图生图，多张融合为一张） */
+/** 文生图 / 图生图（有 files 即图生图（多张参考图，用途由提示词决定）） */
 export async function generateImage(params: GenerateParams): Promise<GenerateResponse> {
   const formData = new FormData();
   formData.append("prompt", params.prompt);

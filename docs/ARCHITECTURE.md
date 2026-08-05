@@ -40,7 +40,7 @@ tools/
 **1. UI 生成（Web 界面）**
 ```
 App.tsx:handleGenerate → api.ts:generateImage
-  → POST /api/generate（multipart: prompt + image(可多张，融合为一张) + size + quality + output_dir）
+  → POST /api/generate（multipart: prompt + image(可多张) + size + quality + output_dir）
   → server.generate() → core.api.generate_image() → A站 API
   → 保存图片到输出目录 → 返回 { results[url,size,cost], messages, totalCost }
   → Gallery 显示（GET /api/image?path= 读图）+ 日志区显示费用/用时
@@ -67,7 +67,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | GET | `/api/config` | 无 | sizes[] / qualities[] / defaultOutputDir |
 | POST | `/api/select-folder` | { current } | { path }（系统弹窗选择，取消返回原值） |
 | POST | `/api/open-folder` | { path } | { ok }（不存在则自动创建后打开） |
-| POST | `/api/generate` | multipart：prompt、image(可多张，融合为一张)、size、quality、output_dir | { results[status,message,url?,size,cost], messages[], totalCost } |
+| POST | `/api/generate` | multipart：prompt、image(可多张)、size、quality、output_dir | { results[status,message,url?,size,cost], messages[], totalCost } |
 | GET | `/api/image` | ?path= | 图片文件（FileResponse） |
 
 前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerateResponse` / `ResultItem`），与后端返回结构一一对应。

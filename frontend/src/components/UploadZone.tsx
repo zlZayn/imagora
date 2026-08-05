@@ -7,7 +7,7 @@ interface UploadZoneProps {
 
 /**
  * 参考图上传区：支持拖拽 / Ctrl+V 粘贴 / 点击添加（可多张）
- * 多张参考图会作为同一请求的参考，融合生成一张图。
+ * 多张参考图，具体怎么用由提示词决定。
  * 已选图片显示缩略图列表，可单独移除。
  */
 export default function UploadZone({ files, onChange }: UploadZoneProps) {
@@ -72,12 +72,12 @@ export default function UploadZone({ files, onChange }: UploadZoneProps) {
       />
       {files.length === 0 ? (
         <p className="text-sm text-neutral-500">
-          拖拽图片到此处 / Ctrl+V 粘贴 / 点击添加 · 可多张，融合为一张
+          拖拽图片到此处 / Ctrl+V 粘贴 / 点击添加 · 可多张
         </p>
       ) : (
         <>
           <p className="mb-2 text-xs text-neutral-400">
-            已选 {files.length} 张参考图 · 将融合为一张
+            已选 {files.length} 张参考图
           </p>
           <ul className="flex flex-wrap justify-center gap-2">
             {files.map((file, i) => (

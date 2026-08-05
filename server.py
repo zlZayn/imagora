@@ -113,7 +113,7 @@ def display_path(path: str) -> str:
 async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                    quality: str = Form("low"), output_dir: str = Form(""),
                    images: list[UploadFile] = File(default=[])):
-    """文生图 / 图生图。有 images 时多张底图融合为一张，否则文生图。
+    """文生图 / 图生图。有 images 时多张参考图综合生成一张，否则文生图。
 
     每个结果带尺寸与费用；响应含本次成功张数的总费用。
     """
