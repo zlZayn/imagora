@@ -10,6 +10,7 @@ export interface AppConfig {
   sizes: SizeOption[];
   qualities: string[];
   defaultOutputDir: string;
+  hasApiKey: boolean;
 }
 
 /** 单张生成结果 */

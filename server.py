@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.api import format_error, generate_image
-from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT
+from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT, get_api_key
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -42,10 +42,24 @@ QUALITY_OPTIONS = ["low", "medium", "high"]
 app = FastAPI(title="A站生图工具")
 
 
+def has_api_key() -> bool:
+    """API Key 是否已配置（用于界面提示）"""
+    try:
+        get_api_key()
+        return True
+    except RuntimeError:
+        return False
+
+
 @app.get("/api/config")
 def get_config():
     """前端初始化配置"""
-    return {"sizes": SIZE_OPTIONS, "qualities": QUALITY_OPTIONS, "defaultOutputDir": DEFAULT_OUTPUT_DIR}
+    return {
+        "sizes": SIZE_OPTIONS,
+        "qualities": QUALITY_OPTIONS,
+        "defaultOutputDir": DEFAULT_OUTPUT_DIR,
+        "hasApiKey": has_api_key(),
+    }
 
 
 @app.post("/api/select-folder")

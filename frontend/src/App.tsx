@@ -103,6 +103,12 @@ export default function App() {
     <div className="mx-auto max-w-[1500px] px-6 py-4">
       <TitleBar />
 
+      {config && !config.hasApiKey && (
+        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          未配置 API Key（AIWANWU_API_KEY），生成图片将失败。请参考 README「首次使用」配置。
+        </div>
+      )}
+
       <main className="grid grid-cols-[5fr_7fr] items-start gap-5">
         {/* 左栏：输入面板 */}
         <section className="space-y-4">
