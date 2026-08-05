@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.api import format_error, generate_image
@@ -182,3 +182,14 @@ def get_image(path: str):
 # 静态托管前端构建产物（挂在最后，仅当 dist 已构建）
 if (DIST_DIR / "index.html").exists():
     app.mount("/", StaticFiles(directory=str(DIST_DIR), html=True), name="frontend")
+else:
+    @app.get("/", include_in_schema=False)
+    def frontend_not_built():
+        """前端未构建时的提示页（错误放 UI，不静默空白）"""
+        return HTMLResponse(
+            "<h3>前端未构建</h3>"
+            "<p>请先在 tools 目录执行：</p>"
+            "<pre>cd frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>"
+            "<p>构建完成后刷新本页。详见 README「快速开始」。</p>",
+            status_code=503,
+        )
