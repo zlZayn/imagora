@@ -27,12 +27,17 @@ export default function Gallery({ items }: GalleryProps) {
           target="_blank"
           rel="noreferrer"
           title={item.message}
+          className="block"
         >
           <img
             src={item.url}
             alt={item.message}
             className="aspect-[9/16] w-full rounded-xl border border-neutral-200 object-cover shadow-sm transition-shadow hover:shadow-md"
           />
+          <p className="mt-1 text-center text-[11px] text-neutral-400">
+            {item.size ? `${item.size}` : ""}
+            {item.cost !== undefined ? ` · ${item.cost}元` : ""}
+          </p>
         </a>
       ))}
     </div>

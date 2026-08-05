@@ -17,12 +17,15 @@ export interface ResultItem {
   status: "ok" | "error";
   message: string;
   url?: string;
+  size?: string;
+  cost?: number;
 }
 
 /** 生成接口响应 */
 export interface GenerateResponse {
   results: ResultItem[];
   messages: string[];
+  totalCost: number;
 }
 
 /** 生成请求参数 */

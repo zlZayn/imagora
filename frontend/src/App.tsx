@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { generateImage, getConfig } from "./api";
+import { generateImage, getConfig, openFolder } from "./api";
 import type { AppConfig, ResultItem } from "./types";
 import UploadZone from "./components/UploadZone";
 import FolderPicker from "./components/FolderPicker";
@@ -26,7 +26,7 @@ function TitleBar() {
       </svg>
       <h1 className="text-xl font-semibold">A站生图工具</h1>
       <span className="ml-auto text-sm text-neutral-400">
-        文生图 / 图生图 · 不传参考图即文生图
+        文生图 / 图生图 · 不传参考图即文生图 · 生成约需 1-2 分钟
       </span>
     </header>
   );
@@ -138,9 +138,19 @@ export default function App() {
               输出路径
             </label>
             <FolderPicker value={outputDir} onChange={setOutputDir} />
-            <button type="button" onClick={handleGenerate} disabled={busy} className="btn-primary">
-              {busy ? "生成中 ..." : "生成图片"}
-            </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={handleGenerate} disabled={busy} className="btn-primary flex-1">
+                {busy ? "生成中 ..." : "生成图片"}
+              </button>
+              <button
+                type="button"
+                onClick={() => openFolder(outputDir)}
+                disabled={busy}
+                className="btn-ghost"
+              >
+                打开文件夹
+              </button>
+            </div>
             <div className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs text-neutral-500">
               {logs.join("\n")}
             </div>

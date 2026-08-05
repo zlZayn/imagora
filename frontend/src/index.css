@@ -36,7 +36,7 @@ body {
 
   /* 主按钮（生成） */
   .btn-primary {
-    @apply w-full rounded-xl bg-brand py-2.5 font-semibold text-white transition-all duration-200;
+    @apply rounded-xl bg-brand py-2.5 font-semibold text-white transition-all duration-200;
   }
   .btn-primary:hover:not(:disabled) {
     @apply bg-brand-dark shadow-md;

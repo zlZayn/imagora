@@ -66,14 +66,26 @@ def select_folder(body: dict):
         return {"path": current}
 
 
+def size_cost(size: str) -> float:
+    """按尺寸查单张费用；未知尺寸按 2K 档 0.10 兜底"""
+    for option in SIZE_OPTIONS:
+        if option["value"] == size:
+            return option["cost"]
+    return 0.10
+
+
 @app.post("/api/generate")
 async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                    quality: str = Form("low"), output_dir: str = Form(""),
                    images: list[UploadFile] = File(default=[])):
-    """文生图 / 图生图。有 images 时逐张图生图，否则文生图。"""
+    """文生图 / 图生图。有 images 时逐张图生图，否则文生图。
+
+    每个结果带尺寸与费用；响应含本次成功张数的总费用。
+    """
     out_dir = (output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/")
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
+    cost = size_cost(size)
     results = []
     messages = []
 
@@ -92,8 +104,8 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                     quality=quality, output_format="png", output_path=dest,
                 )
                 os.unlink(base_image)
-                results.append({"status": "ok", "message": f"已保存: {dest}", "url": image_url(dest)})
-                messages.append(f"[{i + 1}/{len(images)}] 已保存: {dest}")
+                results.append({"status": "ok", "message": f"已保存: {dest}", "url": image_url(dest), "size": size, "cost": cost})
+                messages.append(f"[{i + 1}/{len(images)}] 已保存: {dest}（{size}）")
             except Exception as e:
                 results.append({"status": "error", "message": f"{type(e).__name__}: {str(e)[:150]}"})
                 messages.append(f"[{i + 1}/{len(images)}] 失败: {type(e).__name__}: {str(e)[:150]}")
@@ -106,13 +118,28 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                 prompt=prompt, image_path=None, size=size,
                 quality=quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {dest}", "url": image_url(dest)})
-            messages.append(f"已保存: {dest}")
+            results.append({"status": "ok", "message": f"已保存: {dest}", "url": image_url(dest), "size": size, "cost": cost})
+            messages.append(f"已保存: {dest}（{size}）")
         except Exception as e:
             results.append({"status": "error", "message": f"{type(e).__name__}: {str(e)[:150]}"})
             messages.append(f"失败: {type(e).__name__}: {str(e)[:150]}")
 
-    return {"results": results, "messages": messages}
+    total_cost = sum(r.get("cost", 0) for r in results if r.get("status") == "ok")
+    messages.append(f"本次成功 {sum(1 for r in results if r.get('status') == 'ok')} 张，费用 {total_cost:.2f} 元")
+    return {"results": results, "messages": messages, "totalCost": total_cost}
+
+
+@app.post("/api/open-folder")
+def open_folder(body: dict):
+    """在系统资源管理器中打开指定文件夹"""
+    path = str(body.get("path", ""))
+    if not os.path.isdir(path):
+        return {"ok": False}
+    try:
+        os.startfile(path)  # Windows
+        return {"ok": True}
+    except Exception:
+        return {"ok": False}
 
 
 def image_url(path: str) -> str:

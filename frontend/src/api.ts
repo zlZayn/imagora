@@ -24,6 +24,15 @@ export async function selectFolder(current: string): Promise<{ path: string }> {
   });
 }
 
+/** 在系统资源管理器中打开指定文件夹 */
+export async function openFolder(path: string): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>("/api/open-folder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+}
+
 /** 文生图 / 图生图（有 files 即图生图，逐张生成） */
 export async function generateImage(params: GenerateParams): Promise<GenerateResponse> {
   const formData = new FormData();
