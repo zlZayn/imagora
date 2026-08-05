@@ -156,18 +156,53 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
 
 @app.post("/api/open-folder")
 def open_folder(body: dict):
-    """在系统资源管理器中打开指定文件夹（不存在则自动创建）
+    """在系统资源管理器中打开指定文件夹，并尝试激活到前台
 
-    用 explorer.exe 代替 os.startfile：新窗口会正常激活并弹到前台
-    （os.startfile 对已存在的窗口只复用、不激活）。
+    后台进程启动的 explorer 窗口默认不抢前台（Windows 前台锁定），
+    这里用 Win32 API 在打开后主动把窗口置前。
     """
     path = str(body.get("path", "")).rstrip("\\/")
     try:
         os.makedirs(path, exist_ok=True)
         subprocess.Popen(["explorer.exe", path])
+        time.sleep(1.0)
+        _activate_explorer_window(os.path.basename(path) or path)
         return {"ok": True}
     except Exception:
         return {"ok": False}
+
+
+def _activate_explorer_window(title_part: str) -> bool:
+    """把标题包含 title_part 的资源管理器窗口恢复并置前（绕过前台锁定）"""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def callback(hwnd, _lparam):
+        cls = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, cls, 256)
+        if cls.value in ("CabinetWClass", "ExplorerWClass"):
+            title = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, title, 512)
+            if title_part in title.value:
+                found.append(hwnd)
+        return True
+
+    user32.EnumWindows(callback, 0)
+    if not found:
+        return False
+
+    hwnd = found[0]
+    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    # 绕过前台锁定：模拟一次 Alt 键按下/抬起，再置前
+    user32.keybd_event(0x12, 0, 0, 0)  # ALT down
+    user32.SetForegroundWindow(hwnd)
+    user32.keybd_event(0x12, 0, 2, 0)  # ALT up
+    user32.BringWindowToTop(hwnd)
+    return True
 
 
 def image_url(path: str) -> str:
