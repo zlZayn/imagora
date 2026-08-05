@@ -14,7 +14,20 @@ from pathlib import Path
 
 import requests
 
-from core.config import BASE_URL, DEFAULT_MODEL, DEFAULT_QUALITY, DEFAULT_SIZE, RATIOS, get_api_key
+from core.config import (
+    BASE_URL,
+    DEFAULT_MODEL,
+    DEFAULT_OUTPUT_DIR,
+    DEFAULT_QUALITY,
+    DEFAULT_SIZE,
+    RATIOS,
+    get_api_key,
+)
+
+
+def format_error(error: Exception, limit: int = 150) -> str:
+    """异常 -> 简短可读文本（类型 + 截断消息），供日志/界面统一展示"""
+    return f"{type(error).__name__}: {str(error)[:limit]}"
 
 
 def resolve_size_with_ratio(size, ratio, tier):
@@ -32,10 +45,10 @@ def resolve_size_with_ratio(size, ratio, tier):
 
 
 def build_default_output_path(output_path, output_format):
-    """输出路径：未指定时落到当前目录下 output/ai_时间戳.后缀"""
+    """输出路径：未指定时落到 默认输出目录/output 下 ai_时间戳.后缀"""
     if output_path:
         return output_path
-    return str(Path.cwd() / "output" / f"ai_{time.strftime('%Y%m%d_%H%M%S')}.{output_format}")
+    return str(Path(DEFAULT_OUTPUT_DIR) / f"ai_{time.strftime('%Y%m%d_%H%M%S')}.{output_format}")
 
 
 def generate_image(prompt, image_path, size, quality=DEFAULT_QUALITY,

@@ -30,8 +30,9 @@ def handle_ui_command(args):
 
     from server import app
 
-    threading.Timer(1.5, lambda: webbrowser.open("http://127.0.0.1:7860")).start()
-    uvicorn.run(app, host="127.0.0.1", port=7860)
+    url = f"http://127.0.0.1:{args.port}"
+    threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+    uvicorn.run(app, host="127.0.0.1", port=args.port)
 
 
 def handle_batch_command(args):
@@ -67,6 +68,7 @@ def build_argument_parser():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     sub_ui = subparsers.add_parser("ui", help="启动网页界面")
+    sub_ui.add_argument("--port", type=int, default=7860, help="监听端口（默认 7860）")
     sub_ui.set_defaults(handler=handle_ui_command)
 
     sub_batch = subparsers.add_parser("batch", help="批量生图")

@@ -20,12 +20,12 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from core.api import generate_image
+from core.api import format_error, generate_image
+from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
-DEFAULT_OUTPUT_DIR = str(Path.cwd() / "output")
 
 # 尺寸选项：分辨率 / 显示标签 / 单张费用（元）
 SIZE_OPTIONS = [
@@ -75,9 +75,9 @@ def size_cost(size: str) -> float:
 
 
 def display_path(path: str) -> str:
-    """路径展示：相对当前工作目录 + 统一正斜杠，便于阅读"""
+    """路径展示：相对工作根 + 统一正斜杠，便于阅读"""
     try:
-        rel = os.path.relpath(path, os.getcwd())
+        rel = os.path.relpath(path, WORK_ROOT)
     except ValueError:
         rel = path
     return rel.replace("\\", "/")
@@ -116,8 +116,8 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                 results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost})
                 messages.append(f"已保存 · {display_path(dest)}（{size}）")
             except Exception as e:
-                results.append({"status": "error", "message": f"{type(e).__name__}: {str(e)[:150]}"})
-                messages.append(f"失败 · {type(e).__name__}: {str(e)[:150]}")
+                results.append({"status": "error", "message": format_error(e)})
+                messages.append(f"失败 · {format_error(e)}")
             time.sleep(3)
     else:
         dest = os.path.join(out_dir, f"txt2img_{stamp}.png")
@@ -130,8 +130,8 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
             results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost})
             messages.append(f"已保存 · {display_path(dest)}（{size}）")
         except Exception as e:
-            results.append({"status": "error", "message": f"{type(e).__name__}: {str(e)[:150]}"})
-            messages.append(f"失败 · {type(e).__name__}: {str(e)[:150]}")
+            results.append({"status": "error", "message": format_error(e)})
+            messages.append(f"失败 · {format_error(e)}")
 
     total_cost = sum(r.get("cost", 0) for r in results if r.get("status") == "ok")
     ok_count = sum(1 for r in results if r.get("status") == "ok")

@@ -10,7 +10,7 @@ import os
 import time
 from pathlib import Path
 
-from core.api import generate_image
+from core.api import format_error, generate_image
 
 
 def load_batch_config(config_path):
@@ -80,7 +80,7 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
                 output_path=output_path,
             )
         except Exception as e:
-            print(f"[{job['id']}] 失败: {type(e).__name__}: {str(e)[:200]}")
+            print(f"[{job['id']}] 失败: {format_error(e, 200)}")
             failed.append(job["id"])
         time.sleep(5)  # 防限流
 

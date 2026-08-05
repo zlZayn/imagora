@@ -9,8 +9,14 @@ API Key 读取优先级:
 import os
 from pathlib import Path
 
+# ---------- 工作根（启动时固定一次，后续路径统一以此为基准） ----------
+WORK_ROOT = Path.cwd()
+
 # ---------- 接口 ----------
 BASE_URL = "https://2api.aiwanwu.cc"
+
+# ---------- 默认输出目录（未指定时生成到 工作根/output） ----------
+DEFAULT_OUTPUT_DIR = str(WORK_ROOT / "output")
 
 # ---------- API Key ----------
 ENV_KEY_NAME = "AIWANWU_API_KEY"
