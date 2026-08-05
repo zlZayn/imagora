@@ -5,8 +5,9 @@
 启动: uv run python -m main ui（http://127.0.0.1:7860）
 
 API:
-  GET  /api/config          尺寸/质量选项、默认输出路径
+  GET  /api/config          尺寸/质量选项、默认输出路径、Key 状态
   POST /api/select-folder   弹出系统文件夹选择器，返回路径
+  POST /api/open-folder     资源管理器打开文件夹（置前）
   POST /api/generate        文生图 / 图生图（multipart）
   GET  /api/image?path=     读取生成的图片文件
 """
@@ -22,6 +23,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from core.api import format_error, generate_image
+from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT, get_api_key
+
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
     """静态资源禁用缓存：本地迭代频繁，保证页面总是最新"""
@@ -30,9 +34,6 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-cache"
         return response
-
-from core.api import format_error, generate_image
-from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT, get_api_key
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -113,7 +114,7 @@ def display_path(path: str) -> str:
 async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                    quality: str = Form("low"), output_dir: str = Form(""),
                    images: list[UploadFile] = File(default=[])):
-    """文生图 / 图生图。有 images 时多张参考图综合生成一张，否则文生图。
+    """文生图 / 图生图。有 images 时多张参考图一次提交（用途由提示词决定），否则文生图。
 
     每个结果带尺寸与费用；响应含本次成功张数的总费用。
     """

@@ -56,14 +56,14 @@ def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
                    output_format="png", output_path=None):
     """文生图 / 图生图。
 
-    - 传 image_path（单张）或 images（多张，融合为一张）：走 edits 接口
+    - 传 image_path（单张）或 images（多张参考图）：走 edits 接口
     - 都不传：走 generations 接口（文生图）
     成功保存图片到 output_path（默认自动生成）并打印；失败抛异常。
 
     Args:
         prompt: 提示词（英文优先，减少歧义）
         image_path: 单张底图路径（None 则看 images）
-        images: 多张底图路径列表，一次请求全部作为参考（融合生成一张）
+        images: 多张底图路径列表，一次请求全部作为参考（用途由提示词决定）
         size: 分辨率字符串，如 "1024x1024"
         quality: low / medium / high
         model: 模型名
@@ -84,7 +84,7 @@ def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
 
     image_paths = images if images else ([image_path] if image_path else [])
     if image_paths:
-        # 图生图：一张或多张底图，一次请求作为参考
+        # 图生图：一张或多张参考图，一次请求提交
         url = f"{BASE_URL}/v1/images/edits"
         opened = [open(p, "rb") for p in image_paths]
         try:
