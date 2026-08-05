@@ -78,8 +78,8 @@ export default function App() {
       <main className="grid grid-cols-[5fr_7fr] items-start gap-5">
         {/* 左栏：输入面板 */}
         <section className="space-y-4">
-          <div className="space-y-3 rounded-xl border border-neutral-100 bg-white p-4 shadow-sm">
-            <label className="text-sm font-medium text-neutral-700" htmlFor="prompt">
+          <div className="panel-card space-y-3">
+            <label className="field-label" htmlFor="prompt">
               提示词
             </label>
             <textarea
@@ -88,19 +88,19 @@ export default function App() {
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
               placeholder="英文优先，减少歧义。例如：a red apple on white background, product photo"
-              className="w-full resize-y rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-brand/40"
+              className="field-control resize-y"
             />
             <UploadZone files={files} onChange={setFiles} />
           </div>
 
-          <div className="rounded-xl border border-neutral-100 bg-white p-4 shadow-sm">
+          <div className="panel-card">
             <div className="grid grid-cols-2 gap-3">
-              <label className="text-sm font-medium text-neutral-700">
+              <label className="field-label">
                 尺寸
                 <select
                   value={size}
                   onChange={(e) => setSize(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none"
+                  className="field-select mt-1"
                 >
                   {config?.sizes.map((s) => (
                     <option key={s.value} value={s.value}>
@@ -109,12 +109,12 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <label className="text-sm font-medium text-neutral-700">
+              <label className="field-label">
                 质量
                 <select
                   value={quality}
                   onChange={(e) => setQuality(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none"
+                  className="field-select mt-1"
                 >
                   {config?.qualities.map((q) => (
                     <option key={q} value={q}>
@@ -126,17 +126,12 @@ export default function App() {
             </div>
           </div>
 
-          <div className="space-y-3 rounded-xl border border-neutral-100 bg-white p-4 shadow-sm">
-            <label className="text-sm font-medium text-neutral-700" htmlFor="output-dir">
+          <div className="panel-card space-y-3">
+            <label className="field-label" htmlFor="output-dir">
               输出路径
             </label>
             <FolderPicker value={outputDir} onChange={setOutputDir} />
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={busy}
-              className="w-full rounded-xl bg-brand py-2.5 font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
-            >
+            <button type="button" onClick={handleGenerate} disabled={busy} className="btn-primary">
               {busy ? "生成中 ..." : "生成图片"}
             </button>
             <div className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs text-neutral-500">
@@ -146,7 +141,7 @@ export default function App() {
         </section>
 
         {/* 右栏：结果画廊 */}
-        <section className="min-h-[560px] rounded-xl border border-neutral-100 bg-white p-4 shadow-sm">
+        <section className="panel-card min-h-[560px]">
           <Gallery items={results} />
         </section>
       </main>

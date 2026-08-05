@@ -30,14 +30,9 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="图片保存目录"
-        className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-brand/40"
+        className="field-control min-w-0 flex-1"
       />
-      <button
-        type="button"
-        onClick={handlePick}
-        disabled={picking}
-        className="whitespace-nowrap rounded-lg border border-neutral-300 px-4 py-2 text-sm transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
-      >
+      <button type="button" onClick={handlePick} disabled={picking} className="btn-ghost">
         {picking ? "选择中..." : "选择文件夹"}
       </button>
     </div>

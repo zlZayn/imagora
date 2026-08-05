@@ -10,3 +10,66 @@ body {
   background-color: #fafafa;
   color: #262626;
 }
+
+/* ============ 公共组件类：表单 / 按钮 / 卡片 统一 ============ */
+@layer components {
+  /* 输入控件（textarea / input / select 通用基底） */
+  .field-control {
+    @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none transition-all duration-200;
+  }
+  .field-control:hover {
+    @apply border-neutral-400;
+  }
+  .field-control:focus {
+    @apply border-brand ring-2 ring-brand/25;
+  }
+
+  /* 下拉框：沿用 field-control 视觉，替换原生箭头为 SVG 箭头 */
+  .field-select {
+    @apply w-full appearance-none rounded-lg border border-neutral-300 bg-white bg-no-repeat px-3 py-2 pr-8 text-sm outline-none transition-all duration-200;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.6rem center;
+    background-size: 1em;
+  }
+  .field-select:hover {
+    @apply border-neutral-400;
+  }
+  .field-select:focus {
+    @apply border-brand ring-2 ring-brand/25;
+  }
+
+  /* 字段标签 */
+  .field-label {
+    @apply text-sm font-medium text-neutral-700;
+  }
+
+  /* 白色面板卡片 */
+  .panel-card {
+    @apply rounded-xl border border-neutral-100 bg-white p-4 shadow-sm;
+  }
+
+  /* 主按钮（生成） */
+  .btn-primary {
+    @apply w-full rounded-xl bg-brand py-2.5 font-semibold text-white transition-all duration-200;
+  }
+  .btn-primary:hover:not(:disabled) {
+    @apply bg-brand-dark shadow-md;
+  }
+  .btn-primary:active:not(:disabled) {
+    @apply scale-[0.99];
+  }
+  .btn-primary:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  /* 次要按钮（选择文件夹等） */
+  .btn-ghost {
+    @apply whitespace-nowrap rounded-lg border border-neutral-300 px-4 py-2 text-sm transition-all duration-200;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    @apply border-brand bg-brand/5 text-brand;
+  }
+  .btn-ghost:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+}
