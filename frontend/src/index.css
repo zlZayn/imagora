@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+/* 品牌主色：草本绿（与产品视觉统一） */
+@theme {
+  --color-brand: #3d7a5c;
+  --color-brand-dark: #2f5f48;
+}
+
+body {
+  background-color: #fafafa;
+  color: #262626;
+}

@@ -22,9 +22,16 @@ if _reconfigure is not None:
 
 
 def handle_ui_command(args):
-    """启动 Gradio 网页界面"""
-    from ui.app import launch_ui
-    launch_ui()
+    """启动 Web 界面（FastAPI 托管前端构建产物）"""
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from server import app
+
+    threading.Timer(1.5, lambda: webbrowser.open("http://127.0.0.1:7860")).start()
+    uvicorn.run(app, host="127.0.0.1", port=7860)
 
 
 def handle_batch_command(args):
