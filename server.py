@@ -74,6 +74,15 @@ def size_cost(size: str) -> float:
     return 0.10
 
 
+def display_path(path: str) -> str:
+    """路径展示：相对当前工作目录 + 统一正斜杠，便于阅读"""
+    try:
+        rel = os.path.relpath(path, os.getcwd())
+    except ValueError:
+        rel = path
+    return rel.replace("\\", "/")
+
+
 @app.post("/api/generate")
 async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                    quality: str = Form("low"), output_dir: str = Form(""),
@@ -93,7 +102,7 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
         for i, image in enumerate(images):
             ext = Path(image.filename or f"img_{i}").suffix or ".png"
             dest = os.path.join(out_dir, f"img2img_{stamp}_{i}.png")
-            messages.append(f"[{i + 1}/{len(images)}] 图生图 底图: {image.filename} ...")
+            messages.append(f"[{i + 1}/{len(images)}] 图生图 · 底图 {image.filename}")
             try:
                 # 底图先落临时文件，结果写到输出目录
                 with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
@@ -104,38 +113,38 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                     quality=quality, output_format="png", output_path=dest,
                 )
                 os.unlink(base_image)
-                results.append({"status": "ok", "message": f"已保存: {dest}", "url": image_url(dest), "size": size, "cost": cost})
-                messages.append(f"[{i + 1}/{len(images)}] 已保存: {dest}（{size}）")
+                results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost})
+                messages.append(f"已保存 · {display_path(dest)}（{size}）")
             except Exception as e:
                 results.append({"status": "error", "message": f"{type(e).__name__}: {str(e)[:150]}"})
-                messages.append(f"[{i + 1}/{len(images)}] 失败: {type(e).__name__}: {str(e)[:150]}")
+                messages.append(f"失败 · {type(e).__name__}: {str(e)[:150]}")
             time.sleep(3)
     else:
         dest = os.path.join(out_dir, f"txt2img_{stamp}.png")
-        messages.append("文生图 ...")
+        messages.append("文生图")
         try:
             generate_image(
                 prompt=prompt, image_path=None, size=size,
                 quality=quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {dest}", "url": image_url(dest), "size": size, "cost": cost})
-            messages.append(f"已保存: {dest}（{size}）")
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost})
+            messages.append(f"已保存 · {display_path(dest)}（{size}）")
         except Exception as e:
             results.append({"status": "error", "message": f"{type(e).__name__}: {str(e)[:150]}"})
-            messages.append(f"失败: {type(e).__name__}: {str(e)[:150]}")
+            messages.append(f"失败 · {type(e).__name__}: {str(e)[:150]}")
 
     total_cost = sum(r.get("cost", 0) for r in results if r.get("status") == "ok")
-    messages.append(f"本次成功 {sum(1 for r in results if r.get('status') == 'ok')} 张，费用 {total_cost:.2f} 元")
+    ok_count = sum(1 for r in results if r.get("status") == "ok")
+    messages.append(f"本次成功 {ok_count} 张 · 费用 {total_cost:.2f} 元")
     return {"results": results, "messages": messages, "totalCost": total_cost}
 
 
 @app.post("/api/open-folder")
 def open_folder(body: dict):
-    """在系统资源管理器中打开指定文件夹"""
-    path = str(body.get("path", ""))
-    if not os.path.isdir(path):
-        return {"ok": False}
+    """在系统资源管理器中打开指定文件夹（不存在则自动创建）"""
+    path = str(body.get("path", "")).rstrip("\\/")
     try:
+        os.makedirs(path, exist_ok=True)
         os.startfile(path)  # Windows
         return {"ok": True}
     except Exception:

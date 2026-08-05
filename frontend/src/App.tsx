@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { generateImage, getConfig, openFolder } from "./api";
 import type { AppConfig, ResultItem } from "./types";
 import UploadZone from "./components/UploadZone";
@@ -25,7 +25,7 @@ function TitleBar() {
         <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
       </svg>
       <h1 className="text-xl font-semibold">A站生图工具</h1>
-      <span className="ml-auto text-sm text-neutral-400">
+      <span className="text-muted ml-auto">
         文生图 / 图生图 · 不传参考图即文生图 · 生成约需 1-2 分钟
       </span>
     </header>
@@ -40,6 +40,8 @@ export default function App() {
   const [quality, setQuality] = useState("low");
   const [outputDir, setOutputDir] = useState("");
   const [busy, setBusy] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<number | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [results, setResults] = useState<ResultItem[]>([]);
 
@@ -68,17 +70,32 @@ export default function App() {
       setLogs(["请先输入提示词"]);
       return;
     }
+    const startedAt = Date.now();
     setBusy(true);
     setResults([]);
+    setElapsed(0);
     setLogs(["生成中 ..."]);
+    // 实时计时：每秒刷新已等待秒数
+    timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
     try {
       const res = await generateImage({ prompt, files, size, quality, outputDir });
       setResults(res.results);
-      setLogs(res.messages);
+      setLogs([...res.messages, `总用时 ${((Date.now() - startedAt) / 1000).toFixed(1)} 秒`]);
     } catch (err) {
       setLogs([`请求失败: ${String(err)}`]);
     } finally {
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
       setBusy(false);
+    }
+  };
+
+  const handleOpenFolder = async () => {
+    const res = await openFolder(outputDir);
+    if (!res.ok) {
+      setLogs([`无法打开文件夹: ${outputDir}`]);
     }
   };
 
@@ -140,18 +157,18 @@ export default function App() {
             <FolderPicker value={outputDir} onChange={setOutputDir} />
             <div className="flex gap-2">
               <button type="button" onClick={handleGenerate} disabled={busy} className="btn-primary flex-1">
-                {busy ? "生成中 ..." : "生成图片"}
+                {busy ? `生成中 ${elapsed}s` : "生成图片"}
               </button>
               <button
                 type="button"
-                onClick={() => openFolder(outputDir)}
+                onClick={handleOpenFolder}
                 disabled={busy}
                 className="btn-ghost"
               >
                 打开文件夹
               </button>
             </div>
-            <div className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs text-neutral-500">
+            <div className="text-log max-h-40 overflow-auto">
               {logs.join("\n")}
             </div>
           </div>
