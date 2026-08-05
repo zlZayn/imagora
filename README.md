@@ -5,7 +5,7 @@
 ## 它能做什么
 
 - 网页界面一键生图：拖拽 / 粘贴 / 点击上传参考图（可多张），输入提示词即出图
-- 文生图与图生图自动切换：不传图 = 文生图，传图 = 按底图编辑换背景/场景
+- 文生图与图生图自动切换：不传图 = 文生图，传图 = 图生图（可传多张参考图，用途由提示词决定）
 - 生成结果实时显示：每张图标注**分辨率与费用**，底部汇总**本次总费用与用时**
 - 输出目录自由选择：手输路径或系统文件夹选择器，生成后一键"打开文件夹"定位
 - 批量生图：按产品配置一次生成多张详情页图（预览模式不花钱）
@@ -28,7 +28,7 @@ tools/
 ├── tests/             # 单元测试（28 用例，纯函数零成本）
 ├── pyproject.toml     # Python 依赖（uv）
 ├── .env / .env.example
-└── 启动生图工具.cmd   # 双击启动：首次自动构建前端
+└── 启动生图工具.cmd   # 双击启动（首次需先构建前端，见快速开始）
 ```
 
 ## 首次使用：设置 API Key（必做）
@@ -53,12 +53,13 @@ $env:AIWANWU_API_KEY = "sk-你的Key"
 ## 快速开始
 
 ```powershell
-# 方式 A：双击 tools\启动生图工具.cmd（首次自动 npm install + build，然后启动并开浏览器）
+# 方式 A（推荐）：先按下面「方式 B」构建一次前端，之后双击 tools\启动生图工具.cmd 即可
 # 方式 B：命令行
 cd tools
 uv sync                                      # 安装 Python 依赖
-cd frontend; npm install; npm run build; cd ..   # 构建前端（首次）
+cd frontend; npm install; npm run build; cd ..   # 构建前端（仅首次）
 uv run python -m main ui                     # 启动 http://127.0.0.1:7860
+uv run python -m main ui --port 8080         # 换端口
 
 # 前端开发模式（改样式热更新，需后端已启动）
 cd frontend; npm run dev                     # http://localhost:5173
@@ -84,3 +85,4 @@ uv run pytest
 其他注意：
 - 生成需 30-120 秒，接口超时已放宽至 300 秒
 - 提示词英文优先，减少歧义
+- API Key 未配置时，界面顶部会显示黄色提示条

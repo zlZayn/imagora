@@ -64,19 +64,19 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 | 方法 | 路径 | 请求 | 响应 |
 | --- | --- | --- | --- |
-| GET | `/api/config` | 无 | sizes[] / qualities[] / defaultOutputDir |
+| GET | `/api/config` | 无 | sizes[] / qualities[] / defaultOutputDir / hasApiKey |
 | POST | `/api/select-folder` | { current } | { path }（系统弹窗选择，取消返回原值） |
-| POST | `/api/open-folder` | { path } | { ok }（不存在则自动创建后打开） |
-| POST | `/api/generate` | multipart：prompt、image(可多张)、size、quality、output_dir | { results[status,message,url?,size,cost], messages[], totalCost } |
+| POST | `/api/open-folder` | { path } | { ok }（不存在自动创建；explorer 打开并置前） |
+| POST | `/api/generate` | multipart：prompt、image(可多张同名)、size、quality、output_dir | { results[status,message,url?,size,cost], messages[], totalCost } |
 | GET | `/api/image` | ?path= | 图片文件（FileResponse） |
 
 前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerateResponse` / `ResultItem`），与后端返回结构一一对应。
 
 ## 数据流（一次图生图）
 
-1. 前端收文件 → FormData 上传
+1. 前端收文件 → FormData 上传（可多张，同名 image 字段）
 2. server 把底图写入**临时文件**（`tempfile`，不污染输出目录），结果路径算好
-3. `generate_image` 读底图 → POST edits 接口 → 解码 `b64_json` 写入结果文件
+3. `generate_image` 读全部底图 → POST edits 接口（多图一次请求）→ 解码 `b64_json` 写入结果文件
 4. 清理临时文件 → 生成 `url=/api/image?path=` 回显
 5. 前端画廊 `<img src="/api/image?path=...">` 加载；日志区显示 `已保存 · 相对路径（尺寸）`
 
@@ -95,7 +95,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 ## 错误处理
 
 - 统一 `core/api.py:format_error(e, limit)` → `类型: 消息` 截断，供 server 界面与 batch 命令行共用
-- 请求非 200 → `RuntimeError` 上抛；batch 收集失败 id 继续；UI 逐张容错并汇总
+- 请求非 200 → `RuntimeError` 上抛；batch 收集失败 id 继续；UI 单请求，失败在日志区展示具体原因
 
 ## 测试覆盖
 
@@ -114,6 +114,10 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 - **API Key**：环境变量 `AIWANWU_API_KEY` 或 `tools/.env`（git 忽略），未配置抛清晰错误
 - **尺寸档位**：1K=0.05 / 2K=0.10 / 4K=0.20，选项由 `/api/config` 下发，前端不硬编码
+- **多张参考图**：实测 A站 edits 接受多个 image 字段，一次请求全部作为参考（用途由提示词决定），不是逐张生成
+- **静态资源 no-cache**：本地迭代频繁，中间件统一加 `Cache-Control: no-cache`，前端更新即时生效
+- **打开文件夹置前**：后台进程启动的 explorer 窗口默认不抢前台，用 Win32 API（枚举窗口 + 模拟 Alt 绕过前台锁）置前
+- **前端未构建**：dist 缺失时根路径返回 503 提示页，不静默空白
 - **图片回显**：`GET /api/image?path=` 动态读文件（本地单机工具），生成时返回带 URL 的结果
 - **超时**：生成请求 300 秒（图生图 + 2K 可能 1-2 分钟）
 - **端口**：默认 7860，`main.py ui --port` 可改
