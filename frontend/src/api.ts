@@ -33,12 +33,12 @@ export async function openFolder(path: string): Promise<{ ok: boolean }> {
   });
 }
 
-/** 文生图 / 图生图（有 image 即图生图） */
+/** 文生图 / 图生图（有 files 即图生图，多张融合为一张） */
 export async function generateImage(params: GenerateParams): Promise<GenerateResponse> {
   const formData = new FormData();
   formData.append("prompt", params.prompt);
-  if (params.image) {
-    formData.append("image", params.image);
+  for (const file of params.files) {
+    formData.append("image", file);
   }
   formData.append("size", params.size);
   formData.append("quality", params.quality);

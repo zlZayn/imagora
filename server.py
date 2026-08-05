@@ -112,8 +112,8 @@ def display_path(path: str) -> str:
 @app.post("/api/generate")
 async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                    quality: str = Form("low"), output_dir: str = Form(""),
-                   image: UploadFile | None = File(default=None)):
-    """文生图 / 图生图。有 image 时按底图编辑，否则文生图。
+                   images: list[UploadFile] = File(default=[])):
+    """文生图 / 图生图。有 images 时多张底图融合为一张，否则文生图。
 
     每个结果带尺寸与费用；响应含本次成功张数的总费用。
     """
@@ -124,24 +124,33 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
     results = []
     messages = []
 
-    if image:
+    if images:
         dest = os.path.join(out_dir, f"img2img_{stamp}.png")
-        messages.append(f"图生图 · 底图 {image.filename}")
+        messages.append(f"图生图 · 参考图 {len(images)} 张")
+        temp_bases = []
         try:
             # 底图先落临时文件，结果写到输出目录
-            with tempfile.NamedTemporaryFile(suffix=Path(image.filename or "img").suffix or ".png", delete=False) as tmp:
-                tmp.write(await image.read())
-                base_image = tmp.name
+            for image in images:
+                with tempfile.NamedTemporaryFile(
+                    suffix=Path(image.filename or "img").suffix or ".png", delete=False
+                ) as tmp:
+                    tmp.write(await image.read())
+                    temp_bases.append(tmp.name)
             generate_image(
-                prompt=prompt, image_path=base_image, size=size,
+                prompt=prompt, images=temp_bases, size=size,
                 quality=quality, output_format="png", output_path=dest,
             )
-            os.unlink(base_image)
             results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost})
             messages.append(f"已保存 · {display_path(dest)}（{size}）")
         except Exception as e:
             results.append({"status": "error", "message": format_error(e)})
             messages.append(f"失败 · {format_error(e)}")
+        finally:
+            for tmp in temp_bases:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
     else:
         dest = os.path.join(out_dir, f"txt2img_{stamp}.png")
         messages.append("文生图")

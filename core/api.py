@@ -51,16 +51,19 @@ def build_default_output_path(output_path, output_format):
     return str(Path(DEFAULT_OUTPUT_DIR) / f"ai_{time.strftime('%Y%m%d_%H%M%S')}.{output_format}")
 
 
-def generate_image(prompt, image_path, size, quality=DEFAULT_QUALITY,
-                   model=DEFAULT_MODEL, n=1, output_format="png", output_path=None):
+def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
+                   quality=DEFAULT_QUALITY, model=DEFAULT_MODEL, n=1,
+                   output_format="png", output_path=None):
     """文生图 / 图生图。
 
-    有 image_path 走 edits 接口（底图编辑），否则走 generations 接口。
+    - 传 image_path（单张）或 images（多张，融合为一张）：走 edits 接口
+    - 都不传：走 generations 接口（文生图）
     成功保存图片到 output_path（默认自动生成）并打印；失败抛异常。
 
     Args:
         prompt: 提示词（英文优先，减少歧义）
-        image_path: 底图路径（None = 文生图）
+        image_path: 单张底图路径（None 则看 images）
+        images: 多张底图路径列表，一次请求全部作为参考（融合生成一张）
         size: 分辨率字符串，如 "1024x1024"
         quality: low / medium / high
         model: 模型名
@@ -79,12 +82,20 @@ def generate_image(prompt, image_path, size, quality=DEFAULT_QUALITY,
     }
     output_path = build_default_output_path(output_path, output_format)
 
-    if image_path:
-        # 图生图：底图 + 提示词
+    image_paths = images if images else ([image_path] if image_path else [])
+    if image_paths:
+        # 图生图：一张或多张底图，一次请求作为参考
         url = f"{BASE_URL}/v1/images/edits"
-        with open(image_path, "rb") as f:
-            files = {"image": (os.path.basename(image_path), f, "application/octet-stream")}
+        opened = [open(p, "rb") for p in image_paths]
+        try:
+            files = [
+                ("image", (os.path.basename(p), f, "application/octet-stream"))
+                for p, f in zip(image_paths, opened)
+            ]
             response = requests.post(url, headers=headers, files=files, data=payload, timeout=300)
+        finally:
+            for f in opened:
+                f.close()
     else:
         # 文生图
         url = f"{BASE_URL}/v1/images/generations"
