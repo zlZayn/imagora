@@ -20,6 +20,16 @@ from urllib.parse import quote
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    """静态资源禁用缓存：本地迭代频繁，保证页面总是最新"""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 from core.api import format_error, generate_image
 from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT, get_api_key
@@ -41,6 +51,7 @@ SIZE_OPTIONS = [
 QUALITY_OPTIONS = ["low", "medium", "high"]
 
 app = FastAPI(title="A站生图工具")
+app.add_middleware(NoCacheMiddleware)
 
 
 def has_api_key() -> bool:
