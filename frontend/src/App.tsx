@@ -9,7 +9,7 @@ import Select from "./components/Select";
 /** 顶部标题区：SVG 叶子图标 + 标题 + 副标题 */
 function TitleBar() {
   return (
-    <header className="flex items-center gap-3 pb-4">
+    <header className="mb-4 flex items-center gap-3 border-b border-neutral-200/70 pb-3">
       <svg
         width="30"
         height="30"
@@ -24,8 +24,8 @@ function TitleBar() {
         <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
         <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
       </svg>
-      <h1 className="text-xl font-semibold">A站生图工具</h1>
-      <span className="text-muted ml-auto">
+      <h1 className="text-lg font-semibold tracking-wide">A站生图工具</h1>
+      <span className="text-muted ml-auto text-xs">
         文生图 / 图生图 · 不传参考图即文生图 · 生成约需 1-2 分钟
       </span>
     </header>
@@ -174,7 +174,7 @@ export default function App() {
                 打开文件夹
               </button>
             </div>
-            <div className="text-log max-h-40 overflow-auto">
+            <div className="log-box text-log max-h-40 overflow-auto">
               {logs.join("\n")}
             </div>
           </div>

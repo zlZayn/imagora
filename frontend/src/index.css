@@ -7,7 +7,7 @@
 }
 
 body {
-  background-color: #fafafa;
+  background-color: #f7f7f5;
   color: #262626;
 }
 
@@ -21,7 +21,7 @@ body {
     @apply border-neutral-400;
   }
   .field-control:focus {
-    @apply border-brand ring-2 ring-brand/25;
+    @apply border-brand ring-2 ring-brand/20;
   }
 
   /* 字段标签 */
@@ -44,14 +44,19 @@ body {
     @apply whitespace-pre-wrap font-mono text-xs leading-relaxed text-neutral-500;
   }
 
-  /* 白色面板卡片 */
+  /* 日志容器：浅灰内嵌面板，与输入卡片区分层级 */
+  .log-box {
+    @apply rounded-lg bg-neutral-100/60 px-3 py-2;
+  }
+
+  /* 白色面板卡片：柔和双层阴影 */
   .panel-card {
-    @apply rounded-xl border border-neutral-100 bg-white p-4 shadow-sm;
+    @apply rounded-xl border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_12px_rgba(0,0,0,0.04)];
   }
 
   /* 主按钮（生成） */
   .btn-primary {
-    @apply rounded-xl bg-brand py-2.5 font-semibold text-white transition-all duration-200;
+    @apply rounded-xl bg-brand py-3 font-semibold text-white shadow-sm transition-all duration-200;
   }
   .btn-primary:hover:not(:disabled) {
     @apply bg-brand-dark shadow-md;
