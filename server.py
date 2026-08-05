@@ -11,6 +11,7 @@ API:
   GET  /api/image?path=     读取生成的图片文件
 """
 import os
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -155,11 +156,15 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
 
 @app.post("/api/open-folder")
 def open_folder(body: dict):
-    """在系统资源管理器中打开指定文件夹（不存在则自动创建）"""
+    """在系统资源管理器中打开指定文件夹（不存在则自动创建）
+
+    用 explorer.exe 代替 os.startfile：新窗口会正常激活并弹到前台
+    （os.startfile 对已存在的窗口只复用、不激活）。
+    """
     path = str(body.get("path", "")).rstrip("\\/")
     try:
         os.makedirs(path, exist_ok=True)
-        os.startfile(path)  # Windows
+        subprocess.Popen(["explorer.exe", path])
         return {"ok": True}
     except Exception:
         return {"ok": False}
