@@ -28,12 +28,13 @@ tools/
 ├── main.py        # CLI 入口 ──┐
 ├── server.py      # FastAPI ───┼─→ core/api.py ─→ core/config.py（唯一配置源）
 ├── core/batch.py  # 批量编排 ──┘       │
+│                                     ├→ core/logging.py（统一生成日志）
 │                                     └→ A站 API（requests）
 ├── frontend/      # React：api.ts ─→ server.py 的 /api/*
 └── tests/         # 纯函数单元测试（不碰网络）
 ```
 
-依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 只依赖 `core/config.py`；**没有反向/循环依赖**。
+依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 只依赖 `core/config.py`；`server.py`/`core/batch.py`/`main.py` 共用 `core/logging.py` 记录生成日志；**没有反向/循环依赖**。
 
 ## 三条调用链
 
@@ -107,6 +108,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | `tests/test_core_batch.py` | 8 | 配置读取 / 路径解析 / 模块过滤 / dry_run 预览 |
 | `tests/test_core_config.py` | 3 | `get_api_key`（环境变量/缺失报错）/ RATIOS 表结构 |
 | `tests/test_server_helpers.py` | 4 | `size_cost` / `display_path` |
+| `tests/test_core_logging.py` | 3 | `log_generation` 写入 / 字段 / 路径相对化 |
 
 未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API），编排与请求层靠 dry_run 与人工验证。
 
@@ -118,6 +120,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **静态资源 no-cache**：本地迭代频繁，中间件统一加 `Cache-Control: no-cache`，前端更新即时生效
 - **打开文件夹置前**：后台进程启动的 explorer 窗口默认不抢前台，用 Win32 API（枚举窗口 + 模拟 Alt 绕过前台锁）置前
 - **前端未构建**：dist 缺失时根路径返回 503 提示页，不静默空白
+- **生成日志**：每次生成（UI/批量/CLI）由 `core/logging.py` 统一记录到 `logs/generation.jsonl`（git 忽略），字段：时间/模式/参考图数/提示词/尺寸/质量/结果/费用/耗时/输出路径
 - **图片回显**：`GET /api/image?path=` 动态读文件（本地单机工具），生成时返回带 URL 的结果
 - **超时**：生成请求 300 秒（图生图 + 2K 可能 1-2 分钟）
 - **端口**：默认 7860，`main.py ui --port` 可改

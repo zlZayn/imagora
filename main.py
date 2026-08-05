@@ -47,19 +47,41 @@ def handle_batch_command(args):
 
 def handle_gen_command(args):
     """单张生图（文生图 / 图生图）"""
+    import time
+
+    from core.logging import log_generation
+
     output_format = args.format if args.output is None else os.path.splitext(args.output)[1].lstrip(".") or args.format
     size = api.resolve_size_with_ratio(args.size, args.ratio, args.tier)
     output_path = api.build_default_output_path(args.output, output_format)
-    api.generate_image(
-        prompt=args.prompt,
-        image_path=args.image,
-        size=size,
-        quality=args.quality,
-        model=args.model,
-        n=args.n,
-        output_format=output_format,
-        output_path=output_path,
-    )
+    started_at = time.time()
+    try:
+        api.generate_image(
+            prompt=args.prompt,
+            image_path=args.image,
+            size=size,
+            quality=args.quality,
+            model=args.model,
+            n=args.n,
+            output_format=output_format,
+            output_path=output_path,
+        )
+        job_ok = True
+    except Exception:
+        job_ok = False
+        raise
+    finally:
+        log_generation(
+            prompt=args.prompt,
+            mode="img2img" if args.image else "txt2img",
+            refs=1 if args.image else 0,
+            size=size,
+            quality=args.quality,
+            status="ok" if job_ok else "error",
+            output=output_path if job_ok else "",
+            cost=0.0,
+            seconds=time.time() - started_at,
+        )
 
 
 def build_argument_parser():

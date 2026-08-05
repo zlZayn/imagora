@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from core.api import format_error, generate_image
+from core.logging import log_generation
 
 
 def load_batch_config(config_path):
@@ -70,6 +71,7 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
         output_path = os.path.join(module_dir, f"{job['id']}_{job['name']}.png")
 
         print(f"\n生成中 [{job['id']}] {job['name']} ...", flush=True)
+        job_started_at = time.time()
         try:
             generate_image(
                 prompt=job["prompt"],
@@ -79,9 +81,22 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
                 output_format="png",
                 output_path=output_path,
             )
+            job_ok = True
         except Exception as e:
             print(f"[{job['id']}] 失败: {format_error(e, 200)}")
             failed.append(job["id"])
+            job_ok = False
+        log_generation(
+            prompt=job["prompt"],
+            mode="img2img" if image_path else "txt2img",
+            refs=1 if image_path else 0,
+            size=config["size"],
+            quality="low",
+            status="ok" if job_ok else "error",
+            output=output_path if job_ok else "",
+            cost=config.get("tier_cost", 0.10) if job_ok else 0.0,
+            seconds=time.time() - job_started_at,
+        )
         time.sleep(5)  # 防限流
 
     print("\n=== 完成 ===")

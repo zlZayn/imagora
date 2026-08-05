@@ -25,6 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.api import format_error, generate_image
 from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT, get_api_key
+from core.logging import log_generation
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -121,6 +122,7 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
     out_dir = (output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/")
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
+    started_at = time.time()
     cost = size_cost(size)
     results = []
     messages = []
@@ -169,6 +171,19 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
     total_cost = sum(r.get("cost", 0) for r in results if r.get("status") == "ok")
     ok_count = sum(1 for r in results if r.get("status") == "ok")
     messages.append(f"本次成功 {ok_count} 张 · 费用 {total_cost:.2f} 元")
+
+    ok = results and results[0].get("status") == "ok"
+    log_generation(
+        prompt=prompt,
+        mode="img2img" if images else "txt2img",
+        refs=len(images),
+        size=size,
+        quality=quality,
+        status="ok" if ok else "error",
+        output=dest if ok else "",
+        cost=total_cost,
+        seconds=time.time() - started_at,
+    )
     return {"results": results, "messages": messages, "totalCost": total_cost}
 
 

@@ -25,7 +25,8 @@ tools/
 ├── server.py          # FastAPI 后端：/api/* 路由 + 托管前端产物
 ├── core/              # 核心逻辑：config(配置) / api(生图) / batch(批量)
 ├── frontend/          # React 前端（npm run dev 开发 / npm run build 产物）
-├── tests/             # 单元测试（28 用例，纯函数零成本）
+├── tests/             # 单元测试（纯函数零成本）
+├── logs/              # 生成日志（git 忽略）：每次生图记录提示词/结果/费用/耗时
 ├── pyproject.toml     # Python 依赖（uv）
 ├── .env / .env.example
 └── 启动生图工具.cmd   # 双击启动（首次需先构建前端，见快速开始）
