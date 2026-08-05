@@ -38,7 +38,8 @@ export async function generateImage(params: GenerateParams): Promise<GenerateRes
   const formData = new FormData();
   formData.append("prompt", params.prompt);
   for (const file of params.files) {
-    formData.append("image", file);
+    // 字段名必须与后端参数名一致（images: list[UploadFile]），否则后端收不到图片
+    formData.append("images", file);
   }
   formData.append("size", params.size);
   formData.append("quality", params.quality);
