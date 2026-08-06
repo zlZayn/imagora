@@ -71,3 +71,14 @@ def test_next_window_increments_and_shares_counter():
     assert b == a + 1
     c = get_config(None)["windowId"]
     assert c == b + 1
+
+
+def test_generate_is_sync_not_coroutine():
+    """generate 必须是同步函数：生成请求走 FastAPI 线程池，阻塞不卡事件循环
+    （若为 async 且内部同步调 API，生成 1-2 分钟期间所有其他请求全部挂起，
+     表现为：命令行按 N 开新窗口超时、页面右上角新窗口白屏）"""
+    import inspect
+
+    from server import generate
+
+    assert not inspect.iscoroutinefunction(generate)

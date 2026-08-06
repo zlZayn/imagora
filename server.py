@@ -140,14 +140,15 @@ def display_path(path: str) -> str:
 
 
 @app.post("/api/generate")
-async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
-                   quality: str = Form("low"), output_dir: str = Form(""),
-                   images: list[UploadFile] = File(default=[]),
-                   win: int = Form(0)):
+def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
+             quality: str = Form("low"), output_dir: str = Form(""),
+             images: list[UploadFile] = File(default=[]),
+             win: int = Form(0)):
     """文生图 / 图生图。有 images 时多张参考图一次提交（用途由提示词决定），否则文生图。
 
     每个结果带尺寸与费用；响应含本次成功张数的总费用。
     文件名带全局序号：多窗口同秒并发生成互不覆盖。
+    同步 def：走 FastAPI 线程池，生成期间不阻塞事件循环，其他请求（开新窗口/加载页面）照常响应。
     """
     out_dir = (output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/")
     os.makedirs(out_dir, exist_ok=True)
@@ -168,7 +169,7 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                 with tempfile.NamedTemporaryFile(
                     suffix=Path(image.filename or "img").suffix or ".png", delete=False
                 ) as tmp:
-                    tmp.write(await image.read())
+                    tmp.write(image.file.read())
                     temp_bases.append(tmp.name)
             generate_image(
                 prompt=prompt, images=temp_bases, size=size,
