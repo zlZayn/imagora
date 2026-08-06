@@ -11,6 +11,8 @@ export interface AppConfig {
   qualities: string[];
   defaultOutputDir: string;
   hasApiKey: boolean;
+  /** 窗口编号（多开页面时由后端分配或沿用已有编号） */
+  windowId: number;
 }
 
 /** 单张生成结果 */
@@ -36,4 +38,6 @@ export interface GenerateParams {
   size: string;
   quality: string;
   outputDir: string;
+  /** 窗口编号（多开页面溯源到日志），无窗口传 0 */
+  win: number;
 }

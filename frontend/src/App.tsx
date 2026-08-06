@@ -1,13 +1,42 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { generateImage, getConfig, openFolder } from "./api";
+import { accentForWindow } from "./accent";
 import type { AppConfig, ResultItem } from "./types";
 import UploadZone from "./components/UploadZone";
 import FolderPicker from "./components/FolderPicker";
 import Gallery from "./components/Gallery";
 import Select from "./components/Select";
 
-/** 顶部标题区：SVG 叶子图标 + 标题 + 副标题 */
-function TitleBar() {
+const WIN_KEY = "aig-win";
+
+/** 读取本标签页记忆的窗口号（window.name 跨刷新保留；复制标签页不继承） */
+function readStoredWindowId(): number | null {
+  const m = window.name.match(new RegExp(`^${WIN_KEY}-(\\d+)$`));
+  return m ? Number(m[1]) : null;
+}
+
+/** 解析窗口号：URL ?win= 优先 > window.name 记忆 > null（交给服务端分配） */
+function resolveWindowId(): number | null {
+  const param = new URLSearchParams(window.location.search).get("win");
+  const n = param ? Number(param) : NaN;
+  if (Number.isInteger(n) && n > 0) return n;
+  return readStoredWindowId();
+}
+
+/** 把窗口号记忆到本标签页（跨刷新保留编号） */
+function storeWindowId(id: number) {
+  window.name = `${WIN_KEY}-${id}`;
+}
+
+/** 开新窗口：去掉 win 参数，让新标签自动领下一个编号 */
+function openNewWindow() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("win");
+  window.open(url.pathname + url.search, "_blank");
+}
+
+/** 顶部标题区：SVG 叶子图标 + 标题 + 窗口编号徽章 + 新窗口按钮 */
+function TitleBar({ windowId }: { windowId: number | null }) {
   return (
     <header className="mb-4 flex items-center gap-3 border-b border-neutral-200/70 pb-3">
       <svg
@@ -15,7 +44,7 @@ function TitleBar() {
         height="30"
         viewBox="0 0 24 24"
         fill="none"
-        stroke="#3d7a5c"
+        stroke="var(--color-brand)"
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -25,15 +54,24 @@ function TitleBar() {
         <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
       </svg>
       <h1 className="text-lg font-semibold tracking-wide">A站生图工具</h1>
+      {windowId !== null && (
+        <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+          窗口 #{windowId}
+        </span>
+      )}
       <span className="text-muted ml-auto text-xs">
         文生图 / 图生图 · 不传参考图即文生图 · 生成约需 1-2 分钟
       </span>
+      <button type="button" onClick={openNewWindow} className="btn-ghost px-2 py-1 text-xs">
+        ＋ 新窗口
+      </button>
     </header>
   );
 }
 
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [windowId, setWindowId] = useState<number | null>(null);
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [size, setSize] = useState("");
@@ -46,9 +84,14 @@ export default function App() {
   const [results, setResults] = useState<ResultItem[]>([]);
 
   useEffect(() => {
-    getConfig()
+    const known = resolveWindowId();
+    getConfig(known ?? undefined)
       .then((cfg) => {
         setConfig(cfg);
+        setWindowId(cfg.windowId);
+        // 服务端新分配的编号记住到本标签页，刷新后编号不变
+        if (known === null) storeWindowId(cfg.windowId);
+        document.title = cfg.windowId > 0 ? `A站生图工具 · 窗口 #${cfg.windowId}` : "A站生图工具";
         setSize(cfg.sizes[0]?.value ?? "");
         setOutputDir(cfg.defaultOutputDir);
       })
@@ -78,7 +121,7 @@ export default function App() {
     // 实时计时：每秒刷新已等待秒数
     timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
     try {
-      const res = await generateImage({ prompt, files, size, quality, outputDir });
+      const res = await generateImage({ prompt, files, size, quality, outputDir, win: windowId ?? 0 });
       setResults(res.results);
       setLogs([...res.messages, `总用时 ${((Date.now() - startedAt) / 1000).toFixed(1)} 秒`]);
     } catch (err) {
@@ -99,9 +142,14 @@ export default function App() {
     }
   };
 
+  const accent = accentForWindow(windowId);
+
   return (
-    <div className="mx-auto max-w-[1500px] px-6 py-4">
-      <TitleBar />
+    <div
+      className="mx-auto max-w-[1500px] px-6 py-4"
+      style={{ "--color-brand": accent.brand, "--color-brand-dark": accent.brandDark } as CSSProperties}
+    >
+      <TitleBar windowId={windowId} />
 
       {config && !config.hasApiKey && (
         <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">

@@ -1,11 +1,33 @@
+import { useState } from "react";
 import type { ResultItem } from "../types";
 
 interface GalleryProps {
   items: ResultItem[];
 }
 
+/** 按实际图片比例自适应展示：加载后读取 naturalWidth/Height 设置 aspect-ratio，
+ *  宽高比与多选框选择无关，完全跟随产出图片本身 */
+function AspectImage({ url, alt }: { url: string; alt: string }) {
+  const [ratio, setRatio] = useState<string | null>(null);
+  return (
+    <img
+      src={url}
+      alt={alt}
+      onLoad={(e) => {
+        const img = e.currentTarget;
+        if (img.naturalWidth && img.naturalHeight) {
+          setRatio(`${img.naturalWidth} / ${img.naturalHeight}`);
+        }
+      }}
+      className="aspect-[9/16] w-full rounded-xl border border-neutral-200 object-cover shadow-sm transition-shadow hover:shadow-md"
+      style={ratio ? { aspectRatio: ratio } : undefined}
+    />
+  );
+}
+
 /**
- * 结果画廊：成功生成的图片网格展示，点击在新窗口打开原图
+ * 结果画廊：成功生成的图片网格展示，点击在新窗口打开原图。
+ * 图片比例自适应实际产出（不同尺寸混排也完整显示）。
  */
 export default function Gallery({ items }: GalleryProps) {
   const images = items.filter((item): item is ResultItem & { url: string } => Boolean(item.url));
@@ -34,7 +56,7 @@ export default function Gallery({ items }: GalleryProps) {
   }
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-3 items-start gap-3">
       {images.map((item, i) => (
         <a
           key={`${item.url}-${i}`}
@@ -44,11 +66,7 @@ export default function Gallery({ items }: GalleryProps) {
           title={item.message}
           className="block"
         >
-          <img
-            src={item.url}
-            alt={item.message}
-            className="aspect-[9/16] w-full rounded-xl border border-neutral-200 object-cover shadow-sm transition-shadow hover:shadow-md"
-          />
+          <AspectImage url={item.url} alt={item.message} />
           <p className="text-caption mt-1 text-center">
             {item.size ? `${item.size}` : ""}
             {item.cost !== undefined ? ` · ${item.cost}元` : ""}

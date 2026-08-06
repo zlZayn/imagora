@@ -41,8 +41,8 @@ export default function UploadZone({ files, onChange }: UploadZoneProps) {
   const baseClasses =
     "border-2 border-dashed rounded-xl p-4 text-center transition-all duration-300 cursor-pointer";
   const stateClasses = dragging
-    ? "border-brand bg-brand/5 shadow-[0_0_0_4px_rgba(61,122,92,0.14)]"
-    : "border-neutral-300 hover:border-brand hover:bg-brand/[0.03] hover:shadow-[0_0_0_3px_rgba(61,122,92,0.08)]";
+        ? "border-brand bg-brand/5 shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-brand)_14%,transparent)]"
+        : "border-neutral-300 hover:border-brand hover:bg-brand/[0.03] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-brand)_8%,transparent)]";
 
   return (
     <div

@@ -10,9 +10,11 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** 获取应用初始化配置（尺寸/质量/默认输出路径） */
-export function getConfig(): Promise<AppConfig> {
-  return requestJson<AppConfig>("/api/config");
+/** 获取应用初始化配置（尺寸/质量/默认输出路径/窗口编号）
+ *  传 win 表示沿用已有窗口编号（URL ?win= 或 window.name 记忆），否则由服务端分配 */
+export function getConfig(win?: number): Promise<AppConfig> {
+  const query = win ? `?win=${win}` : "";
+  return requestJson<AppConfig>(`/api/config${query}`);
 }
 
 /** 弹出系统文件夹选择器，返回选中的路径（取消则返回原路径） */
@@ -44,5 +46,6 @@ export async function generateImage(params: GenerateParams): Promise<GenerateRes
   formData.append("size", params.size);
   formData.append("quality", params.quality);
   formData.append("output_dir", params.outputDir);
+  formData.append("win", String(params.win)); // 与后端 Form 参数名一致，日志按窗口溯源
   return requestJson<GenerateResponse>("/api/generate", { method: "POST", body: formData });
 }
