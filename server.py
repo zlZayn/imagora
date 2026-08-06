@@ -11,9 +11,13 @@ API:
   POST /api/generate        文生图 / 图生图（multipart）
   GET  /api/image?path=     读取生成的图片文件
 """
+import ctypes
+import itertools
 import os
 import subprocess
+import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -26,6 +30,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from core.api import format_error, generate_image
 from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT, get_api_key
 from core.logging import log_generation
+
+# 多开窗口：服务端原子分配递增编号（GIL 保证并发安全）
+_WIN_COUNTER = itertools.count(1)
+# 生成文件名全局序号：秒级时间戳同秒并发必撞，加序号保证唯一
+_SEQ = itertools.count(1)
+# 串行化有界面副作用的系统调用（tkinter 选择器、explorer 置前）
+_UI_LOCK = threading.Lock()
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -66,30 +77,47 @@ def has_api_key() -> bool:
 
 
 @app.get("/api/config")
-def get_config():
-    """前端初始化配置"""
+def get_config(win: int | None = None):
+    """前端初始化配置。
+
+    多开页面：前端传已有窗口号（URL ?win= 或 window.name 记忆）则沿用，
+    否则服务端原子分配下一个编号；默认输出目录按窗口分区 output/win{N}。
+    """
+    window_id = win if win and win > 0 else next(_WIN_COUNTER)
     return {
         "sizes": SIZE_OPTIONS,
         "qualities": QUALITY_OPTIONS,
-        "defaultOutputDir": DEFAULT_OUTPUT_DIR,
+        "defaultOutputDir": os.path.join(DEFAULT_OUTPUT_DIR, f"win{window_id}"),
         "hasApiKey": has_api_key(),
+        "windowId": window_id,
     }
+
+
+@app.get("/api/window/next")
+def next_window():
+    """分配下一个窗口编号（多开脚本 / 界面按钮用，与 /api/config 共用计数器，全局唯一）"""
+    return {"windowId": next(_WIN_COUNTER)}
 
 
 @app.post("/api/select-folder")
 def select_folder(body: dict):
-    """弹出系统文件夹选择器；取消则返回原路径"""
+    """弹出系统文件夹选择器；取消则返回原路径
+
+    多窗口并发调用 tkinter 会触发 Tcl 线程错误，用 _UI_LOCK 串行化
+    （对话框是模态的，用户同一时刻只会操作一个，锁不会阻塞正常使用）。
+    """
     current = str(body.get("current", ""))
     try:
-        import tkinter as tk
-        from tkinter import filedialog
+        with _UI_LOCK:
+            import tkinter as tk
+            from tkinter import filedialog
 
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        folder = filedialog.askdirectory(title="选择输出文件夹")
-        root.destroy()
-        return {"path": folder if folder else current}
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            folder = filedialog.askdirectory(title="选择输出文件夹")
+            root.destroy()
+            return {"path": folder if folder else current}
     except Exception:
         return {"path": current}
 
@@ -114,10 +142,12 @@ def display_path(path: str) -> str:
 @app.post("/api/generate")
 async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                    quality: str = Form("low"), output_dir: str = Form(""),
-                   images: list[UploadFile] = File(default=[])):
+                   images: list[UploadFile] = File(default=[]),
+                   win: int = Form(0)):
     """文生图 / 图生图。有 images 时多张参考图一次提交（用途由提示词决定），否则文生图。
 
     每个结果带尺寸与费用；响应含本次成功张数的总费用。
+    文件名带全局序号：多窗口同秒并发生成互不覆盖。
     """
     out_dir = (output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/")
     os.makedirs(out_dir, exist_ok=True)
@@ -128,7 +158,8 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
     messages = []
 
     if images:
-        dest = os.path.join(out_dir, f"img2img_{stamp}.png")
+        seq = next(_SEQ)
+        dest = os.path.join(out_dir, f"img2img_{stamp}_{seq:03d}.png")
         messages.append(f"图生图 · 参考图 {len(images)} 张")
         temp_bases = []
         try:
@@ -155,7 +186,8 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                 except OSError:
                     pass
     else:
-        dest = os.path.join(out_dir, f"txt2img_{stamp}.png")
+        seq = next(_SEQ)
+        dest = os.path.join(out_dir, f"txt2img_{stamp}_{seq:03d}.png")
         messages.append("文生图")
         try:
             generate_image(
@@ -183,6 +215,7 @@ async def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
         output=dest if ok else "",
         cost=total_cost,
         seconds=time.time() - started_at,
+        win=win or None,
     )
     return {"results": results, "messages": messages, "totalCost": total_cost}
 
@@ -196,10 +229,12 @@ def open_folder(body: dict):
     """
     path = str(body.get("path", "")).rstrip("\\/")
     try:
-        os.makedirs(path, exist_ok=True)
-        subprocess.Popen(["explorer.exe", path])
-        time.sleep(1.0)
-        _activate_explorer_window(os.path.basename(path) or path)
+        # 串行化：多窗口并发打开文件夹时避免 explorer 置前互相抢前台
+        with _UI_LOCK:
+            os.makedirs(path, exist_ok=True)
+            subprocess.Popen(["explorer.exe", path])
+            time.sleep(1.0)
+            _activate_explorer_window(os.path.basename(path) or path)
         return {"ok": True}
     except Exception:
         return {"ok": False}

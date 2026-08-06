@@ -32,3 +32,42 @@ def test_display_path_outside_work_root_uses_relative_up():
     assert "\\" not in result
     assert result.startswith("../../")
     assert result.endswith("other/place/b.png")
+
+
+def test_get_config_window_id_increments():
+    """连续无参调用 -> 窗口编号递增，默认输出目录按窗口分区"""
+    from server import get_config
+
+    first = get_config(None)
+    second = get_config(None)
+    assert second["windowId"] == first["windowId"] + 1
+    assert first["defaultOutputDir"].endswith(f"win{first['windowId']}")
+    assert second["defaultOutputDir"].endswith(f"win{second['windowId']}")
+
+
+def test_get_config_keeps_existing_window_id():
+    """传已有窗口号 -> 沿用该编号与对应分区（刷新页面编号不变）"""
+    from server import get_config
+
+    cfg = get_config(win=7)
+    assert cfg["windowId"] == 7
+    assert cfg["defaultOutputDir"].endswith("win7")
+
+
+def test_get_config_ignores_invalid_window_id():
+    """传 0 / 负数 -> 视为无效，重新分配新编号"""
+    from server import get_config
+
+    cfg = get_config(win=0)
+    assert cfg["windowId"] >= 1
+
+
+def test_next_window_increments_and_shares_counter():
+    """连续调用 -> 编号递增；与 config 无参调用共用同一计数器（脚本开窗不撞号）"""
+    from server import get_config, next_window
+
+    a = next_window()["windowId"]
+    b = next_window()["windowId"]
+    assert b == a + 1
+    c = get_config(None)["windowId"]
+    assert c == b + 1

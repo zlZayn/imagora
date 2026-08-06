@@ -75,11 +75,36 @@ def test_output_path_returns_given_path():
 
 
 def test_output_path_generates_default_name():
-    """未给路径 -> 生成 output/ai_时间戳.png"""
+    """未给路径 -> 生成 output/ai_时间戳_序号.png"""
     result = build_default_output_path(None, "png")
     path = Path(result)
     assert path.parent.name == "output"
-    assert re.fullmatch(r"ai_\d{8}_\d{6}\.png", path.name), f"文件名格式不符: {path.name}"
+    assert re.fullmatch(r"ai_\d{8}_\d{6}_\d+\.png", path.name), f"文件名格式不符: {path.name}"
+
+
+def test_output_path_unique_under_concurrency():
+    """并发调用 -> 文件名全部唯一（多窗口同秒不覆盖）"""
+    import threading
+
+    from core.api import _SEQ
+
+    n = 50
+    names = []
+    lock = threading.Lock()
+
+    def worker():
+        for _ in range(n // 5):
+            name = build_default_output_path(None, "png")
+            with lock:
+                names.append(name)
+
+    threads = [threading.Thread(target=worker) for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(names) == n
+    assert len(set(names)) == n, f"出现重复文件名: {len(set(names))} != {n}"
 
 
 def test_output_path_respects_format():

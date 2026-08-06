@@ -8,6 +8,7 @@
   build_default_output_path() 默认输出路径（当前目录下 output/）
 """
 import base64
+import itertools
 import os
 import time
 from pathlib import Path
@@ -23,6 +24,9 @@ from core.config import (
     RATIOS,
     get_api_key,
 )
+
+# 全局序号：保证默认文件名在并发/多窗口下唯一（时间戳只有秒级，同秒必撞）
+_SEQ = itertools.count(1)
 
 
 def format_error(error: Exception, limit: int = 150) -> str:
@@ -45,10 +49,11 @@ def resolve_size_with_ratio(size, ratio, tier):
 
 
 def build_default_output_path(output_path, output_format):
-    """输出路径：未指定时落到 默认输出目录/output 下 ai_时间戳.后缀"""
+    """输出路径：未指定时落到 默认输出目录/output 下 ai_时间戳_序号.后缀（序号保证并发唯一）"""
     if output_path:
         return output_path
-    return str(Path(DEFAULT_OUTPUT_DIR) / f"ai_{time.strftime('%Y%m%d_%H%M%S')}.{output_format}")
+    seq = next(_SEQ)
+    return str(Path(DEFAULT_OUTPUT_DIR) / f"ai_{time.strftime('%Y%m%d_%H%M%S')}_{seq:03d}.{output_format}")
 
 
 def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,

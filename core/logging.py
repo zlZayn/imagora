@@ -6,6 +6,7 @@
 每条记录一行 JSON，字段精简：时间 / 模式 / 参考图数 / 提示词 / 尺寸 / 质量 / 结果 / 费用 / 耗时 / 输出路径。
 """
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -13,6 +14,9 @@ from core.config import WORK_ROOT
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 LOGS_DIR = BASE_DIR / "logs"
+
+# 多窗口 / 多请求并发写同一 JSONL：串行追加，杜绝记录交错
+_LOCK = threading.Lock()
 
 
 def _display_path(path: str) -> str:
@@ -27,7 +31,7 @@ def _display_path(path: str) -> str:
 
 def log_generation(prompt: str, mode: str, refs: int, size: str, quality: str,
                    status: str, output: str = "", cost: float = 0.0,
-                   seconds: float = 0.0) -> None:
+                   seconds: float = 0.0, win: int | None = None) -> None:
     """记录一次生成结果。
 
     Args:
@@ -39,6 +43,7 @@ def log_generation(prompt: str, mode: str, refs: int, size: str, quality: str,
         output: 输出路径（相对工作根展示）
         cost: 本次费用（元）
         seconds: 耗时（秒）
+        win: 窗口编号（多开页面时传，None 则不记录）
     """
     record = {
         "time": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -52,10 +57,13 @@ def log_generation(prompt: str, mode: str, refs: int, size: str, quality: str,
         "seconds": round(seconds, 1),
         "output": _display_path(output),
     }
+    if win is not None:
+        record["win"] = win
     # 日志失败不影响主流程：写入出错静默跳过
     try:
-        LOGS_DIR.mkdir(exist_ok=True)
-        with open(LOGS_DIR / "generation.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        with _LOCK:
+            LOGS_DIR.mkdir(exist_ok=True)
+            with open(LOGS_DIR / "generation.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
     except OSError:
         pass

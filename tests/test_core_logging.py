@@ -80,3 +80,40 @@ def test_log_generation_write_failure_does_not_raise(monkeypatch, tmp_path):
     (tmp_path / "readonly").write_text("occupied", encoding="utf-8")
     # 不应抛异常
     log_module.log_generation(prompt="p", mode="txt2img", refs=0, size="1024x1024", quality="low", status="ok")
+
+
+def test_log_generation_win_field_optional(monkeypatch, tmp_path):
+    """传 win -> 记录窗口号；不传 -> 无 win 字段（batch/main 兼容）"""
+    monkeypatch.setattr(log_module, "LOGS_DIR", tmp_path)
+
+    log_module.log_generation(prompt="p", mode="txt2img", refs=0, size="1024x1024", quality="low", status="ok", win=3)
+    record = json.loads((tmp_path / "generation.jsonl").read_text(encoding="utf-8"))
+    assert record["win"] == 3
+
+    log_module.log_generation(prompt="p2", mode="txt2img", refs=0, size="1024x1024", quality="low", status="ok")
+    lines = (tmp_path / "generation.jsonl").read_text(encoding="utf-8").splitlines()
+    assert "win" not in json.loads(lines[1])
+
+
+def test_log_generation_concurrent_writes_not_interleaved(monkeypatch, tmp_path):
+    """多线程并发写 -> 行数与调用次数一致，每行都是合法 JSON（串行追加不交错）"""
+    import threading
+
+    monkeypatch.setattr(log_module, "LOGS_DIR", tmp_path)
+    n = 40
+    threads = [
+        threading.Thread(
+            target=log_module.log_generation,
+            kwargs=dict(prompt=f"p{i}", mode="img2img", refs=1, size="1024x1024", quality="low", status="ok"),
+        )
+        for i in range(n)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    lines = (tmp_path / "generation.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == n
+    for line in lines:
+        assert isinstance(json.loads(line), dict)
