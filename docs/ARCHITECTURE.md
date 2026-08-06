@@ -41,7 +41,7 @@ tools/
 **1. UI 生成（Web 界面）**
 ```
 App.tsx:handleGenerate → api.ts:generateImage
-  → POST /api/generate（multipart: prompt + images(多张同名) + size + quality + output_dir）
+  → POST /api/generate（multipart: prompt + images(多张同名) + size + quality + output_dir + win(窗口号)）
   → server.generate() → core.api.generate_image() → A站 API
   → 保存图片到输出目录 → 返回 { results[url,size,cost], messages, totalCost }
   → Gallery 显示（GET /api/image?path= 读图）+ 日志区显示费用/用时
@@ -65,10 +65,11 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 | 方法 | 路径 | 请求 | 响应 |
 | --- | --- | --- | --- |
-| GET | `/api/config` | 无 | sizes[] / qualities[] / defaultOutputDir / hasApiKey |
+| GET | `/api/config` | `?win=`（可选，沿用已有窗口号，缺省由服务端分配） | sizes[] / qualities[] / defaultOutputDir（按窗口分区 `output/win{N}`）/ hasApiKey / windowId |
+| GET | `/api/window/next` | 无 | { windowId }（原子分配下一个窗口编号，启动脚本 / 界面按钮开新窗口用，与 config 共用计数器） |
 | POST | `/api/select-folder` | { current } | { path }（系统弹窗选择，取消返回原值） |
 | POST | `/api/open-folder` | { path } | { ok }（不存在自动创建；explorer 打开并置前） |
-| POST | `/api/generate` | multipart：prompt、images(多张同名)、size、quality、output_dir | { results[status,message,url?,size,cost], messages[], totalCost } |
+| POST | `/api/generate` | multipart：prompt、images(多张同名)、size、quality、output_dir、win | { results[status,message,url?,size,cost], messages[], totalCost } |
 | GET | `/api/image` | ?path= | 图片文件（FileResponse） |
 
 前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerateResponse` / `ResultItem`），与后端返回结构一一对应。
@@ -100,15 +101,15 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 ## 测试覆盖
 
-`uv run pytest`（0.5s，全部纯函数，不调 API 不花钱）：
+`uv run pytest`（0.9s，全部纯函数，不调 API 不花钱）：
 
 | 文件 | 用例数 | 覆盖 |
 | --- | --- | --- |
-| `tests/test_core_api.py` | 12 | `resolve_size_with_ratio` / `build_default_output_path` / `format_error` |
-| `tests/test_core_batch.py` | 8 | 配置读取 / 路径解析 / 模块过滤 / dry_run 预览 |
+| `tests/test_core_api.py` | 13 | `resolve_size_with_ratio` / `build_default_output_path`（含并发唯一）/ `format_error` |
+| `tests/test_core_batch.py` | 9 | 配置读取 / 路径解析 / 模块过滤 / dry_run 预览 |
 | `tests/test_core_config.py` | 3 | `get_api_key`（环境变量/缺失报错）/ RATIOS 表结构 |
-| `tests/test_server_helpers.py` | 4 | `size_cost` / `display_path` |
-| `tests/test_core_logging.py` | 3 | `log_generation` 写入 / 字段 / 路径相对化 |
+| `tests/test_server_helpers.py` | 7 | `size_cost` / `display_path` / `get_config` 窗口分配（递增/沿用/非法回退） |
+| `tests/test_core_logging.py` | 7 | `log_generation` 写入 / 字段 / win 可选 / 并发串行写 / 路径相对化 |
 
 未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API），编排与请求层靠 dry_run 与人工验证。
 
@@ -120,7 +121,10 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **静态资源 no-cache**：本地迭代频繁，中间件统一加 `Cache-Control: no-cache`，前端更新即时生效
 - **打开文件夹置前**：后台进程启动的 explorer 窗口默认不抢前台，用 Win32 API（枚举窗口 + 模拟 Alt 绕过前台锁）置前
 - **前端未构建**：dist 缺失时根路径返回 503 提示页，不静默空白
-- **生成日志**：每次生成（UI/批量/CLI）由 `core/logging.py` 统一记录到 `logs/generation.jsonl`（git 忽略），字段：时间/模式/参考图数/提示词/尺寸/质量/结果/费用/耗时/输出路径
+- **生成日志**：每次生成（UI/批量/CLI）由 `core/logging.py` 统一记录到 `logs/generation.jsonl`（git 忽略），字段：时间/模式/参考图数/提示词/尺寸/质量/结果/费用/耗时/输出路径/窗口号（多开时）
+- **多开窗口**：服务端 `itertools.count` 原子分配递增编号；前端沿用优先级 `?win= > window.name（跨刷新记忆，复制标签不继承）> 服务端分配`；默认输出按窗口分区 `output/win{N}`，顶栏显示「窗口 #N」，可一键开新窗口；启动脚本按 N 开新窗、Q 停服务（隐藏后台启动 + PID 记录，`--no-browser` 由脚本统一控制开窗）
+- **窗口主题色**：`accent.ts` 按编号黄金角取色（137.508° 分布，相邻编号色相差大），运行时覆盖 `--color-brand` CSS 变量，全局强调色（按钮/焦点/图标/徽章/上传阴影）随窗口变色；确定性函数，同编号恒定、刷新不变
+- **并发安全**：默认文件名带全局序号（秒级时间戳同秒必撞）；日志写 JSONL 用 `threading.Lock` 串行追加；tkinter 选择器与 explorer 置前用 `_UI_LOCK` 串行化（多窗口并发无运行矛盾）
 - **图片回显**：`GET /api/image?path=` 动态读文件（本地单机工具），生成时返回带 URL 的结果
 - **超时**：生成请求 300 秒（图生图 + 2K 可能 1-2 分钟）
 - **端口**：默认 7860，`main.py ui --port` 可改

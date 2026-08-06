@@ -31,7 +31,8 @@ def handle_ui_command(args):
     from server import app
 
     url = f"http://127.0.0.1:{args.port}"
-    threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+    if not getattr(args, "no_browser", False):
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host="127.0.0.1", port=args.port)
 
 
@@ -91,6 +92,7 @@ def build_argument_parser():
 
     sub_ui = subparsers.add_parser("ui", help="启动网页界面")
     sub_ui.add_argument("--port", type=int, default=7860, help="监听端口（默认 7860）")
+    sub_ui.add_argument("--no-browser", action="store_true", help="不自动打开浏览器（由外部脚本控制开窗）")
     sub_ui.set_defaults(handler=handle_ui_command)
 
     sub_batch = subparsers.add_parser("batch", help="批量生图")
