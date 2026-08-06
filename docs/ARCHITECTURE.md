@@ -3,7 +3,7 @@
 ## 设计哲学
 
 - **配置分离**：API Key、接口地址、尺寸映射集中在 `core/config.py`，代码不出现明文密钥
-- **职责单一**：一个模块一个职责（config 管配置、api 管请求、batch 管批量、server 管 HTTP、frontend 管界面）
+- **职责单一**：一个模块一个职责（config 管配置、api 管请求、batch 管批量、logging 管生成日志、server 管 HTTP、frontend 管界面）
 - **产物与代码分离**：生成图片落到各产品目录的 `output/`，不进代码库
 - **按名管理**：每个产品一个目录，素材/输出/批量配置随产品走，工具代码跨产品共享
 - **类型安全**：前端 TypeScript 严格模式，API 响应全部类型化
@@ -101,14 +101,14 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 ## 测试覆盖
 
-`uv run pytest`（0.9s，全部纯函数，不调 API 不花钱）：
+`uv run pytest`（0.7s，全部纯函数，不调 API 不花钱）：
 
 | 文件 | 用例数 | 覆盖 |
 | --- | --- | --- |
 | `tests/test_core_api.py` | 13 | `resolve_size_with_ratio` / `build_default_output_path`（含并发唯一）/ `format_error` |
 | `tests/test_core_batch.py` | 9 | 配置读取 / 路径解析 / 模块过滤 / dry_run 预览 |
 | `tests/test_core_config.py` | 3 | `get_api_key`（环境变量/缺失报错）/ RATIOS 表结构 |
-| `tests/test_server_helpers.py` | 7 | `size_cost` / `display_path` / `get_config` 窗口分配（递增/沿用/非法回退） |
+| `tests/test_server_helpers.py` | 9 | `size_cost` / `display_path` / `get_config` 窗口分配（递增/沿用/非法回退）/ `next_window` 共用计数器 / `generate` 为同步函数（不阻塞事件循环） |
 | `tests/test_core_logging.py` | 7 | `log_generation` 写入 / 字段 / win 可选 / 并发串行写 / 路径相对化 |
 
 未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API），编排与请求层靠 dry_run 与人工验证。
@@ -127,4 +127,5 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **并发安全**：默认文件名带全局序号（秒级时间戳同秒必撞）；日志写 JSONL 用 `threading.Lock` 串行追加；tkinter 选择器与 explorer 置前用 `_UI_LOCK` 串行化（多窗口并发无运行矛盾）
 - **图片回显**：`GET /api/image?path=` 动态读文件（本地单机工具），生成时返回带 URL 的结果
 - **超时**：生成请求 300 秒（图生图 + 2K 可能 1-2 分钟）
+- **生成不阻塞事件循环**：`/api/generate` 用同步 `def`（FastAPI 自动放线程池），生成期间其他请求（开新窗口/加载页面/查看图片）照常响应；若写成 `async def` 且内部同步调 API，会卡死整个 uvicorn 事件循环——生成 1-2 分钟里所有请求全部挂起
 - **端口**：默认 7860，`main.py ui --port` 可改
