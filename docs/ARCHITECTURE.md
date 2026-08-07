@@ -131,6 +131,9 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **新窗口状态继承**：页面内「＋ 新窗口」不再序列化图片——参考图在拖入上传区时已落盘服务端（见「参考图服务端化」），继承时只把 `refs` 元信息（path / name / size / ext）+ 尺寸/质量/输出路径写入 `sessionStorage`（几百字节，永不会超 5MB 配额），再 `window.open`——新标签拷贝一份 sessionStorage，挂载时读取并清除，用 `/api/image?path=` 直接渲染参考图；仅提示词不保留；命令行 `?win=` 直开无该键，保持全新窗口
 - **参考图服务端化**：参考图在**添加进上传区时**即 `POST /api/upload-ref` 落盘 `output/.refs/`（输出根下隐藏缓存目录，独立于窗口输出分区，不混入生成产物），返回 `{ id, path, url, name, size, ext, mime }`；前端缩略图直接加载 `url`，移除时 `POST /api/delete-ref` 尽力删除；生成时传 `ref_paths` 复用已落盘文件，避免大图二次上传。存储位置与文件名复用「按名管理 / 并发唯一」约定（全局序号 + 时间戳防撞）。清理：服务启动时删除 `output/.refs/` 中 mtime 超 24h 的孤儿文件（前端删除失败 / 上传后未用的情况兜底），不引入引用计数
 - **窗口主题色**：`accent.ts` 按编号黄金角取色（137.508° 分布，相邻编号色相差大），运行时覆盖 `--color-brand` CSS 变量，全局强调色（按钮/焦点/图标/徽章/上传阴影）随窗口变色；确定性函数，同编号恒定、刷新不变
+- **界面动效**：动画类统一收敛在 `frontend/src/index.css` 动效层，组件只引用类名不写内联动画——卡片入场 `enter-up`（配 `.enter-delay-N` 交错）、图片加载淡入 `img-reveal`、缩略图增删 `pop-in`/`fade-out`（移除在 `animationend` 后才真正卸载）、日志行 `log-line`、生成中按钮呼吸 `pulse-glow`（`color-mix` 跟随窗口主题色）；只动 transform/opacity（GPU 合成不触发重排），缓动统一 easeOutQuint；`prefers-reduced-motion` 时全部降级为瞬时切换
+- **画廊单图自动包裹实际边缘**：`w-full h-auto` 由图片自身比例决定高度（不设 aspect-ratio 占位、不 object-cover 裁切），加载前显示主题色浅调占位块，图片就位后 `img-reveal` 淡入；入场动画只动 opacity，transform 留给 hover transition，避免 animation fill 锁死 hover 效果
+- **动效与浮层堆叠**：transform 动画（fill both）会让元素永久成为 stacking context，导致内部浮层（下拉面板）的 z-index 无法再与兄弟元素竞争——含浮层的卡片需 `relative` + 更高 z-index 才能盖过后续卡片（尺寸/质量卡 `z-30`）
 - **并发安全**：默认文件名带全局序号（秒级时间戳同秒必撞）；日志写 JSONL 用 `threading.Lock` 串行追加；tkinter 选择器与 explorer 置前用 `_UI_LOCK` 串行化（多窗口并发无运行矛盾）
 - **图片回显**：`GET /api/image?path=` 动态读文件（本地单机工具），生成时返回带 URL 的结果
 - **超时**：生成请求 300 秒（图生图 + 2K 可能 1-2 分钟）
