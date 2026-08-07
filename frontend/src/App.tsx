@@ -39,7 +39,7 @@ function openNewWindow() {
 /** 顶部标题区：SVG 叶子图标 + 标题 + 窗口编号徽章 + 新窗口按钮 */
 function TitleBar({ windowId, onNewWindow }: { windowId: number | null; onNewWindow: () => void }) {
   return (
-    <header className="mb-4 flex items-center gap-3 border-b border-neutral-200/70 pb-3">
+    <header className="enter-up mb-4 flex items-center gap-3 border-b border-neutral-200/70 pb-3">
       <svg
         width="30"
         height="30"
@@ -83,6 +83,13 @@ export default function App() {
   const timerRef = useRef<number | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [results, setResults] = useState<ResultItem[]>([]);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  // 日志更新后自动滚动到底部，配合逐行淡入
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [logs]);
 
   useEffect(() => {
     const known = resolveWindowId();
@@ -187,7 +194,7 @@ export default function App() {
       <main className="grid grid-cols-[6fr_4fr] items-start gap-5">
         {/* 左栏：输入面板 */}
         <section className="space-y-4">
-          <div className="panel-card space-y-3">
+          <div className="panel-card enter-up space-y-3">
             <label className="field-label" htmlFor="prompt">
               提示词
             </label>
@@ -202,7 +209,7 @@ export default function App() {
             <UploadZone files={files} onChange={setFiles} />
           </div>
 
-          <div className="panel-card">
+          <div className="panel-card enter-up enter-delay-1 relative z-30">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="field-label" htmlFor="size-select">
@@ -231,13 +238,18 @@ export default function App() {
             </div>
           </div>
 
-          <div className="panel-card space-y-3">
+          <div className="panel-card enter-up enter-delay-2 space-y-3">
             <label className="field-label" htmlFor="output-dir">
               输出路径
             </label>
             <FolderPicker value={outputDir} onChange={setOutputDir} />
             <div className="flex gap-2">
-              <button type="button" onClick={handleGenerate} disabled={busy} className="btn-primary flex-1">
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={busy}
+                className={`btn-primary flex-1 ${busy ? "btn-busy" : ""}`}
+              >
                 {busy ? `生成中 ${elapsed}s` : "生成图片"}
               </button>
               <button
@@ -249,14 +261,18 @@ export default function App() {
                 打开文件夹
               </button>
             </div>
-            <div className="log-box text-log max-h-40 overflow-auto">
-              {logs.join("\n")}
+            <div ref={logRef} className="log-box text-log max-h-40 overflow-auto">
+              {logs.map((line, i) => (
+                <div key={i} className="log-line">
+                  {line}
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
         {/* 右栏：结果画廊 */}
-        <section className="panel-card min-h-[560px]">
+        <section className="panel-card enter-up enter-delay-3 min-h-[560px]">
           <Gallery items={results} />
         </section>
       </main>

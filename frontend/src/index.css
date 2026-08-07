@@ -79,3 +79,71 @@ body {
     @apply cursor-not-allowed opacity-50;
   }
 }
+
+/* ============ 动效层：所有动画类统一收敛于此，组件只引用类名 ============ */
+/* 缓动统一用 easeOutQuint（先快后慢），时长克制，只动 transform/opacity（GPU 合成） */
+
+/* 整卡/区块入场：淡入上移（一次性，配合 .enter-delay-N 交错） */
+.enter-up {
+  animation: enter-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.enter-delay-1 { animation-delay: 70ms; }
+.enter-delay-2 { animation-delay: 140ms; }
+.enter-delay-3 { animation-delay: 210ms; }
+
+/* 图片加载完成淡入：只动 opacity，transform 留给 hover 的 transition，避免 animation fill 锁死 */
+.img-reveal {
+  animation: img-reveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 缩略图添加 / 移除 */
+.pop-in {
+  animation: pop-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.fade-out {
+  animation: fade-out 0.2s ease-in both;
+}
+
+/* 日志行淡入 */
+.log-line {
+  animation: log-line 0.25s ease-out both;
+}
+
+/* 生成中按钮呼吸光晕（颜色跟随窗口主题色） */
+.btn-busy {
+  animation: pulse-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes enter-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes img-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes fade-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.92); }
+}
+@keyframes log-line {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-brand) 0%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-brand) 14%, transparent); }
+}
+
+/* 系统关闭动画时全部降级为瞬时切换 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -5,29 +5,34 @@ interface GalleryProps {
   items: ResultItem[];
 }
 
-/** 按实际图片比例自适应展示：加载后读取 naturalWidth/Height 设置 aspect-ratio，
- *  宽高比与多选框选择无关，完全跟随产出图片本身 */
+/**
+ * 单图展示：自动包裹图片实际边缘。
+ * 图片 `w-full h-auto`，高度由自身比例决定——不设固定占位比例、不 object-cover 裁切，
+ * 加载完成前显示主题色浅调占位，图片就位后淡入（img-reveal），无比例跳变。
+ * hover 由父级 group 驱动：图片轻微放大 + 阴影加深 + 整块上浮（transform 留给 transition，
+ * 与入场 animation 互不干扰）。
+ */
 function AspectImage({ url, alt }: { url: string; alt: string }) {
-  const [ratio, setRatio] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   return (
-    <img
-      src={url}
-      alt={alt}
-      onLoad={(e) => {
-        const img = e.currentTarget;
-        if (img.naturalWidth && img.naturalHeight) {
-          setRatio(`${img.naturalWidth} / ${img.naturalHeight}`);
-        }
-      }}
-      className="aspect-[9/16] w-full rounded-xl border border-neutral-200 object-cover shadow-sm transition-shadow hover:shadow-md"
-      style={ratio ? { aspectRatio: ratio } : undefined}
-    />
+    <div className="relative w-full overflow-hidden rounded-xl border border-neutral-200 bg-brand/5 shadow-sm transition-shadow duration-300 group-hover:shadow-md">
+      {/* 加载中占位：图片就位后让位给实际比例 */}
+      {!loaded && <div className="h-80 w-full" aria-hidden="true" />}
+      <img
+        src={url}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        className={`block h-auto w-full transition-transform duration-300 group-hover:scale-[1.03] ${
+          loaded ? "img-reveal" : "opacity-0"
+        }`}
+      />
+    </div>
   );
 }
 
 /**
  * 结果画廊：成功生成的图片网格展示，点击在新窗口打开原图。
- * 图片比例自适应实际产出（不同尺寸混排也完整显示）。
+ * 卡片入场带交错（stagger 70ms），hover 上浮放大。
  */
 export default function Gallery({ items }: GalleryProps) {
   const images = items.filter((item): item is ResultItem & { url: string } => Boolean(item.url));
@@ -64,13 +69,16 @@ export default function Gallery({ items }: GalleryProps) {
           target="_blank"
           rel="noreferrer"
           title={item.message}
-          className="block"
+          className="group block enter-up"
+          style={{ animationDelay: `${i * 70}ms` }}
         >
-          <AspectImage url={item.url} alt={item.message} />
-          <p className="text-caption mt-1 text-center">
-            {item.size ? `${item.size}` : ""}
-            {item.cost !== undefined ? ` · ${item.cost}元` : ""}
-          </p>
+          <div className="transition-transform duration-300 group-hover:-translate-y-0.5">
+            <AspectImage url={item.url} alt={item.message} />
+            <p className="text-caption mt-1 text-center">
+              {item.size ? `${item.size}` : ""}
+              {item.cost !== undefined ? ` · ${item.cost}元` : ""}
+            </p>
+          </div>
         </a>
       ))}
     </div>
