@@ -40,11 +40,12 @@ tools/
 
 **1. UI 生成（Web 界面）**
 ```
-App.tsx:handleGenerate → api.ts:generateImage
-  → POST /api/generate（multipart: prompt + images(多张同名) + size + quality + output_dir + win(窗口号)）
+UploadZone: 添加图片 → api.ts:uploadRef → POST /api/upload-ref → refs[{id,path,url,name,size,ext}]
+App.tsx:handleGenerate → api.ts:generateImage（ref_paths 引用已落盘参考图）
+  → POST /api/generate（multipart: prompt + ref_paths + size + quality + output_dir + win(窗口号)）
   → server.generate() → core.api.generate_image() → A站 API
-  → 保存图片到输出目录 → 返回 { results[url,size,cost], messages, totalCost }
-  → Gallery 显示（GET /api/image?path= 读图）+ 日志区显示费用/用时
+  → 保存图片到输出目录 → 返回 { results[url,size,cost,fileSize,ext], messages, totalCost }
+  → Gallery 显示（GET /api/image?path= 读图，标注分辨率/格式/大小/费用）+ 日志区显示费用/用时
 ```
 
 **2. 批量生成（命令行）**
@@ -69,18 +70,22 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | GET | `/api/window/next` | 无 | { windowId }（原子分配下一个窗口编号，启动脚本 / 界面按钮开新窗口用，与 config 共用计数器） |
 | POST | `/api/select-folder` | { current } | { path }（系统弹窗选择，取消返回原值） |
 | POST | `/api/open-folder` | { path } | { ok }（不存在自动创建；explorer 打开并置前） |
-| POST | `/api/generate` | multipart：prompt、images(多张同名)、size、quality、output_dir、win | { results[status,message,url?,size,cost], messages[], totalCost } |
+| POST | `/api/upload-ref` | multipart：images(多张同名，每张独立存储) | { refs[ id, path, url, name, size, ext, mime ] }（参考图落盘 `output/.refs/`，url 即 `/api/image?path=` 可直接渲染） |
+| POST | `/api/delete-ref` | { path } | { ok }（删除已落盘的参考图，尽力而为，文件不存在也算 ok） |
+| POST | `/api/generate` | multipart：prompt、size、quality、output_dir、win，图片二选一：`images`(多张同名，未上传的本地兜底) 或 `ref_paths`(JSON 字符串数组，引用已上传参考图，优先) | { results[status,message,url?,size,cost,fileSize?,ext?], messages[], totalCost } |
 | GET | `/api/image` | ?path= | 图片文件（FileResponse） |
+
+`/api/upload-ref` 返回的 `url` 复用 `/api/image`，前端可直接 `<img>` 加载；`/api/generate` 的 `ref_paths` 仅接受 `output/.refs/` 目录内的路径（`realpath` 校验，防路径穿越），与 `images` 互斥、`ref_paths` 优先——图生图不二次上传大图。
 
 前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerateResponse` / `ResultItem`），与后端返回结构一一对应。
 
 ## 数据流（一次图生图）
 
-1. 前端收文件 → FormData 上传（可多张，同名 image 字段）
-2. server 把底图写入**临时文件**（`tempfile`，不污染输出目录），结果路径算好
-3. `generate_image` 读全部底图 → POST edits 接口（多图一次请求）→ 解码 `b64_json` 写入结果文件
-4. 清理临时文件 → 生成 `url=/api/image?path=` 回显
-5. 前端画廊 `<img src="/api/image?path=...">` 加载；日志区显示 `已保存 · 相对路径（尺寸）`
+1. 参考图**添加即上传**：前端收文件 → `POST /api/upload-ref` 落盘 `output/.refs/` → 返回 `{ id, path, url, name, size, ext, mime }`，缩略图直接 `<img src=url>`
+2. 生成时前端传 `ref_paths`（JSON 数组引用已落盘文件）→ server 校验路径在 `output/.refs/` 内 → 结果路径算好
+3. `generate_image` 读全部参考图 → POST edits 接口（多图一次请求）→ 解码 `b64_json` 写入结果文件
+4. 生成 `url=/api/image?path=` 回显，附带 `fileSize`（`os.path.getsize`）与 `ext`（`Path.suffix`）供画廊标注
+5. 前端画廊 `<img src="/api/image?path=...">` 加载；缩略图下标注 `分辨率 · 格式 · 文件大小 · 费用`；日志区显示 `已保存 · 相对路径（尺寸）`
 
 ## 路径与配置基准
 
@@ -123,7 +128,8 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **前端未构建**：dist 缺失时根路径返回 503 提示页，不静默空白
 - **生成日志**：每次生成（UI/批量/CLI）由 `core/logging.py` 统一记录到 `logs/generation.jsonl`（git 忽略），字段：时间/模式/参考图数/提示词/尺寸/质量/结果/费用/耗时/输出路径/窗口号（多开时）
 - **多开窗口**：服务端 `itertools.count` 原子分配递增编号；前端沿用优先级 `?win= > window.name（跨刷新记忆，复制标签不继承）> 服务端分配`；默认输出按窗口分区 `output/win{N}`，顶栏显示「窗口 #N」，可一键开新窗口；启动脚本按 N 开新窗、Q 停服务（隐藏后台启动 + PID 记录，`--no-browser` 由脚本统一控制开窗）
-- **新窗口状态继承**：页面内「＋ 新窗口」先序列化当前状态（参考图转 dataURL + 尺寸/质量/输出路径）写入 `sessionStorage`（`windowInherit.ts`），再 `window.open`——新标签会拷贝一份 sessionStorage，挂载时读取并清除，继承后仅提示词不保留；命令行 `?win=` 直开无该键，保持全新窗口；图片超 sessionStorage 配额时降级为仅继承参数
+- **新窗口状态继承**：页面内「＋ 新窗口」不再序列化图片——参考图在拖入上传区时已落盘服务端（见「参考图服务端化」），继承时只把 `refs` 元信息（path / name / size / ext）+ 尺寸/质量/输出路径写入 `sessionStorage`（几百字节，永不会超 5MB 配额），再 `window.open`——新标签拷贝一份 sessionStorage，挂载时读取并清除，用 `/api/image?path=` 直接渲染参考图；仅提示词不保留；命令行 `?win=` 直开无该键，保持全新窗口
+- **参考图服务端化**：参考图在**添加进上传区时**即 `POST /api/upload-ref` 落盘 `output/.refs/`（输出根下隐藏缓存目录，独立于窗口输出分区，不混入生成产物），返回 `{ id, path, url, name, size, ext, mime }`；前端缩略图直接加载 `url`，移除时 `POST /api/delete-ref` 尽力删除；生成时传 `ref_paths` 复用已落盘文件，避免大图二次上传。存储位置与文件名复用「按名管理 / 并发唯一」约定（全局序号 + 时间戳防撞）。清理：服务启动时删除 `output/.refs/` 中 mtime 超 24h 的孤儿文件（前端删除失败 / 上传后未用的情况兜底），不引入引用计数
 - **窗口主题色**：`accent.ts` 按编号黄金角取色（137.508° 分布，相邻编号色相差大），运行时覆盖 `--color-brand` CSS 变量，全局强调色（按钮/焦点/图标/徽章/上传阴影）随窗口变色；确定性函数，同编号恒定、刷新不变
 - **并发安全**：默认文件名带全局序号（秒级时间戳同秒必撞）；日志写 JSONL 用 `threading.Lock` 串行追加；tkinter 选择器与 explorer 置前用 `_UI_LOCK` 串行化（多窗口并发无运行矛盾）
 - **图片回显**：`GET /api/image?path=` 动态读文件（本地单机工具），生成时返回带 URL 的结果
