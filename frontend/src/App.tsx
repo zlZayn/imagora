@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { generateImage, getConfig, openFolder } from "./api";
 import { accentForWindow } from "./accent";
 import type { AppConfig, ResultItem } from "./types";
+import { clearInheritedState, dataUrlToFile, readInheritedState, saveInheritedState } from "./windowInherit";
 import UploadZone from "./components/UploadZone";
 import FolderPicker from "./components/FolderPicker";
 import Gallery from "./components/Gallery";
@@ -36,7 +37,7 @@ function openNewWindow() {
 }
 
 /** 顶部标题区：SVG 叶子图标 + 标题 + 窗口编号徽章 + 新窗口按钮 */
-function TitleBar({ windowId }: { windowId: number | null }) {
+function TitleBar({ windowId, onNewWindow }: { windowId: number | null; onNewWindow: () => void }) {
   return (
     <header className="mb-4 flex items-center gap-3 border-b border-neutral-200/70 pb-3">
       <svg
@@ -62,7 +63,7 @@ function TitleBar({ windowId }: { windowId: number | null }) {
       <span className="text-muted ml-auto text-xs">
         文生图 / 图生图 · 不传参考图即文生图 · 生成约需 1-2 分钟
       </span>
-      <button type="button" onClick={openNewWindow} className="btn-ghost px-2 py-1 text-xs">
+      <button type="button" onClick={onNewWindow} className="btn-ghost px-2 py-1 text-xs">
         ＋ 新窗口
       </button>
     </header>
@@ -94,6 +95,21 @@ export default function App() {
         document.title = cfg.windowId > 0 ? `A站生图工具 · 窗口 #${cfg.windowId}` : "A站生图工具";
         setSize(cfg.sizes[0]?.value ?? "");
         setOutputDir(cfg.defaultOutputDir);
+        // 继承上一窗口的状态（仅「＋ 新窗口」按钮写入；命令行打开无此键，保持全新）
+        const inherited = readInheritedState();
+        if (inherited) {
+          clearInheritedState();
+          if (inherited.size && cfg.sizes.some((s) => s.value === inherited.size)) {
+            setSize(inherited.size);
+          }
+          if (inherited.quality && cfg.qualities.includes(inherited.quality)) {
+            setQuality(inherited.quality);
+          }
+          if (inherited.outputDir) setOutputDir(inherited.outputDir);
+          if (inherited.files.length) {
+            setFiles(inherited.files.map(dataUrlToFile));
+          }
+        }
       })
       .catch((err) => setLogs([`加载配置失败: ${String(err)}`]));
   }, []);
@@ -144,12 +160,23 @@ export default function App() {
 
   const accent = accentForWindow(windowId);
 
+  /** 新窗口：把当前图片/参数/输出路径写入 sessionStorage 后再开，提示词不保留 */
+  const handleNewWindow = async () => {
+    const saved = await saveInheritedState(files, size, quality, outputDir);
+    if (!saved.ok) {
+      setLogs([`提示: 无法保存当前状态到新窗口（存储空间不足），新窗口将使用默认设置`]);
+    } else if (!saved.filesIncluded && files.length > 0) {
+      setLogs([`提示: 图片体积过大，新窗口未继承图片，仅继承尺寸/质量/输出路径`]);
+    }
+    openNewWindow();
+  };
+
   return (
     <div
       className="mx-auto max-w-[1500px] px-6 py-4"
       style={{ "--color-brand": accent.brand, "--color-brand-dark": accent.brandDark } as CSSProperties}
     >
-      <TitleBar windowId={windowId} />
+      <TitleBar windowId={windowId} onNewWindow={handleNewWindow} />
 
       {config && !config.hasApiKey && (
         <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -157,7 +184,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="grid grid-cols-[5fr_7fr] items-start gap-5">
+      <main className="grid grid-cols-[6fr_4fr] items-start gap-5">
         {/* 左栏：输入面板 */}
         <section className="space-y-4">
           <div className="panel-card space-y-3">
