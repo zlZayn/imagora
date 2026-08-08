@@ -225,7 +225,7 @@ export function PromptNode({
         placeholder="英文提示词，例如：a red apple on white background"
         className="nodrag field-control resize-y text-xs"
       />
-      <div className="nodrag mt-2 grid grid-cols-2 gap-2">
+      <div className="nodrag mt-2 grid grid-cols-[7fr_3fr] gap-2">
         <div>
           <label className="field-label text-[10px]">尺寸</label>
           <Select

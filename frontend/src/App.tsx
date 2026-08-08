@@ -56,7 +56,7 @@ function TitleBar({ windowId, onNewWindow }: { windowId: number | null; onNewWin
         <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
         <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
       </svg>
-      <h1 className="text-lg font-semibold tracking-wide">A站生图工具</h1>
+      <h1 className="text-lg font-semibold tracking-wide">Imagora</h1>
       {windowId !== null && (
         <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
           窗口 #{windowId}
@@ -107,7 +107,7 @@ export default function App() {
         setWindowId(cfg.windowId);
         // 服务端新分配的编号记住到本标签页，刷新后编号不变
         if (known === null) storeWindowId(cfg.windowId);
-        document.title = cfg.windowId > 0 ? `A站生图工具 · 窗口 #${cfg.windowId}` : "A站生图工具";
+        document.title = cfg.windowId > 0 ? `Imagora · 窗口 #${cfg.windowId}` : "Imagora";
         setSize(cfg.sizes[0]?.value ?? "");
         setOutputDir(cfg.defaultOutputDir);
         // 继承上一窗口的状态（仅「＋ 新窗口」按钮写入；命令行打开无此键，保持全新）

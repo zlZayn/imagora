@@ -350,6 +350,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     }
   }, []);
 
+  /** 默认质量：优先 high（用户要求） */
+  const defaultQuality = config.qualities.includes("high") ? "high" : config.qualities[0] ?? "low";
+
   /** 工具栏按钮：新建提示词卡片 */
   const handleCreatePrompt = useCallback(() => {
     setNodes((nds) => [
@@ -361,14 +364,14 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         data: {
           prompt: "",
           size: config.sizes[0]?.value ?? "1024x1024",
-          quality: config.qualities[0] ?? "low",
+          quality: defaultQuality,
           outputDir: config.defaultOutputDir,
           status: "idle" as const,
         },
       },
     ]);
     pushLog("已新建提示词卡片");
-  }, [config, setNodes, pushLog]);
+  }, [config, defaultQuality, setNodes, pushLog]);
 
   /** 新建图片组节点（聚合多图后连到提示词统一管理） */
   const handleCreateGroup = useCallback(() => {
