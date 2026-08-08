@@ -1,7 +1,7 @@
 import type {
   CanvasImageEntry,
+  CanvasPromptNodeData,
   WorkflowEdge,
-  WorkflowFile,
   WorkflowNode,
 } from "./types";
 
@@ -89,13 +89,15 @@ export function workflowToCanvas(
   return { nodes: marked, edges };
 }
 
-/** 画布序列化为工作流文件（version 1，保存/加载共用） */
-export function canvasToWorkflow(
+/** 更新单个提示词节点的 data（纯函数：不匹配/非提示词节点原样返回，避免无谓新引用） */
+export function updatePromptNode(
   nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-  name: string,
-): WorkflowFile {
-  return { version: 1, name, nodes, edges };
+  nodeId: string,
+  patch: Partial<CanvasPromptNodeData>,
+): WorkflowNode[] {
+  return nodes.map((n) =>
+    n.id === nodeId && n.type === "prompt" ? { ...n, data: { ...n.data, ...patch } } : n,
+  );
 }
 
 /** 计算各图片节点的引用计数与分组节点成员数/总大小，

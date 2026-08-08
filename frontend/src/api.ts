@@ -7,7 +7,6 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "./types";
-
 /** 通用 JSON 请求，非 2xx 抛错 */
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -113,11 +112,6 @@ export async function canvasImport(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ paths }),
   });
-}
-
-/** 画布：图片全量（含 absPath，生成时 ref_paths 引用） */
-export async function canvasListImages(): Promise<{ images: CanvasImageEntry[] }> {
-  return requestJson<{ images: CanvasImageEntry[] }>("/api/canvas/images");
 }
 
 /** 画布：删除图片（注册表移除 + 尽力删文件） */

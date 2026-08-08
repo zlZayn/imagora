@@ -40,12 +40,36 @@ import {
   canvasEntriesToNodes,
   computeCounts,
   snapshotIncomingAbsPaths,
+  updatePromptNode,
   workflowToCanvas,
 } from "../workflow";
 import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
+import { WorkflowLoadModal, WorkflowSaveModal, ZoomModal } from "./WorkflowModals";
 
 /** 全部运行并发上限（单次生成 30-120s，防止打爆 API） */
 const RUN_CONCURRENCY = 2;
+
+/** 工具栏统一样式按钮 */
+function ToolbarButton({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`btn-ghost !px-3 !py-1 text-xs ${disabled ? "opacity-50" : ""}`}
+    >
+      {children}
+    </button>
+  );
+}
 
 interface CanvasPageProps {
   config: AppConfig;
@@ -127,13 +151,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   /* ---------------- 节点参数就地更新（PromptNode 上抛） ---------------- */
   const handleNodeUpdate = useCallback(
     (nodeId: string, patch: Partial<CanvasPromptNodeData>) => {
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === nodeId && n.type === "prompt"
-            ? { ...n, data: { ...n.data, ...patch } }
-            : n,
-        ),
-      );
+      setNodes((nds) => updatePromptNode(nds, nodeId, patch));
     },
     [setNodes],
   );
@@ -414,19 +432,12 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       const snapshot = snapshotIncomingAbsPaths(nodes, edges, nodeId);
       runningRef.current.add(nodeId);
       const startedAt = Date.now();
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.id !== nodeId || n.type !== "prompt") return n;
-          return { ...n, data: { ...n.data, status: "running" as const, elapsed: 0 } };
-        }),
-      );
+      setNodes((nds) => updatePromptNode(nds, nodeId, { status: "running", elapsed: 0 }));
       const timer = window.setInterval(() => {
-        setNodes((nds) =>
-          nds.map((n) => {
-            if (n.id !== nodeId || n.type !== "prompt" || n.data.status !== "running") return n;
-            return { ...n, data: { ...n.data, elapsed: Math.floor((Date.now() - startedAt) / 1000) } };
-          }),
-        );
+        setNodes((nds) => {
+          const now = Math.floor((Date.now() - startedAt) / 1000);
+          return updatePromptNode(nds, nodeId, { elapsed: now });
+        });
       }, 1000);
       pushLog(`节点 ${nodeId} 开始生成，参考图：[${snapshot.length} 张]`);
       try {
@@ -472,34 +483,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         } else {
           pushLog(`节点 ${nodeId}：生成失败（无结果）`);
         }
-        setNodes((nds) =>
-          nds.map((n) => {
-            if (n.id !== nodeId || n.type !== "prompt") return n;
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                status: "done" as const,
-                resultCount,
-                message: undefined,
-              },
-            };
-          }),
-        );
+        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "done", resultCount, message: undefined }));
       } catch (err) {
-        setNodes((nds) =>
-          nds.map((n) => {
-            if (n.id !== nodeId || n.type !== "prompt") return n;
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                status: "failed" as const,
-                message: errMessage(err),
-              },
-            };
-          }),
-        );
+        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "failed", message: errMessage(err) }));
         pushLog(`节点 ${nodeId} 失败：${errMessage(err)}`);
       } finally {
         window.clearInterval(timer);
@@ -612,26 +598,13 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             e.target.value = "";
           }}
         />
-        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={handleCreatePrompt}>
-          新建提示词卡片
-        </button>
-        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={handleCreateGroup}>
-          新建图片组
-        </button>
-        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => void handleSave()}>
-          保存工作流
-        </button>
-        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => void handleLoad()}>
-          加载工作流
-        </button>
-        <button
-          type="button"
-          className="btn-ghost !px-3 !py-1 text-xs"
-          onClick={() => void handleRunAll()}
-          disabled={runningAll}
-        >
+        <ToolbarButton onClick={handleCreatePrompt}>新建提示词卡片</ToolbarButton>
+        <ToolbarButton onClick={handleCreateGroup}>新建图片组</ToolbarButton>
+        <ToolbarButton onClick={() => void handleSave()}>保存工作流</ToolbarButton>
+        <ToolbarButton onClick={() => void handleLoad()}>加载工作流</ToolbarButton>
+        <ToolbarButton onClick={() => void handleRunAll()} disabled={runningAll}>
           {runningAll ? "运行中..." : "全部运行"}
-        </button>
+        </ToolbarButton>
         <span className="text-muted text-xs">
           用工具栏按钮新建节点 · 悬浮节点显示连接点 · 图片可连提示词或图片组
         </span>
@@ -682,112 +655,26 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         ))}
       </div>
 
-      {/* 保存工作流弹窗：固定目录 output/workflows/，只选名字 */}
+      {/* 保存 / 加载 / 放大预览 弹窗（独立展示组件，交互经回调上抛） */}
       {showSaveModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={() => setShowSaveModal(false)}
-        >
-          <div
-            className="w-[26rem] max-w-[92vw] rounded-lg bg-white p-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="mb-3 text-sm font-semibold">保存工作流</h3>
-            <input
-              value={saveName}
-              onChange={(e) => setSaveName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void confirmSave();
-              }}
-              placeholder="输入工作流名字（存到 output/workflows/）"
-              autoFocus
-              className="field-control mb-3"
-            />
-            {workflows.length > 0 && (
-              <div className="mb-3 max-h-36 overflow-auto rounded-lg border border-neutral-200">
-                {workflows.map((w) => (
-                  <button
-                    key={w.name}
-                    type="button"
-                    onClick={() => setSaveName(w.name)}
-                    className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-neutral-700 hover:bg-brand/5 hover:text-brand"
-                  >
-                    <span className="truncate">{w.name}</span>
-                    <span className="shrink-0 text-[10px] text-neutral-400">{w.modified}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => setShowSaveModal(false)}>
-                取消
-              </button>
-              <button
-                type="button"
-                className="btn-primary !px-4 !py-1 text-xs"
-                disabled={!saveName.trim()}
-                onClick={() => void confirmSave()}
-              >
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
+        <WorkflowSaveModal
+          saveName={saveName}
+          onSaveNameChange={setSaveName}
+          workflows={workflows}
+          onPickName={setSaveName}
+          onConfirm={() => void confirmSave()}
+          onClose={() => setShowSaveModal(false)}
+        />
       )}
-
-      {/* 加载工作流弹窗：列出已保存的工作流选择 */}
       {showLoadModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={() => setShowLoadModal(false)}
-        >
-          <div
-            className="w-[26rem] max-w-[92vw] rounded-lg bg-white p-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="mb-3 text-sm font-semibold">加载工作流</h3>
-            <div className="max-h-72 overflow-auto rounded-lg border border-neutral-200">
-              {workflows.map((w) => (
-                <button
-                  key={w.name}
-                  type="button"
-                  onClick={() => void loadByName(w.name)}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-neutral-700 hover:bg-brand/5 hover:text-brand"
-                >
-                  <span className="truncate">{w.name}</span>
-                  <span className="shrink-0 text-[10px] text-neutral-400">{w.modified}</span>
-                </button>
-              ))}
-            </div>
-            <div className="mt-3 flex justify-end">
-              <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => setShowLoadModal(false)}>
-                取消
-              </button>
-            </div>
-          </div>
-        </div>
+        <WorkflowLoadModal
+          workflows={workflows}
+          onLoad={(name) => void loadByName(name)}
+          onClose={() => setShowLoadModal(false)}
+        />
       )}
-
-      {/* 放大预览（图片双击菜单「放大预览」触发）：点遮罩任意处退出，名字显示在图片下方外部 */}
       {zoomImage && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/60 p-6"
-          onClick={() => setZoomImage(null)}
-        >
-          <img
-            src={`/api/image?path=${encodeURIComponent(zoomImage)}`}
-            alt="预览"
-            className="max-h-[80vh] max-w-[90vw] object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <div
-            className="mt-3 max-w-[80vw] truncate rounded-md bg-black/40 px-3 py-1 text-xs text-white"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {zoomName}
-          </div>
-          <div className="mt-1 text-[10px] text-white/50">点击空白处关闭</div>
-        </div>
+        <ZoomModal imagePath={zoomImage} name={zoomName} onClose={() => setZoomImage(null)} />
       )}
     </div>
   );
