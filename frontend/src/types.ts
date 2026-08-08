@@ -93,6 +93,7 @@ export interface CanvasImageNodeData {
   /** 工作流加载时文件缺失（红框提示） */
   missing?: boolean;
   absPath: string;
+  [key: string]: unknown;
 }
 
 /** 画布提示词节点数据（独立任务：idle/running/done/failed） */
@@ -108,6 +109,7 @@ export interface CanvasPromptNodeData {
   resultCount?: number;
   /** 失败原因（failed 时显示） */
   message?: string;
+  [key: string]: unknown;
 }
 
 /** 画布节点联合类型：图片节点 / 提示词节点 */
