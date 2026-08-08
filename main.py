@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""A站生图统一入口
+"""Imagora 统一入口
 
 用法（在网店实习根目录运行）:
   python tools/main.py ui                                                    # 启动网页界面
@@ -121,7 +121,7 @@ def handle_menu_command(args):
             Panel(
                 "[green]N[/green] 打开新窗口\n"
                 "[red]Q[/red] 退出",
-                title="Image Tool",
+                title="Imagora",
                 style="green",
             )
         )
@@ -147,7 +147,7 @@ def handle_menu_command(args):
 
 def build_argument_parser():
     """构建命令行参数解析器"""
-    parser = argparse.ArgumentParser(description="A站生图工具")
+    parser = argparse.ArgumentParser(description="Imagora · AI 生图工作台")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     sub_ui = subparsers.add_parser("ui", help="启动网页界面")

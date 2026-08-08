@@ -17,7 +17,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "a-image-tools"
+name = "imagora"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

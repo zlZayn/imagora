@@ -18,7 +18,7 @@
 FastAPI (server.py) ── 托管 frontend/dist 静态产物（单端口）
    │  core.api.generate_image
    ▼
-A站生图 API (2api.aiwanwu.cc)
+上游生图 API (2api.aiwanwu.cc)
 ```
 
 ## 目录结构与模块依赖
@@ -29,7 +29,7 @@ tools/
 ├── server.py      # FastAPI ───┼─→ core/api.py ─→ core/config.py（唯一配置源）
 ├── core/canvas.py # 画布注册表 ─┘       │         ├→ core/console.py（rich 终端输出）
 │                                     ├→ core/logging.py（统一生成日志）
-│                                     └→ A站 API（requests）
+│                                     └→ 上游 API（requests）
 ├── frontend/      # React：api.ts ─→ server.py 的 /api/*（含画布页 CanvasPage）
 └── tests/         # 纯函数单元测试（不碰网络）
 ```
@@ -43,7 +43,7 @@ tools/
 UploadZone: 添加图片 → api.ts:uploadRef → POST /api/upload-ref → refs[{id,path,url,name,size,ext}]
 App.tsx:handleGenerate → api.ts:generateImage（ref_paths 引用已落盘参考图）
   → POST /api/generate（multipart: prompt + ref_paths + size + quality + output_dir + win(窗口号)）
-  → server.generate() → core.api.generate_image() → A站 API
+  → server.generate() → core.api.generate_image() → 上游 API
   → 保存图片到输出目录 → 返回 { results[url,size,cost,fileSize,ext], messages, totalCost }
   → Gallery 显示（GET /api/image?path= 读图，标注分辨率/格式/大小/费用）+ 日志区显示费用/用时
 ```
@@ -60,7 +60,7 @@ main.py:handle_batch_command → core.batch:run_batch_generation
 **3. 单张生成（命令行）**
 ```
 main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_output_path
-  → generate_image → A站 API → 保存
+  → generate_image → 上游 API → 保存
 ```
 
 ## 前后端 API 契约
@@ -132,7 +132,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 - **API Key**：环境变量 `AIWANWU_API_KEY` 或 `tools/.env`（git 忽略），未配置抛清晰错误
 - **尺寸档位**：1K=0.05 / 2K=0.10 / 4K=0.20，选项由 `/api/config` 下发，前端不硬编码
-- **多张参考图**：实测 A站 edits 接受多个 image 字段，一次请求全部作为参考（用途由提示词决定），不是逐张生成
+- **多张参考图**：实测上游 edits 接受多个 image 字段，一次请求全部作为参考（用途由提示词决定），不是逐张生成
 - **静态资源 no-cache**：本地迭代频繁，中间件统一加 `Cache-Control: no-cache`，前端更新即时生效
 - **打开文件夹置前**：后台进程启动的 explorer 窗口默认不抢前台，用 Win32 API（枚举窗口 + 模拟 Alt 绕过前台锁）置前
 - **前端未构建**：dist 缺失时根路径返回 503 提示页，不静默空白

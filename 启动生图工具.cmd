@@ -17,7 +17,7 @@ if "%CODE%"=="200" (
     goto ready
 )
 
-echo Starting Image Tool UI (hidden background) ... %URL%
+echo Starting Imagora UI (hidden background) ... %URL%
 
 REM ---- start server hidden, record its PID ----
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$uv=(Get-Command uv).Source; $p=Start-Process -FilePath $uv -ArgumentList @('run','python','-m','main','ui','--no-browser','--port','%PORT%') -WorkingDirectory '%~dp0' -WindowStyle Hidden -RedirectStandardError '%SERVER_LOG%' -PassThru; [System.IO.File]::WriteAllText('%PIDFILE%', [string]$p.Id)"

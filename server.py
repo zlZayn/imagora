@@ -117,7 +117,7 @@ SIZE_OPTIONS = [
 ]
 QUALITY_OPTIONS = ["low", "medium", "high"]
 
-app = FastAPI(title="A站生图工具")
+app = FastAPI(title="Imagora")
 app.add_middleware(NoCacheMiddleware)
 
 # 启动时清理超时的孤儿参考图（前端删除失败 / 上传未用的情况兜底）
