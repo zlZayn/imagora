@@ -39,11 +39,11 @@ import type {
 import {
   buildImageNode,
   canvasEntriesToNodes,
-  computeRefCounts,
+  computeCounts,
   snapshotIncomingAbsPaths,
   workflowToCanvas,
 } from "../workflow";
-import { ImageNode, PromptNode } from "./CanvasNodes";
+import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 
 /** 全部运行并发上限（单次生成 30-120s，防止打爆 API） */
 const RUN_CONCURRENCY = 2;
@@ -60,6 +60,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [runningAll, setRunningAll] = useState(false);
   const runningRef = useRef<Set<string>>(new Set());
+  /** 放大预览：当前预览的图片绝对路径（null 关闭） */
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** 替换图片：待替换的目标节点 + 专用文件选择 */
   const replaceInputRef = useRef<HTMLInputElement>(null);
@@ -79,12 +81,18 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     setLogs((prev) => [...prev.slice(-50), line]);
   }, []);
 
-  /* ---------------- 连线：类型硬约束（仅 图片 -> 提示词） ---------------- */
+  /* ---------------- 连线：类型硬约束（图片 -> 提示词 | 图片组；图片组 -> 提示词） ---------------- */
   const isValidConnection: IsValidConnection = useCallback(
     (connection) => {
       const source = nodes.find((n) => n.id === connection.source);
       const target = nodes.find((n) => n.id === connection.target);
-      return source?.type === "image" && target?.type === "prompt";
+      if (source?.type === "image") {
+        return target?.type === "prompt" || target?.type === "group";
+      }
+      if (source?.type === "group") {
+        return target?.type === "prompt";
+      }
+      return false;
     },
     [nodes],
   );
@@ -110,16 +118,30 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     [setNodes],
   );
 
-  /* ---------------- 引用计数：由入边推导，随 edges 变化刷新 ---------------- */
+  /* ---------------- 引用计数 / 分组计数：由连线推导，随 edges 变化刷新 ---------------- */
   useEffect(() => {
-    const counts = computeRefCounts(nodes, edges);
-    setNodes((nds) =>
-      nds.map((n) =>
-        n.type === "image" && n.data.refCount !== (counts.get(n.data.registryId) ?? 0)
-          ? { ...n, data: { ...n.data, refCount: counts.get(n.data.registryId) ?? 0 } }
-          : n,
-      ),
-    );
+    const { refCounts, groupCounts } = computeCounts(nodes, edges);
+    setNodes((nds) => {
+      let changed = false;
+      const next = nds.map((n) => {
+        if (n.type === "image") {
+          const count = refCounts.get(n.data.registryId) ?? 0;
+          if (n.data.refCount !== count) {
+            changed = true;
+            return { ...n, data: { ...n.data, refCount: count } };
+          }
+        }
+        if (n.type === "group") {
+          const count = groupCounts.get(n.id) ?? 0;
+          if (n.data.imageCount !== count) {
+            changed = true;
+            return { ...n, data: { ...n.data, imageCount: count } };
+          }
+        }
+        return n;
+      });
+      return changed ? next : nds;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edges]);
 
@@ -282,6 +304,58 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     },
     [setNodes, setEdges, pushLog],
   );
+
+  /* ---------------- 图片双击动作：放大预览 / 生成提示词卡片 ---------------- */
+  const handleZoom = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (node?.type === "image") {
+        setZoomImage(node.data.absPath);
+      }
+    },
+    [nodes],
+  );
+
+  /** 以某图片为参考：新建提示词卡片并自动连线（图片 -> 提示词） */
+  const handleCreatePromptFromImage = useCallback(
+    (imageNodeId: string) => {
+      const imageNode = nodes.find((n) => n.id === imageNodeId);
+      if (!imageNode || imageNode.type !== "image") return;
+      const promptId = `prompt-${Date.now()}`;
+      setNodes((nds) => [
+        ...nds,
+        {
+          id: promptId,
+          type: "prompt" as const,
+          position: { x: imageNode.position.x + 240, y: imageNode.position.y + 20 },
+          data: {
+            prompt: "",
+            size: config.sizes[0]?.value ?? "1024x1024",
+            quality: config.qualities[0] ?? "low",
+            outputDir: config.defaultOutputDir,
+            status: "idle" as const,
+          },
+        },
+      ]);
+      setEdges((eds) => [...eds, { id: `edge-${Date.now()}`, source: imageNodeId, target: promptId }]);
+      pushLog("已创建提示词卡片并连线该图片");
+    },
+    [nodes, config, setNodes, setEdges, pushLog],
+  );
+
+  /** 新建图片组节点（聚合多图后连到提示词统一管理） */
+  const handleCreateGroup = useCallback(() => {
+    setNodes((nds) => [
+      ...nds,
+      {
+        id: `group-${Date.now()}`,
+        type: "group" as const,
+        position: { x: 280 + (nds.length % 6) * 30, y: 260 + (nds.length % 4) * 30 },
+        data: { name: "图片组", imageCount: 0 },
+      },
+    ]);
+    pushLog("已新建图片组，把图片连进来即可");
+  }, [setNodes, pushLog]);
 
   /* ---------------- 运行编排：单节点（入边快照）+ 结果回流 + 全部运行（并发 2） ---------------- */
   const runNodeInternal = useCallback(
@@ -458,6 +532,14 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           {...(props as React.ComponentProps<typeof ImageNode>)}
           onReplace={handleReplaceImage}
           onDelete={handleDeleteNode}
+          onZoom={handleZoom}
+          onCreatePromptFromImage={handleCreatePromptFromImage}
+        />
+      ),
+      group: (props: object) => (
+        <GroupNode
+          {...(props as React.ComponentProps<typeof GroupNode>)}
+          onDelete={handleDeleteNode}
         />
       ),
       prompt: (props: object) => (
@@ -471,7 +553,16 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         />
       ),
     }),
-    [handleRun, handleNodeUpdate, handleDeleteNode, handleReplaceImage, sizeOptions, qualityOptions],
+    [
+      handleRun,
+      handleNodeUpdate,
+      handleDeleteNode,
+      handleReplaceImage,
+      handleZoom,
+      handleCreatePromptFromImage,
+      sizeOptions,
+      qualityOptions,
+    ],
   );
 
   return (
@@ -506,6 +597,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => void handleImportDir()}>
           导入目录
         </button>
+        <button type="button" className="btn-ghost !py-1 text-xs" onClick={handleCreateGroup}>
+          新建图片组
+        </button>
         <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => void handleSave()}>
           保存工作流
         </button>
@@ -520,7 +614,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         >
           {runningAll ? "运行中..." : "全部运行"}
         </button>
-        <span className="text-muted text-xs">双击空白新建提示词节点 · 连线需从图片到提示词</span>
+        <span className="text-muted text-xs">
+          双击空白新建提示词节点 · 双击图片可放大/生成提示词卡片 · 图片可连提示词或图片组
+        </span>
       </div>
 
       {/* 画布 */}
@@ -559,6 +655,33 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           </div>
         ))}
       </div>
+
+      {/* 放大预览（图片双击菜单「放大预览」触发） */}
+      {zoomImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+          onClick={() => setZoomImage(null)}
+        >
+          <div
+            className="max-h-[90vh] max-w-[90vw] overflow-auto rounded-lg bg-white p-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={`/api/image?path=${encodeURIComponent(zoomImage)}`}
+              alt="预览"
+              className="max-h-[78vh] max-w-[84vw] object-contain"
+            />
+            <div className="mt-2 flex justify-end gap-2">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-500" title={zoomImage}>
+                {zoomImage}
+              </span>
+              <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => setZoomImage(null)}>
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -84,37 +84,60 @@ export function canvasToWorkflow(
   return { version: 1, name, nodes, edges };
 }
 
-/** 计算各图片节点的引用计数（入边数），返回 registryId -> count */
-export function computeRefCounts(
+/** 计算各图片节点的引用计数与分组节点成员数，返回 registryId -> count 与 groupId -> count */
+export function computeCounts(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
-): Map<string, number> {
-  const counts = new Map<string, number>();
+): { refCounts: Map<string, number>; groupCounts: Map<string, number> } {
+  const refCounts = new Map<string, number>();
+  const groupCounts = new Map<string, number>();
   for (const node of nodes) {
     if (node.type === "image") {
-      counts.set(node.data.registryId, 0);
+      refCounts.set(node.data.registryId, 0);
+    }
+    if (node.type === "group") {
+      groupCounts.set(node.id, 0);
     }
   }
+  const byId = new Map(nodes.map((n) => [n.id, n]));
   for (const edge of edges) {
-    const source = nodes.find((n) => n.id === edge.source);
-    if (source?.type === "image") {
-      const current = counts.get(source.data.registryId) ?? 0;
-      counts.set(source.data.registryId, current + 1);
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (source?.type !== "image") continue;
+    // 图片被引用（连提示词或分组都算引用）
+    refCounts.set(source.data.registryId, (refCounts.get(source.data.registryId) ?? 0) + 1);
+    if (target?.type === "group") {
+      groupCounts.set(edge.target, (groupCounts.get(edge.target) ?? 0) + 1);
     }
   }
-  return counts;
+  return { refCounts, groupCounts };
 }
 
-/** 提示词节点的入边图片绝对路径快照（纯函数：运行前锁定参考图集合，画布后续编辑不影响本次运行） */
+/** 提示词节点的入边图片绝对路径快照（纯函数：运行前锁定参考图集合，画布后续编辑不影响本次运行）。
+ *  支持图片组：入边若是 group 节点，递归展开其入边图片（visited 防环）。 */
 export function snapshotIncomingAbsPaths(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   promptNodeId: string,
 ): string[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  return edges
+  const paths: string[] = [];
+  const visited = new Set<string>([promptNodeId]);
+  const stack: string[] = edges
     .filter((e) => e.target === promptNodeId)
-    .map((e) => byId.get(e.source))
-    .filter((n): n is Extract<WorkflowNode, { type: "image" }> => n?.type === "image")
-    .map((n) => n.data.absPath);
+    .map((e) => e.source);
+  while (stack.length) {
+    const sid = stack.pop()!;
+    if (visited.has(sid)) continue;
+    visited.add(sid);
+    const node = byId.get(sid);
+    if (!node) continue;
+    if (node.type === "image") {
+      paths.push(node.data.absPath);
+    } else if (node.type === "group") {
+      // 分组：递归收集其入边（image 或嵌套 group）
+      edges.filter((e) => e.target === sid).forEach((e) => stack.push(e.source));
+    }
+  }
+  return paths;
 }

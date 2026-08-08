@@ -112,6 +112,14 @@ export interface CanvasPromptNodeData {
   [key: string]: unknown;
 }
 
+/** 画布图片组节点数据（聚合多张图片后统一连到提示词节点管理） */
+export interface CanvasGroupNodeData {
+  name: string;
+  /** 组内图片数（由入边图片数推导） */
+  imageCount: number;
+  [key: string]: unknown;
+}
+
 /** React Flow 节点公共字段（画布高亮/选中/拖拽由画布层维护） */
 interface WorkflowNodeBase {
   id: string;
@@ -120,10 +128,11 @@ interface WorkflowNodeBase {
   selected?: boolean;
 }
 
-/** 画布节点联合类型：图片节点 / 提示词节点 */
+/** 画布节点联合类型：图片节点 / 提示词节点 / 图片组节点 */
 export type WorkflowNode =
   | (WorkflowNodeBase & { type: "image"; data: CanvasImageNodeData })
-  | (WorkflowNodeBase & { type: "prompt"; data: CanvasPromptNodeData });
+  | (WorkflowNodeBase & { type: "prompt"; data: CanvasPromptNodeData })
+  | (WorkflowNodeBase & { type: "group"; data: CanvasGroupNodeData });
 
 /** 画布边：source 图片节点 -> target 提示词节点（类型硬约束，仅此方向合法） */
 export interface WorkflowEdge {

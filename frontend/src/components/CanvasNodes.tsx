@@ -1,9 +1,39 @@
+import { useState, type ReactNode } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import type { CanvasImageNodeData, CanvasPromptNodeData } from "../types";
+import type { CanvasGroupNodeData, CanvasImageNodeData, CanvasPromptNodeData } from "../types";
 import FolderPicker from "./FolderPicker";
 import Select from "./Select";
 
-/** 画布图片节点（仅 source 锚点：作为提示词节点的参考图输入） */
+/* ---------------- 统一节点右上角操作区（hover 显示，全部 nodrag 防误拖） ---------------- */
+function NodeActions({ children }: { children: ReactNode }) {
+  return (
+    <div className="absolute -top-3 right-0 z-30 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      {children}
+    </div>
+  );
+}
+
+function ActionButton({
+  onClick,
+  danger,
+  children,
+}: {
+  onClick: () => void;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`nodrag btn-ghost !px-1.5 !py-0.5 text-[10px] ${danger ? "text-red-500" : ""}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ---------------- 图片节点：固定宽度、高度按图片比例自适应 ---------------- */
 export type ImageFlowNode = Node<CanvasImageNodeData, "image">;
 
 interface ImageNodeExtraProps {
@@ -11,56 +41,136 @@ interface ImageNodeExtraProps {
   onReplace: (nodeId: string) => void;
   /** 删除节点（仅移除节点与连线，不删文件） */
   onDelete: (nodeId: string) => void;
+  /** 放大预览 */
+  onZoom: (nodeId: string) => void;
+  /** 以该图片为参考新建提示词卡片并自动连线 */
+  onCreatePromptFromImage: (nodeId: string) => void;
 }
 
-export function ImageNode({ id, data, selected, onReplace, onDelete }: NodeProps<ImageFlowNode> & ImageNodeExtraProps) {
+export function ImageNode({
+  id,
+  data,
+  selected,
+  onReplace,
+  onDelete,
+  onZoom,
+  onCreatePromptFromImage,
+}: NodeProps<ImageFlowNode> & ImageNodeExtraProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div
-      className={`panel-card group relative !p-2 ${
-        data.missing ? "!border-red-400" : ""
-      } ${selected ? "node-selected" : ""}`}
+      className={`panel-card group relative !p-2 ${data.missing ? "!border-red-400" : ""} ${
+        selected ? "node-selected" : ""
+      }`}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        setMenuOpen((v) => !v);
+      }}
     >
-      {/* source 锚点：只允许图片 -> 提示词 */}
+      {/* source 锚点：只允许图片 -> 提示词 / 图片组 */}
       <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-0 !bg-brand" />
       {data.missing && (
         <span className="absolute right-1 top-1 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
           文件缺失
         </span>
       )}
-      {/* hover 操作：替换 / 删除（nodrag 避免误触拖动卡片） */}
-      <div className="absolute -top-3 right-0 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={() => onReplace(id)}
-          className="nodrag btn-ghost !px-1.5 !py-0.5 text-[10px]"
-        >
-          替换
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(id)}
-          className="nodrag btn-ghost !px-1.5 !py-0.5 text-[10px] text-red-500"
-        >
+      {/* 右上角统一操作区 */}
+      <NodeActions>
+        <ActionButton onClick={() => onZoom(id)}>放大</ActionButton>
+        <ActionButton onClick={() => onReplace(id)}>替换</ActionButton>
+        <ActionButton onClick={() => onDelete(id)} danger>
           删除
-        </button>
+        </ActionButton>
+      </NodeActions>
+      {/* 固定宽度 w-32，高度随图片比例自动（不裁切） */}
+      <div className="w-32 overflow-hidden rounded">
+        <img src={data.url} alt={data.name} className="img-reveal block h-auto w-full" draggable={false} />
       </div>
-      <img
-        src={data.url}
-        alt={data.name}
-        className="img-reveal h-24 w-24 rounded object-cover"
-        draggable={false}
-      />
-      <div className="mt-1 max-w-[120px] truncate text-[11px] text-neutral-600" title={data.name}>
+      <div className="mt-1 max-w-[128px] truncate text-[11px] text-neutral-600" title={data.name}>
         {data.name}
       </div>
       <div className="text-[10px] text-neutral-400">
-        {data.refCount > 0 ? `引用 ${data.refCount} 张图` : "未引用"}
+        {data.refCount > 0 ? `引用 ${data.refCount} 处` : "未引用"}
+      </div>
+      {/* 双击菜单：放大 / 生成提示词卡片 */}
+      {menuOpen && (
+        <div className="absolute left-0 top-full z-40 mt-1 w-40 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
+          <button
+            type="button"
+            className="nodrag flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-700 hover:bg-brand/5 hover:text-brand"
+            onClick={() => {
+              onZoom(id);
+              setMenuOpen(false);
+            }}
+          >
+            放大预览
+          </button>
+          <button
+            type="button"
+            className="nodrag flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-700 hover:bg-brand/5 hover:text-brand"
+            onClick={() => {
+              onCreatePromptFromImage(id);
+              setMenuOpen(false);
+            }}
+          >
+            生成提示词卡片
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- 图片组节点：聚合多张图片后统一连到提示词节点 ---------------- */
+export type GroupFlowNode = Node<CanvasGroupNodeData, "group">;
+
+interface GroupNodeExtraProps {
+  onDelete: (nodeId: string) => void;
+}
+
+export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowNode> & GroupNodeExtraProps) {
+  return (
+    <div
+      className={`group relative w-40 rounded-lg border-2 border-dashed border-brand/40 bg-brand/5 !p-2 ${
+        selected ? "node-selected" : ""
+      }`}
+    >
+      {/* 输入：接收图片节点连入；输出：连到提示词节点 */}
+      <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-0 !bg-neutral-400" />
+      <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-0 !bg-brand" />
+      <NodeActions>
+        <ActionButton onClick={() => onDelete(id)} danger>
+          删除
+        </ActionButton>
+      </NodeActions>
+      <div className="text-center">
+        <svg
+          width="26"
+          height="26"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--color-brand)"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="mx-auto"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="7" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+          <rect x="14" y="14" width="7" height="7" rx="1" />
+        </svg>
+        <div className="mt-1 text-xs font-medium text-brand-dark">图片组</div>
+        <div className="text-[10px] text-neutral-500">
+          {data.imageCount > 0 ? `${data.imageCount} 张图` : "连接图片到本组"}
+        </div>
       </div>
     </div>
   );
 }
 
-/** 画布提示词节点（仅 target 锚点：接收图片作为参考图；独立任务可运行） */
+/* ---------------- 提示词节点 ---------------- */
 export type PromptFlowNode = Node<CanvasPromptNodeData, "prompt">;
 
 interface PromptNodeExtraProps {
@@ -118,23 +228,17 @@ export function PromptNode({
 }: PromptNodeProps) {
   const running = data.status === "running";
   return (
-    <div className={`panel-card relative z-30 !min-w-[280px] !p-3 ${selected ? "node-selected" : ""}`}>
-      {/* target 锚点：接收图片节点连入 */}
+    <div className={`panel-card group relative z-30 !min-w-[280px] !p-3 ${selected ? "node-selected" : ""}`}>
+      {/* target 锚点：接收图片 / 图片组连入 */}
       <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-0 !bg-neutral-400" />
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-neutral-700">提示词生成</span>
-        <div className="flex items-center gap-1.5">
-          <StatusBadge data={data} />
-          <button
-            type="button"
-            onClick={() => onDelete(id)}
-            className="nodrag btn-ghost !px-1.5 !py-0.5 text-[10px] text-red-500"
-            title="删除节点（连同连线）"
-          >
-            删除
-          </button>
-        </div>
-      </div>
+      {/* 右上角统一操作区：状态徽标 + 删除 */}
+      <NodeActions>
+        <StatusBadge data={data} />
+        <ActionButton onClick={() => onDelete(id)} danger>
+          删除
+        </ActionButton>
+      </NodeActions>
+      <div className="mb-2 text-xs font-semibold text-neutral-700">提示词生成</div>
       <textarea
         value={data.prompt}
         onChange={(e) => onUpdate(id, { prompt: e.target.value })}
