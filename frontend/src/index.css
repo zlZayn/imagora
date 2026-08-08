@@ -159,3 +159,21 @@ body {
   outline: 2px solid var(--color-brand);
   outline-offset: 1px;
 }
+
+/* 连接点（Handle）：默认隐藏防挡视野，悬浮节点时显示；
+   绝对大小——scale 抵消画布缩放（--rf-zoom），任意缩放级别视觉大小一致 */
+.react-flow__handle {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  transform: translate(-50%, -50%) scale(calc(1 / var(--rf-zoom)));
+}
+.react-flow__node:hover .react-flow__handle,
+.react-flow__handle.connectingfrom,
+.react-flow__handle.connectingto {
+  opacity: 1;
+}
+/* 连线进行中：可连接的 target 高亮放大，提示可接入 */
+.react-flow__handle.connectingto {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}

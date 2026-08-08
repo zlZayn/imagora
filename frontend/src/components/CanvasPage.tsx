@@ -336,7 +336,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     [setNodes, setEdges, pushLog],
   );
 
-  /* ---------------- 图片双击动作：放大预览 / 生成提示词卡片 ---------------- */
+  /* ---------------- 图片双击动作：放大预览 ---------------- */
   const handleZoom = useCallback((nodeId: string) => {
     const node = nodesRef.current.find((n) => n.id === nodeId);
     if (node?.type === "image") {
@@ -345,32 +345,25 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     }
   }, []);
 
-  /** 双击图片：在鼠标位置新建提示词卡片并自动连线该图片（图片 -> 提示词） */
-  const handleDoubleClickCreatePrompt = useCallback(
-    (imageNodeId: string, position: { x: number; y: number }) => {
-      const imageNode = nodesRef.current.find((n) => n.id === imageNodeId);
-      if (!imageNode || imageNode.type !== "image") return;
-      const promptId = `prompt-${Date.now()}`;
-      setNodes((nds) => [
-        ...nds,
-        {
-          id: promptId,
-          type: "prompt" as const,
-          position,
-          data: {
-            prompt: "",
-            size: config.sizes[0]?.value ?? "1024x1024",
-            quality: config.qualities[0] ?? "low",
-            outputDir: config.defaultOutputDir,
-            status: "idle" as const,
-          },
+  /** 工具栏按钮：新建提示词卡片 */
+  const handleCreatePrompt = useCallback(() => {
+    setNodes((nds) => [
+      ...nds,
+      {
+        id: `prompt-${Date.now()}`,
+        type: "prompt" as const,
+        position: { x: 160 + (nds.length % 6) * 26, y: 100 + (nds.length % 4) * 26 },
+        data: {
+          prompt: "",
+          size: config.sizes[0]?.value ?? "1024x1024",
+          quality: config.qualities[0] ?? "low",
+          outputDir: config.defaultOutputDir,
+          status: "idle" as const,
         },
-      ]);
-      setEdges((eds) => [...eds, { id: `edge-${Date.now()}`, source: imageNodeId, target: promptId }]);
-      pushLog("已在鼠标位置创建提示词卡片并连线该图片");
-    },
-    [config, setNodes, setEdges, pushLog],
-  );
+      },
+    ]);
+    pushLog("已新建提示词卡片");
+  }, [config, setNodes, pushLog]);
 
   /** 新建图片组节点（聚合多图后连到提示词统一管理） */
   const handleCreateGroup = useCallback(() => {
@@ -543,29 +536,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     }
   }, [runNodeInternal, pushLog]);
 
-  /* ---------------- 双击空白：新建提示词节点 ---------------- */
-  const onPaneDoubleClick = useCallback(
-    (event: React.MouseEvent) => {
-      const rect = (event.target as HTMLElement).closest(".react-flow")?.getBoundingClientRect();
-      const x = event.clientX - (rect?.left ?? 0);
-      const y = event.clientY - (rect?.top ?? 0);
-      const newNode: WorkflowNode = {
-        id: `prompt-${Date.now()}`,
-        type: "prompt",
-        position: { x, y },
-        data: {
-          prompt: "",
-          size: config.sizes[0]?.value ?? "1024x1024",
-          quality: config.qualities[0] ?? "low",
-          outputDir: config.defaultOutputDir,
-          status: "idle",
-        },
-      };
-      setNodes((nds) => [...nds, newNode]);
-    },
-    [config, setNodes],
-  );
-
   /* ---------------- 渲染 ---------------- */
   const nodeTypes = useMemo(
     () => ({
@@ -575,7 +545,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           onReplace={handleReplaceImage}
           onDelete={handleDeleteNode}
           onZoom={handleZoom}
-          onDoubleClickCreatePrompt={handleDoubleClickCreatePrompt}
         />
       ),
       group: (props: object) => (
@@ -601,7 +570,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       handleDeleteNode,
       handleReplaceImage,
       handleZoom,
-      handleDoubleClickCreatePrompt,
       sizeOptions,
       qualityOptions,
     ],
@@ -636,6 +604,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             e.target.value = "";
           }}
         />
+        <button type="button" className="btn-ghost !py-1 text-xs" onClick={handleCreatePrompt}>
+          新建提示词卡片
+        </button>
         <button type="button" className="btn-ghost !py-1 text-xs" onClick={handleCreateGroup}>
           新建图片组
         </button>
@@ -654,7 +625,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           {runningAll ? "运行中..." : "全部运行"}
         </button>
         <span className="text-muted text-xs">
-          双击空白新建提示词节点 · 双击图片在鼠标处建提示词卡片 · 图片可连提示词或图片组
+          用工具栏按钮新建节点 · 悬浮节点显示连接点 · 图片可连提示词或图片组
         </span>
       </div>
 
@@ -678,12 +649,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           onConnect={onConnect}
           isValidConnection={isValidConnection}
           nodeTypes={nodeTypes}
-          onPaneClick={(event) => {
-            // v12 无 onPaneDoubleClick，用原生 detail===2 判定双击
-            if (event.detail === 2) {
-              onPaneDoubleClick(event);
-            }
-          }}
           onNodeMouseEnter={onNodeMouseEnter}
           onNodeMouseLeave={onNodeMouseLeave}
           onSelectionChange={onSelectionChange}
