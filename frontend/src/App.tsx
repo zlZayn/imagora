@@ -79,6 +79,12 @@ export default function App() {
   const [mode, setMode] = useState<"classic" | "canvas">(() =>
     new URLSearchParams(window.location.search).get("mode") === "canvas" ? "canvas" : "classic",
   );
+  /** 画布是否已挂载：首次进入画布后保持常驻（切换模式不销毁，内容保留；退出窗口才清空） */
+  const [canvasMounted, setCanvasMounted] = useState(() => mode === "canvas");
+  const switchMode = (m: "classic" | "canvas") => {
+    if (m === "canvas") setCanvasMounted(true);
+    setMode(m);
+  };
   const [prompt, setPrompt] = useState("");
   const [refs, setRefs] = useState<RefItem[]>([]);
   const [size, setSize] = useState("");
@@ -248,7 +254,7 @@ export default function App() {
       <div className="mb-4 flex gap-1 border-b border-neutral-200/70">
         <button
           type="button"
-          onClick={() => setMode("classic")}
+          onClick={() => switchMode("classic")}
           className={`rounded-t-md px-4 py-1.5 text-sm transition-colors ${
             mode === "classic"
               ? "border-b-2 border-brand font-medium text-brand"
@@ -259,7 +265,7 @@ export default function App() {
         </button>
         <button
           type="button"
-          onClick={() => setMode("canvas")}
+          onClick={() => switchMode("canvas")}
           className={`rounded-t-md px-4 py-1.5 text-sm transition-colors ${
             mode === "canvas"
               ? "border-b-2 border-brand font-medium text-brand"
@@ -276,14 +282,20 @@ export default function App() {
         </div>
       )}
 
-      {mode === "canvas" ? (
-        config ? (
+      {/* 无限画布：首次进入后保持挂载，切换模式仅显隐（内容保留，退出窗口才清空） */}
+      {canvasMounted && config && (
+        <div className={mode === "canvas" ? "block" : "hidden"}>
           <CanvasPage config={config} />
-        ) : (
-          <div className="py-16 text-center text-sm text-neutral-400">配置加载中...</div>
-        )
-      ) : (
-      <main className="grid grid-cols-[6fr_4fr] items-start gap-5">
+        </div>
+      )}
+      {/* 经典表单：始终挂载（状态在 App），按模式显隐 */}
+      <main
+        className={
+          mode === "canvas"
+            ? "hidden"
+            : "grid grid-cols-[6fr_4fr] items-start gap-5"
+        }
+      >
         {/* 左栏：输入面板 */}
         <section className="space-y-4">
           <div className="panel-card enter-up space-y-3">
@@ -368,7 +380,6 @@ export default function App() {
           <Gallery items={results} />
         </section>
       </main>
-      )}
     </div>
   );
 }
