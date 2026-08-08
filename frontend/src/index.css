@@ -162,11 +162,13 @@ body {
 
 /* 连接点（Handle）：竖直长条形，默认隐藏，仅悬浮节点时半透明显示（不挡视野）；
    绝对大小——scale 抵消画布缩放（--canvas-zoom 由 CanvasPage onMove 实时写入），
-   任意缩放级别视觉大小恒定。!important：React Flow 自带 style.css 会覆盖 transform。 */
+   任意缩放级别视觉大小恒定。
+   注意：不能加 translate(-50%,-50%)！React Flow v12 handle 定位不用 translate，
+   加了会把连接点视觉偏移半个身位导致连接线错位。!important 用于压过 React Flow 自带样式。 */
 .react-flow__handle {
   opacity: 0;
   border-radius: 4px !important;
-  transform: translate(-50%, -50%) scale(calc(1 / var(--canvas-zoom, 1))) !important;
+  transform: scale(calc(1 / var(--canvas-zoom, 1))) !important;
   transition: opacity 0.15s ease;
 }
 .react-flow__node:hover .react-flow__handle,
