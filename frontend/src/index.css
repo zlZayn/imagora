@@ -179,3 +179,9 @@ body {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
 }
+
+/* 拖拽连线时的临时连接线：粗 + 红，一眼看清正在连 */
+.react-flow__connection .react-flow__connection-path {
+  stroke: #ef4444 !important;
+  stroke-width: 3 !important;
+}
