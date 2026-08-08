@@ -67,8 +67,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [runningAll, setRunningAll] = useState(false);
   const runningRef = useRef<Set<string>>(new Set());
-  /** 放大预览：当前预览的图片绝对路径（null 关闭） */
+  /** 放大预览：当前预览的图片绝对路径（null 关闭）与文件名 */
   const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [zoomName, setZoomName] = useState("");
   /** 保存/加载工作流弹窗 */
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
@@ -129,7 +130,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
 
   /* ---------------- 引用计数 / 分组计数：由连线推导，随 edges 变化刷新 ---------------- */
   useEffect(() => {
-    const { refCounts, groupCounts } = computeCounts(nodes, edges);
+    const { refCounts, groupCounts, groupSizes } = computeCounts(nodes, edges);
     setNodes((nds) => {
       let changed = false;
       const next = nds.map((n) => {
@@ -142,9 +143,10 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         }
         if (n.type === "group") {
           const count = groupCounts.get(n.id) ?? 0;
-          if (n.data.imageCount !== count) {
+          const size = groupSizes.get(n.id) ?? 0;
+          if (n.data.imageCount !== count || n.data.totalSize !== size) {
             changed = true;
-            return { ...n, data: { ...n.data, imageCount: count } };
+            return { ...n, data: { ...n.data, imageCount: count, totalSize: size } };
           }
         }
         return n;
@@ -348,6 +350,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     const node = nodesRef.current.find((n) => n.id === nodeId);
     if (node?.type === "image") {
       setZoomImage(node.data.absPath);
+      setZoomName(node.data.name);
     }
   }, []);
 
@@ -382,12 +385,12 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const handleCreateGroup = useCallback(() => {
     setNodes((nds) => [
       ...nds,
-      {
-        id: `group-${Date.now()}`,
-        type: "group" as const,
-        position: { x: 280 + (nds.length % 6) * 30, y: 260 + (nds.length % 4) * 30 },
-        data: { name: "图片组", imageCount: 0 },
-      },
+        {
+          id: `group-${Date.now()}`,
+          type: "group" as const,
+          position: { x: 280 + (nds.length % 6) * 30, y: 260 + (nds.length % 4) * 30 },
+          data: { name: "图片组", imageCount: 0, totalSize: 0 },
+        },
     ]);
     pushLog("已新建图片组，把图片连进来即可");
   }, [setNodes, pushLog]);
@@ -779,30 +782,25 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         </div>
       )}
 
-      {/* 放大预览（图片双击菜单「放大预览」触发） */}
+      {/* 放大预览（图片双击菜单「放大预览」触发）：点遮罩任意处退出，名字显示在图片下方外部 */}
       {zoomImage && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/60 p-6"
           onClick={() => setZoomImage(null)}
         >
+          <img
+            src={`/api/image?path=${encodeURIComponent(zoomImage)}`}
+            alt="预览"
+            className="max-h-[80vh] max-w-[90vw] object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
           <div
-            className="max-h-[90vh] max-w-[90vw] overflow-auto rounded-lg bg-white p-3 shadow-2xl"
+            className="mt-3 max-w-[80vw] truncate rounded-md bg-black/40 px-3 py-1 text-xs text-white"
             onClick={(e) => e.stopPropagation()}
           >
-            <img
-              src={`/api/image?path=${encodeURIComponent(zoomImage)}`}
-              alt="预览"
-              className="max-h-[78vh] max-w-[84vw] object-contain"
-            />
-            <div className="mt-2 flex justify-end gap-2">
-              <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-500" title={zoomImage}>
-                {zoomImage}
-              </span>
-              <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => setZoomImage(null)}>
-                关闭
-              </button>
-            </div>
+            {zoomName}
           </div>
+          <div className="mt-1 text-[10px] text-white/50">点击空白处关闭</div>
         </div>
       )}
     </div>

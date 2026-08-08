@@ -117,6 +117,8 @@ export interface CanvasGroupNodeData {
   name: string;
   /** 组内图片数（由入边图片数推导） */
   imageCount: number;
+  /** 组内图片总大小（字节，由入边图片 size 合计） */
+  totalSize: number;
   [key: string]: unknown;
 }
 

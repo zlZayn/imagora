@@ -98,19 +98,26 @@ export function canvasToWorkflow(
   return { version: 1, name, nodes, edges };
 }
 
-/** 计算各图片节点的引用计数与分组节点成员数，返回 registryId -> count 与 groupId -> count */
+/** 计算各图片节点的引用计数与分组节点成员数/总大小，
+ *  返回 registryId -> refCount、groupId -> 成员数、groupId -> 总字节 */
 export function computeCounts(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
-): { refCounts: Map<string, number>; groupCounts: Map<string, number> } {
+): {
+  refCounts: Map<string, number>;
+  groupCounts: Map<string, number>;
+  groupSizes: Map<string, number>;
+} {
   const refCounts = new Map<string, number>();
   const groupCounts = new Map<string, number>();
+  const groupSizes = new Map<string, number>();
   for (const node of nodes) {
     if (node.type === "image") {
       refCounts.set(node.data.registryId, 0);
     }
     if (node.type === "group") {
       groupCounts.set(node.id, 0);
+      groupSizes.set(node.id, 0);
     }
   }
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -122,9 +129,10 @@ export function computeCounts(
     refCounts.set(source.data.registryId, (refCounts.get(source.data.registryId) ?? 0) + 1);
     if (target?.type === "group") {
       groupCounts.set(edge.target, (groupCounts.get(edge.target) ?? 0) + 1);
+      groupSizes.set(edge.target, (groupSizes.get(edge.target) ?? 0) + (source.data.size ?? 0));
     }
   }
-  return { refCounts, groupCounts };
+  return { refCounts, groupCounts, groupSizes };
 }
 
 /** 提示词节点的入边图片绝对路径快照（纯函数：运行前锁定参考图集合，画布后续编辑不影响本次运行）。

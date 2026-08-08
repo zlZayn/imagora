@@ -129,9 +129,10 @@ interface GroupNodeExtraProps {
 }
 
 export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowNode> & GroupNodeExtraProps) {
+  const mb = data.totalSize > 0 ? (data.totalSize / (1024 * 1024)).toFixed(1) : "0.0";
   return (
     <div
-      className={`group relative w-40 rounded-lg border-2 border-dashed border-brand/40 bg-brand/5 !p-2 ${
+      className={`group relative w-32 rounded-lg border-2 border-dashed border-brand/40 bg-brand/5 !p-2 ${
         selected ? "node-selected" : ""
       }`}
     >
@@ -143,28 +144,11 @@ export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowN
           删除
         </ActionButton>
       </NodeActions>
-      <div className="text-center">
-        <svg
-          width="26"
-          height="26"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--color-brand)"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="mx-auto"
-          aria-hidden="true"
-        >
-          <rect x="3" y="3" width="7" height="7" rx="1" />
-          <rect x="14" y="3" width="7" height="7" rx="1" />
-          <rect x="3" y="14" width="7" height="7" rx="1" />
-          <rect x="14" y="14" width="7" height="7" rx="1" />
-        </svg>
-        <div className="mt-1 text-xs font-medium text-brand-dark">图片组</div>
-        <div className="text-[10px] text-neutral-500">
-          {data.imageCount > 0 ? `${data.imageCount} 张图` : "连接图片到本组"}
+      <div className="py-1 text-center">
+        <div className="text-sm font-semibold text-brand-dark">
+          {data.imageCount} 张图
         </div>
+        <div className="text-[10px] text-neutral-500">{mb} MB</div>
       </div>
     </div>
   );
