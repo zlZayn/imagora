@@ -42,8 +42,30 @@ REF_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".refs")
 _REF_SEQ = itertools.count(1)
 # 参考图孤儿文件最长保留时长（前端删除失败 / 上传未用的情况兜底清理）
 REF_MAX_AGE_SECONDS = 24 * 3600
+# 上次输出路径记录：服务重启后默认沿用（无记录才按窗口分区）
+LAST_OUTPUT_DIR_FILE = os.path.join(DEFAULT_OUTPUT_DIR, ".last_output_dir")
 # 串行化有界面副作用的系统调用（tkinter 选择器、explorer 置前）
 _UI_LOCK = threading.Lock()
+
+
+def load_last_output_dir() -> str | None:
+    """读取上次使用的输出路径（跨服务重启记住）；无记录 / 读取失败返回 None"""
+    try:
+        with open(LAST_OUTPUT_DIR_FILE, encoding="utf-8") as f:
+            path = f.read().strip()
+            return path or None
+    except OSError:
+        return None
+
+
+def save_last_output_dir(path: str) -> None:
+    """记录上次使用的输出路径（下次启动默认沿用）；记录失败不影响生成"""
+    try:
+        os.makedirs(os.path.dirname(LAST_OUTPUT_DIR_FILE), exist_ok=True)
+        with open(LAST_OUTPUT_DIR_FILE, "w", encoding="utf-8") as f:
+            f.write(path)
+    except OSError:
+        pass
 
 
 def safe_ref_path(path: str) -> str | None:
@@ -117,10 +139,13 @@ def get_config(win: int | None = None):
     否则服务端原子分配下一个编号；默认输出目录按窗口分区 output/win{N}。
     """
     window_id = win if win and win > 0 else next(_WIN_COUNTER)
+    # 默认输出路径：优先记住的上次路径（服务重启沿用），无记录才按窗口分区
+    last_dir = load_last_output_dir()
+    default_dir = last_dir or os.path.join(DEFAULT_OUTPUT_DIR, f"win{window_id}")
     return {
         "sizes": SIZE_OPTIONS,
         "qualities": QUALITY_OPTIONS,
-        "defaultOutputDir": os.path.join(DEFAULT_OUTPUT_DIR, f"win{window_id}"),
+        "defaultOutputDir": default_dir,
         "hasApiKey": has_api_key(),
         "windowId": window_id,
     }
@@ -308,6 +333,10 @@ def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
     total_cost = sum(r.get("cost", 0) for r in results if r.get("status") == "ok")
     ok_count = sum(1 for r in results if r.get("status") == "ok")
     messages.append(f"本次成功 {ok_count} 张 · 费用 {total_cost:.2f} 元")
+
+    # 记住本次输出路径：下次服务启动默认沿用（生成失败不算"用过"）
+    if ok_count > 0:
+        save_last_output_dir(out_dir)
 
     ok = results and results[0].get("status") == "ok"
     log_generation(

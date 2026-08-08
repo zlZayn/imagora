@@ -97,10 +97,11 @@ def test_delete_ref_removes_file_and_tolerates_missing():
         upload.file.close()
 
 
-def test_get_config_window_id_increments():
-    """连续无参调用 -> 窗口编号递增，默认输出目录按窗口分区"""
+def test_get_config_window_id_increments(monkeypatch):
+    """连续无参调用 -> 窗口编号递增，无路径记录时默认输出目录按窗口分区"""
     from server import get_config
 
+    monkeypatch.setattr("server.load_last_output_dir", lambda: None)
     first = get_config(None)
     second = get_config(None)
     assert second["windowId"] == first["windowId"] + 1
@@ -108,21 +109,33 @@ def test_get_config_window_id_increments():
     assert second["defaultOutputDir"].endswith(f"win{second['windowId']}")
 
 
-def test_get_config_keeps_existing_window_id():
+def test_get_config_keeps_existing_window_id(monkeypatch):
     """传已有窗口号 -> 沿用该编号与对应分区（刷新页面编号不变）"""
     from server import get_config
 
+    monkeypatch.setattr("server.load_last_output_dir", lambda: None)
     cfg = get_config(win=7)
     assert cfg["windowId"] == 7
     assert cfg["defaultOutputDir"].endswith("win7")
 
 
-def test_get_config_ignores_invalid_window_id():
+def test_get_config_ignores_invalid_window_id(monkeypatch):
     """传 0 / 负数 -> 视为无效，重新分配新编号"""
     from server import get_config
 
+    monkeypatch.setattr("server.load_last_output_dir", lambda: None)
     cfg = get_config(win=0)
     assert cfg["windowId"] >= 1
+
+
+def test_get_config_remembers_last_output_dir(monkeypatch, tmp_path):
+    """存在上次输出路径记录 -> 默认输出沿用该路径（服务重启后记住）"""
+    from server import get_config
+
+    last_dir = str(tmp_path / "my_output")
+    monkeypatch.setattr("server.load_last_output_dir", lambda: last_dir)
+    cfg = get_config(None)
+    assert cfg["defaultOutputDir"] == last_dir
 
 
 def test_next_window_increments_and_shares_counter():
