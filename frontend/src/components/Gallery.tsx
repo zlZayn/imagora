@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatBytes } from "../format";
 import type { ResultItem } from "../types";
 
 interface GalleryProps {
@@ -61,7 +62,7 @@ export default function Gallery({ items }: GalleryProps) {
   }
 
   return (
-    <div className="grid grid-cols-3 items-start gap-3">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] items-start gap-3">
       {images.map((item, i) => (
         <a
           key={`${item.url}-${i}`}
@@ -76,6 +77,8 @@ export default function Gallery({ items }: GalleryProps) {
             <AspectImage url={item.url} alt={item.message} />
             <p className="text-caption mt-1 text-center">
               {item.size ? `${item.size}` : ""}
+              {item.ext ? ` · ${item.ext.toUpperCase()}` : ""}
+              {item.fileSize !== undefined ? ` · ${formatBytes(item.fileSize)}` : ""}
               {item.cost !== undefined ? ` · ${item.cost}元` : ""}
             </p>
           </div>
