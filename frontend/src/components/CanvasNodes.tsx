@@ -59,17 +59,17 @@ export function ImageNode({
         selected ? "node-selected" : ""
       }`}
     >
-      {/* target 锚点：接收提示词节点的产出连线（结果图回流）；悬浮显示、绝对大小 */}
+      {/* target 锚点：接收提示词节点的产出连线（结果图回流）；竖直长条形、绝对大小 */}
       <Handle
         type="target"
         position={Position.Left}
-        className="!h-3.5 !w-3.5 !border-0 !bg-brand/90"
+        className="!h-8 !w-3 !rounded !border-0 !bg-brand/90"
       />
       {/* source 锚点：只允许图片 -> 提示词 / 图片组 */}
       <Handle
         type="source"
         position={Position.Right}
-        className="!h-3.5 !w-3.5 !border-0 !bg-brand"
+        className="!h-8 !w-3 !rounded !border-0 !bg-brand"
       />
       {data.missing && (
         <span className="absolute right-1 top-1 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
@@ -113,16 +113,16 @@ export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowN
         selected ? "node-selected" : ""
       }`}
     >
-      {/* 输入：接收图片节点连入；输出：连到提示词节点；悬浮显示、绝对大小 */}
+      {/* 输入：接收图片节点连入；输出：连到提示词节点；竖直长条形、绝对大小 */}
       <Handle
         type="target"
         position={Position.Left}
-        className="!h-3.5 !w-3.5 !border-0 !bg-brand/90"
+        className="!h-8 !w-3 !rounded !border-0 !bg-brand/90"
       />
       <Handle
         type="source"
         position={Position.Right}
-        className="!h-3.5 !w-3.5 !border-0 !bg-brand"
+        className="!h-8 !w-3 !rounded !border-0 !bg-brand"
       />
       <NodeActions>
         <ActionButton onClick={() => onDelete(id)} danger>
@@ -198,17 +198,17 @@ export function PromptNode({
   const running = data.status === "running";
   return (
     <div className={`panel-card group relative z-30 !min-w-[280px] !p-3 ${selected ? "node-selected" : ""}`}>
-      {/* target 锚点：接收图片 / 图片组连入（参考图）；悬浮显示、绝对大小 */}
+      {/* target 锚点：接收图片 / 图片组连入（参考图）；竖直长条形、绝对大小 */}
       <Handle
         type="target"
         position={Position.Left}
-        className="!h-3.5 !w-3.5 !border-0 !bg-brand/90"
+        className="!h-8 !w-3 !rounded !border-0 !bg-brand/90"
       />
       {/* source 锚点：连到结果图片（产出边） */}
       <Handle
         type="source"
         position={Position.Right}
-        className="!h-3.5 !w-3.5 !border-0 !bg-brand"
+        className="!h-8 !w-3 !rounded !border-0 !bg-brand"
       />
       {/* 右上角统一操作区：状态徽标 + 删除 */}
       <NodeActions>

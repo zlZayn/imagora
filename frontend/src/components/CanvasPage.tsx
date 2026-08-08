@@ -54,6 +54,11 @@ interface CanvasPageProps {
 export default function CanvasPage({ config }: CanvasPageProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  /** 画布容器引用：把实时 zoom 写入 --canvas-zoom CSS 变量（连接点绝对大小用） */
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const setCanvasZoom = useCallback((zoom: number) => {
+    canvasRef.current?.style.setProperty("--canvas-zoom", String(zoom));
+  }, []);
   /** 节点/边的最新引用：回调经 ref 读取，避免 useCallback 依赖 nodes/edges
    *  导致 nodeTypes 每次拖拽重建 -> 全节点重渲染闪烁 */
   const nodesRef = useRef<WorkflowNode[]>(nodes);
@@ -641,6 +646,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             删除所选 ({selectedCount})
           </button>
         )}
+        <div ref={canvasRef} className="h-full w-full">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -652,6 +658,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           onNodeMouseEnter={onNodeMouseEnter}
           onNodeMouseLeave={onNodeMouseLeave}
           onSelectionChange={onSelectionChange}
+          onMove={(_event, viewport) => setCanvasZoom(viewport.zoom)}
+          onInit={(instance) => setCanvasZoom(instance.getViewport().zoom)}
           fitView
           minZoom={0.2}
           maxZoom={2}
@@ -659,6 +667,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
           <Controls />
         </ReactFlow>
+        </div>
       </div>
 
       {/* 画布日志 */}
