@@ -61,6 +61,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const [runningAll, setRunningAll] = useState(false);
   const runningRef = useRef<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 替换图片：待替换的目标节点 + 专用文件选择 */
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const pendingReplaceRef = useRef<string | null>(null);
 
   const sizeOptions = useMemo(
     () => config.sizes.map((s) => ({ value: s.value, label: `${s.label}（${s.cost}元）` })),
@@ -223,6 +226,62 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       pushLog(`加载失败：${errMessage(err)}`);
     }
   };
+
+  /* ---------------- 节点替换 / 删除 ---------------- */
+  /** 图片替换：记录目标节点并打开文件选择器 */
+  const handleReplaceImage = useCallback((nodeId: string) => {
+    pendingReplaceRef.current = nodeId;
+    replaceInputRef.current?.click();
+  }, []);
+
+  /** 替换文件落地：上传新图并更新该图片节点数据（旧文件保留，避免破坏其他引用/已存工作流） */
+  const handleReplaceFile = useCallback(
+    async (files: FileList | null) => {
+      const nodeId = pendingReplaceRef.current;
+      pendingReplaceRef.current = null;
+      if (!nodeId || !files?.length) return;
+      try {
+        const { images } = await canvasUpload(Array.from(files).slice(0, 1));
+        if (!images.length) {
+          pushLog("替换失败：上传未返回图片");
+          return;
+        }
+        const entry = images[0];
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== nodeId || n.type !== "image") return n;
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                registryId: entry.id,
+                name: entry.name,
+                url: `/api/image?path=${encodeURIComponent(entry.absPath)}`,
+                size: entry.size,
+                ext: entry.ext,
+                absPath: entry.absPath,
+                missing: false,
+              },
+            };
+          }),
+        );
+        pushLog(`已替换图片：${entry.name}`);
+      } catch (err) {
+        pushLog(`替换失败：${errMessage(err)}`);
+      }
+    },
+    [setNodes, pushLog],
+  );
+
+  /** 删除节点：仅移除节点与其所有连线（不删文件，删除文件是显式操作） */
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      pushLog("已删除节点（文件保留）");
+    },
+    [setNodes, setEdges, pushLog],
+  );
 
   /* ---------------- 运行编排：单节点（入边快照）+ 结果回流 + 全部运行（并发 2） ---------------- */
   const runNodeInternal = useCallback(
@@ -394,18 +453,25 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   /* ---------------- 渲染 ---------------- */
   const nodeTypes = useMemo(
     () => ({
-      image: ImageNode,
+      image: (props: object) => (
+        <ImageNode
+          {...(props as React.ComponentProps<typeof ImageNode>)}
+          onReplace={handleReplaceImage}
+          onDelete={handleDeleteNode}
+        />
+      ),
       prompt: (props: object) => (
         <PromptNode
           {...(props as React.ComponentProps<typeof PromptNode>)}
           onRun={handleRun}
           onUpdate={handleNodeUpdate}
+          onDelete={handleDeleteNode}
           sizeOptions={sizeOptions}
           qualityOptions={qualityOptions}
         />
       ),
     }),
-    [handleRun, handleNodeUpdate, sizeOptions, qualityOptions],
+    [handleRun, handleNodeUpdate, handleDeleteNode, handleReplaceImage, sizeOptions, qualityOptions],
   );
 
   return (
@@ -423,6 +489,17 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           className="hidden"
           onChange={(e) => {
             void handleUpload(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        {/* 图片节点「替换」用的隐藏文件选择（单张） */}
+        <input
+          ref={replaceInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            void handleReplaceFile(e.target.files);
             e.target.value = "";
           }}
         />

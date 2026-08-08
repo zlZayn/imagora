@@ -6,10 +6,17 @@ import Select from "./Select";
 /** 画布图片节点（仅 source 锚点：作为提示词节点的参考图输入） */
 export type ImageFlowNode = Node<CanvasImageNodeData, "image">;
 
-export function ImageNode({ data, selected }: NodeProps<ImageFlowNode>) {
+interface ImageNodeExtraProps {
+  /** 替换图片（换一张图，旧文件保留） */
+  onReplace: (nodeId: string) => void;
+  /** 删除节点（仅移除节点与连线，不删文件） */
+  onDelete: (nodeId: string) => void;
+}
+
+export function ImageNode({ id, data, selected, onReplace, onDelete }: NodeProps<ImageFlowNode> & ImageNodeExtraProps) {
   return (
     <div
-      className={`panel-card relative !p-2 ${
+      className={`panel-card group relative !p-2 ${
         data.missing ? "!border-red-400" : ""
       } ${selected ? "node-selected" : ""}`}
     >
@@ -20,6 +27,23 @@ export function ImageNode({ data, selected }: NodeProps<ImageFlowNode>) {
           文件缺失
         </span>
       )}
+      {/* hover 操作：替换 / 删除（nodrag 避免误触拖动卡片） */}
+      <div className="absolute -top-3 right-0 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={() => onReplace(id)}
+          className="nodrag btn-ghost !px-1.5 !py-0.5 text-[10px]"
+        >
+          替换
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(id)}
+          className="nodrag btn-ghost !px-1.5 !py-0.5 text-[10px] text-red-500"
+        >
+          删除
+        </button>
+      </div>
       <img
         src={data.url}
         alt={data.name}
@@ -44,6 +68,8 @@ interface PromptNodeExtraProps {
   onUpdate: (nodeId: string, patch: Partial<CanvasPromptNodeData>) => void;
   /** 运行该节点（独立任务，入边快照参考图） */
   onRun: (nodeId: string) => void;
+  /** 删除该节点（连同其连线） */
+  onDelete: (nodeId: string) => void;
   /** 尺寸/质量选项（由画布 config 派生传入） */
   sizeOptions: { value: string; label: string }[];
   qualityOptions: { value: string; label: string }[];
@@ -86,6 +112,7 @@ export function PromptNode({
   selected,
   onUpdate,
   onRun,
+  onDelete,
   sizeOptions,
   qualityOptions,
 }: PromptNodeProps) {
@@ -96,16 +123,26 @@ export function PromptNode({
       <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-0 !bg-neutral-400" />
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-neutral-700">提示词生成</span>
-        <StatusBadge data={data} />
+        <div className="flex items-center gap-1.5">
+          <StatusBadge data={data} />
+          <button
+            type="button"
+            onClick={() => onDelete(id)}
+            className="nodrag btn-ghost !px-1.5 !py-0.5 text-[10px] text-red-500"
+            title="删除节点（连同连线）"
+          >
+            删除
+          </button>
+        </div>
       </div>
       <textarea
         value={data.prompt}
         onChange={(e) => onUpdate(id, { prompt: e.target.value })}
         rows={2}
         placeholder="英文提示词，例如：a red apple on white background"
-        className="field-control resize-y text-xs"
+        className="nodrag field-control resize-y text-xs"
       />
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className="nodrag mt-2 grid grid-cols-2 gap-2">
         <div>
           <label className="field-label text-[10px]">尺寸</label>
           <Select
@@ -125,13 +162,13 @@ export function PromptNode({
           />
         </div>
       </div>
-      <div className="mt-2">
+      <div className="nodrag mt-2">
         <label className="field-label text-[10px]">输出路径</label>
         <div className="mt-0.5">
           <FolderPicker value={data.outputDir} onChange={(v) => onUpdate(id, { outputDir: v })} />
         </div>
       </div>
-      <div className="mt-2 flex items-center gap-2">
+      <div className="nodrag mt-2 flex items-center gap-2">
         <button
           type="button"
           onClick={() => onRun(id)}
