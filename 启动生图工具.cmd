@@ -42,7 +42,7 @@ if not "!CODE!"=="200" goto wait
 echo Server ready.
 call :open_window
 
-REM ---- rich 交互菜单（N 开新窗口 / Q 退出，退出时按 PID 停服务） ----
+REM ---- rich interactive menu (N new window / Q quit, stops script-started server) ----
 uv run python -m main menu --port %PORT%
 exit /b 0
 
