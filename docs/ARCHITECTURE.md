@@ -113,7 +113,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | `tests/test_core_api.py` | 13 | `resolve_size_with_ratio` / `build_default_output_path`（含并发唯一）/ `format_error` |
 | `tests/test_core_batch.py` | 9 | 配置读取 / 路径解析 / 模块过滤 / dry_run 预览 |
 | `tests/test_core_config.py` | 3 | `get_api_key`（环境变量/缺失报错）/ RATIOS 表结构 |
-| `tests/test_server_helpers.py` | 9 | `size_cost` / `display_path` / `get_config` 窗口分配（递增/沿用/非法回退）/ `next_window` 共用计数器 / `generate` 为同步函数（不阻塞事件循环） |
+| `tests/test_server_helpers.py` | 13 | `size_cost` / `display_path` / `get_config` 窗口分配（递增/沿用/非法回退）/ `next_window` 共用计数器 / `generate` 为同步函数（不阻塞事件循环）/ `safe_ref_path`（REF_DIR 内放行、穿越拒绝）/ `upload-ref` 元信息与落盘 / `delete-ref`（删除/容忍缺失/非法路径） |
 | `tests/test_core_logging.py` | 7 | `log_generation` 写入 / 字段 / win 可选 / 并发串行写 / 路径相对化 |
 
 未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API），编排与请求层靠 dry_run 与人工验证。
