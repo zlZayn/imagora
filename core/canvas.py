@@ -15,6 +15,7 @@
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -187,19 +188,37 @@ def safe_ref_path_allowlist(path: str, roots: list[str]) -> str | None:
     return None
 
 
-# ---------- 工作流存取（version 1 JSON 文件） ----------
+# ---------- 工作流存取（version 1 JSON 文件，固定目录 output/workflows/） ----------
 
-def workflow_save(path: str, name: str, nodes: list, edges: list) -> dict:
-    """保存工作流为 JSON 文件（version 1，用户指定路径，目录自动创建）
+# 工作流固定保存目录（相对 output 根，用户只需选名字）
+WORKFLOWS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "workflows")
+
+# Windows / 通用非法文件名字符（含路径分隔符，防穿越）
+_INVALID_NAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def sanitize_workflow_name(name: str) -> str | None:
+    """工作流名 -> 安全文件名（去路径分隔符/非法字符，去点防隐藏，空返回 None）"""
+    cleaned = _INVALID_NAME_CHARS.sub("", name.strip())
+    if not cleaned or cleaned in (".", ".."):
+        return None
+    return cleaned
+
+
+def workflow_save(name: str, nodes: list, edges: list) -> dict:
+    """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json）
 
     返回 {"ok": True, "path"} 或 {"ok": False, "error"}。
     """
+    filename = sanitize_workflow_name(name)
+    if not filename:
+        return {"ok": False, "error": "工作流名不合法（不能含路径分隔符）"}
+    abs_path = os.path.join(WORKFLOWS_DIR, f"{filename}.json")
     try:
-        abs_path = os.path.abspath(path)
-        os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
+        os.makedirs(WORKFLOWS_DIR, exist_ok=True)
         payload = {
             "version": 1,
-            "name": name or "未命名工作流",
+            "name": filename,
             "nodes": nodes,
             "edges": edges,
         }
@@ -210,13 +229,39 @@ def workflow_save(path: str, name: str, nodes: list, edges: list) -> dict:
         return {"ok": False, "error": str(e)}
 
 
-def workflow_load(path: str) -> dict:
+def workflow_list() -> list[dict]:
+    """列出 output/workflows/ 下所有工作流（按修改时间倒序），条目含 name/modified"""
+    workflows = []
+    try:
+        names = os.listdir(WORKFLOWS_DIR)
+    except OSError:
+        return workflows
+    for name in names:
+        if not name.lower().endswith(".json"):
+            continue
+        p = os.path.join(WORKFLOWS_DIR, name)
+        try:
+            modified = time.strftime(
+                "%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(p))
+            )
+        except OSError:
+            modified = ""
+        workflows.append({"name": os.path.splitext(name)[0], "modified": modified})
+    workflows.sort(key=lambda w: w["modified"], reverse=True)
+    return workflows
+
+
+def workflow_load(name: str) -> dict:
     """加载工作流 JSON：校验 version、收集图片节点缺失项。
 
     图片节点按 registryId 查注册表 → relPath 解析绝对路径 → isfile 校验；
     缺失的 registryId 收集进 missing（节点保留原样，由前端标红）。
     返回 {"ok": True, "name", "nodes", "edges", "missing"} 或 {"ok": False, "error"}。
     """
+    filename = sanitize_workflow_name(name)
+    if not filename:
+        return {"ok": False, "error": "工作流名不合法"}
+    path = os.path.join(WORKFLOWS_DIR, f"{filename}.json")
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)

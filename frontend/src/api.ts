@@ -129,23 +129,27 @@ export async function canvasDeleteImage(id: string): Promise<{ ok: boolean }> {
   });
 }
 
-/** 工作流：保存为 JSON 文件（默认 output/workflows/，可指定路径） */
+/** 工作流：保存为 JSON 文件（固定目录 output/workflows/<name>.json，仅需名字） */
 export async function workflowSave(params: {
-  path: string;
   name: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
-}): Promise<{ ok: boolean }> {
-  return requestJson<{ ok: boolean }>("/api/canvas/workflow/save", {
+}): Promise<{ ok: boolean; path: string }> {
+  return requestJson("/api/canvas/workflow/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
 }
 
-/** 工作流：加载 JSON 文件（服务端解析相对路径 + 文件存在性校验，缺失进 missing） */
+/** 工作流：列出 output/workflows/ 下所有工作流（按修改时间倒序） */
+export async function workflowList(): Promise<{ workflows: { name: string; modified: string }[] }> {
+  return requestJson("/api/canvas/workflow/list");
+}
+
+/** 工作流：按名加载（固定目录解析 + 文件存在性校验，缺失进 missing） */
 export async function workflowLoad(
-  path: string,
+  name: string,
 ): Promise<{ name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[]; missing: string[] }> {
-  return requestJson("/api/canvas/workflow/load?path=" + encodeURIComponent(path));
+  return requestJson("/api/canvas/workflow/load?name=" + encodeURIComponent(name));
 }

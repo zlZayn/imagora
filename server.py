@@ -252,22 +252,27 @@ def canvas_image_delete(body: dict):
 
 @app.post("/api/canvas/workflow/save")
 def canvas_workflow_save(body: dict):
-    """保存工作流为 JSON 文件（version 1，用户指定路径）"""
+    """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json，仅需名字）"""
     result = canvas.workflow_save(
-        str(body.get("path", "")),
         str(body.get("name", "")),
         body.get("nodes", []),
         body.get("edges", []),
     )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "保存失败"))
-    return {"ok": True}
+    return {"ok": True, "path": result["path"]}
+
+
+@app.get("/api/canvas/workflow/list")
+def canvas_workflow_list():
+    """列出 output/workflows/ 下所有工作流（按修改时间倒序）"""
+    return {"workflows": canvas.workflow_list()}
 
 
 @app.get("/api/canvas/workflow/load")
-def canvas_workflow_load(path: str):
-    """加载工作流 JSON：相对路径解析 + 文件存在性校验，缺失 registryId 进 missing"""
-    result = canvas.workflow_load(path)
+def canvas_workflow_load(name: str):
+    """加载工作流 JSON（固定目录按名加载）：相对路径解析 + 文件存在性校验，缺失 registryId 进 missing"""
+    result = canvas.workflow_load(name)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "加载失败"))
     return {

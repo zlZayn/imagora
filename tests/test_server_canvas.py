@@ -18,17 +18,26 @@ from starlette.datastructures import Headers
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from server import canvas_upload, canvas_import, canvas_images, canvas_image_delete, canvas_workflow_save, canvas_workflow_load
+from server import (
+    canvas_upload,
+    canvas_import,
+    canvas_images,
+    canvas_image_delete,
+    canvas_workflow_save,
+    canvas_workflow_list,
+    canvas_workflow_load,
+)
 
 
 @pytest.fixture
 def canvas_env(tmp_path, monkeypatch):
-    """把 core.canvas 的目录常量注入 tmp_path，避免污染真实 output/.canvas"""
+    """把 core.canvas 的目录常量注入 tmp_path，避免污染真实 output/.canvas 与 output/workflows"""
     from core import canvas
 
     monkeypatch.setattr(canvas, "DEFAULT_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(canvas, "CANVAS_DIR", str(tmp_path / ".canvas"))
     monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
+    monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
     return tmp_path
 
 
@@ -91,29 +100,50 @@ def test_canvas_image_delete(canvas_env):
 
 
 def test_workflow_save_writes_versioned_file(canvas_env):
-    path = str(canvas_env / "wf.json")
     nodes = [{"id": "n1", "type": "prompt", "position": {"x": 0, "y": 0}, "data": {"prompt": "hi", "size": "1024x1024", "quality": "low", "outputDir": str(canvas_env), "status": "idle"}}]
     edges = []
-    assert canvas_workflow_save({"path": path, "name": "测试工作流", "nodes": nodes, "edges": edges})["ok"] is True
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    result = canvas_workflow_save({"name": "测试工作流", "nodes": nodes, "edges": edges})
+    assert result["ok"] is True
+    assert result["path"].endswith(f"workflows{os.sep}测试工作流.json")
+    data = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
     assert data["version"] == 1
     assert data["name"] == "测试工作流"
     assert data["nodes"] == nodes
 
 
+def test_workflow_save_sanitizes_dangerous_name(canvas_env):
+    """名字含路径分隔符/穿越 -> 清洗后写固定目录（不越权写外部路径）"""
+    result = canvas_workflow_save({"name": "../../evil", "nodes": [], "edges": []})
+    assert result["ok"] is True
+    # 路径分隔符被清洗，文件仍落在 WORKFLOWS_DIR 内（无穿越）
+    assert os.path.dirname(result["path"]) == str(canvas_env / "workflows")
+    assert os.path.basename(result["path"]).endswith(".json")
+
+
+def test_workflow_save_empty_name_returns_error(canvas_env):
+    with pytest.raises(Exception):
+        canvas_workflow_save({"name": "  ", "nodes": [], "edges": []})
+
+
 def test_workflow_save_unserializable_returns_error(canvas_env):
-    path = str(canvas_env / "bad.json")
     nodes = [{"id": "n", "type": "prompt", "data": {"blob": b"not-json"}}]
     with pytest.raises(Exception):
-        canvas_workflow_save({"path": path, "name": "", "nodes": nodes, "edges": []})
+        canvas_workflow_save({"name": "bad", "nodes": nodes, "edges": []})
+
+
+def test_workflow_list_returns_saved(canvas_env):
+    canvas_workflow_save({"name": "w1", "nodes": [], "edges": []})
+    canvas_workflow_save({"name": "w2", "nodes": [], "edges": []})
+    result = canvas_workflow_list()
+    names = {w["name"] for w in result["workflows"]}
+    assert names == {"w1", "w2"}
 
 
 def test_workflow_load_roundtrip(canvas_env):
-    path = str(canvas_env / "wf.json")
     nodes = [{"id": "p1", "type": "prompt", "position": {"x": 1, "y": 2}, "data": {"prompt": "hi", "status": "idle"}}]
     edges = [{"id": "e1", "source": "img1", "target": "p1"}]
-    canvas_workflow_save({"path": path, "name": "往返", "nodes": nodes, "edges": edges})
-    result = canvas_workflow_load(path)
+    canvas_workflow_save({"name": "往返", "nodes": nodes, "edges": edges})
+    result = canvas_workflow_load("往返")
     assert result["name"] == "往返"
     assert result["nodes"] == nodes
     assert result["edges"] == edges
@@ -121,24 +151,24 @@ def test_workflow_load_roundtrip(canvas_env):
 
 
 def test_workflow_load_missing_image(canvas_env):
-    path = str(canvas_env / "wf.json")
     nodes = [{"id": "img1", "type": "image", "position": {"x": 0, "y": 0}, "data": {"registryId": "nope123", "name": "丢失图"}}]
-    canvas_workflow_save({"path": path, "name": "", "nodes": nodes, "edges": []})
-    result = canvas_workflow_load(path)
+    canvas_workflow_save({"name": "缺图", "nodes": nodes, "edges": []})
+    result = canvas_workflow_load("缺图")
     assert result["missing"] == ["nope123"]
     assert result["nodes"] == nodes
 
 
 def test_workflow_load_wrong_version(canvas_env):
-    path = str(canvas_env / "v2.json")
-    Path(path).write_text(json.dumps({"version": 2, "nodes": [], "edges": []}), encoding="utf-8")
+    path = canvas_env / "workflows" / "v2.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": 2, "nodes": [], "edges": []}), encoding="utf-8")
     with pytest.raises(Exception):
-        canvas_workflow_load(path)
+        canvas_workflow_load("v2")
 
 
 def test_workflow_load_missing_file(canvas_env):
     with pytest.raises(Exception):
-        canvas_workflow_load(str(canvas_env / "ghost.json"))
+        canvas_workflow_load("ghost")
 
 
 def test_generate_ref_paths_accepts_canvas_dir(canvas_env, monkeypatch):

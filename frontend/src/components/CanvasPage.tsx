@@ -27,6 +27,7 @@ import {
   canvasUpload,
   generateImage,
   selectFolder,
+  workflowList,
   workflowLoad,
   workflowSave,
 } from "../api";
@@ -55,6 +56,12 @@ interface CanvasPageProps {
 export default function CanvasPage({ config }: CanvasPageProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  /** 节点/边的最新引用：回调经 ref 读取，避免 useCallback 依赖 nodes/edges
+   *  导致 nodeTypes 每次拖拽重建 -> 全节点重渲染闪烁 */
+  const nodesRef = useRef<WorkflowNode[]>(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef<Edge[]>(edges);
+  edgesRef.current = edges;
   const [logs, setLogs] = useState<string[]>([]);
   /** 高亮核验：悬停/选中的提示词节点（高亮其入边与关联图片） */
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -62,6 +69,11 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const runningRef = useRef<Set<string>>(new Set());
   /** 放大预览：当前预览的图片绝对路径（null 关闭） */
   const [zoomImage, setZoomImage] = useState<string | null>(null);
+  /** 保存/加载工作流弹窗 */
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [workflows, setWorkflows] = useState<{ name: string; modified: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** 替换图片：待替换的目标节点 + 专用文件选择 */
   const replaceInputRef = useRef<HTMLInputElement>(null);
@@ -82,20 +94,17 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   }, []);
 
   /* ---------------- 连线：类型硬约束（图片 -> 提示词 | 图片组；图片组 -> 提示词） ---------------- */
-  const isValidConnection: IsValidConnection = useCallback(
-    (connection) => {
-      const source = nodes.find((n) => n.id === connection.source);
-      const target = nodes.find((n) => n.id === connection.target);
-      if (source?.type === "image") {
-        return target?.type === "prompt" || target?.type === "group";
-      }
-      if (source?.type === "group") {
-        return target?.type === "prompt";
-      }
-      return false;
-    },
-    [nodes],
-  );
+  const isValidConnection: IsValidConnection = useCallback((connection) => {
+    const source = nodesRef.current.find((n) => n.id === connection.source);
+    const target = nodesRef.current.find((n) => n.id === connection.target);
+    if (source?.type === "image") {
+      return target?.type === "prompt" || target?.type === "group";
+    }
+    if (source?.type === "group") {
+      return target?.type === "prompt";
+    }
+    return false;
+  }, []);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -221,12 +230,29 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       pushLog("画布为空，无需保存");
       return;
     }
-    const name = window.prompt("工作流名称：", "未命名工作流");
-    if (name === null) return;
-    const path =
-      window.prompt("保存路径（.json）：", `${config.defaultOutputDir}/workflows/${name}.json`) ?? "";
     try {
-      await workflowSave({ path, name, nodes, edges });
+      const { workflows: list } = await workflowList();
+      setWorkflows(list);
+      setSaveName("");
+      setShowSaveModal(true);
+    } catch (err) {
+      pushLog(`保存准备失败：${errMessage(err)}`);
+    }
+  };
+
+  /** 确认保存：同名覆盖需确认 */
+  const confirmSave = async () => {
+    const name = saveName.trim();
+    if (!name) {
+      pushLog("请输入工作流名字");
+      return;
+    }
+    if (workflows.some((w) => w.name === name)) {
+      if (!window.confirm(`工作流「${name}」已存在，覆盖？`)) return;
+    }
+    try {
+      const { path } = await workflowSave({ name, nodes, edges });
+      setShowSaveModal(false);
       pushLog(`工作流已保存：${path}`);
     } catch (err) {
       pushLog(`保存失败：${errMessage(err)}`);
@@ -234,16 +260,28 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   };
 
   const handleLoad = async () => {
-    const path = window.prompt("加载路径（.json）：", "") ?? "";
-    if (!path.trim()) return;
     try {
-      const wf = await workflowLoad(path);
+      const { workflows: list } = await workflowList();
+      if (!list.length) {
+        pushLog("没有已保存的工作流");
+        return;
+      }
+      setWorkflows(list);
+      setShowLoadModal(true);
+    } catch (err) {
+      pushLog(`加载准备失败：${errMessage(err)}`);
+    }
+  };
+
+  /** 按名加载工作流并重建画布（位置/连线/参数全还原，运行状态重置） */
+  const loadByName = async (name: string) => {
+    try {
+      const wf = await workflowLoad(name);
       const { nodes: loadedNodes, edges: loadedEdges } = workflowToCanvas(wf.nodes, wf.edges, wf.missing);
       setNodes(loadedNodes);
       setEdges(loadedEdges);
-      pushLog(
-        `已加载 ${path}${wf.missing.length ? `，${wf.missing.length} 张图片缺失` : ""}`,
-      );
+      setShowLoadModal(false);
+      pushLog(`已加载「${name}」${wf.missing.length ? `，${wf.missing.length} 张图片缺失` : ""}`);
     } catch (err) {
       pushLog(`加载失败：${errMessage(err)}`);
     }
@@ -306,20 +344,17 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   );
 
   /* ---------------- 图片双击动作：放大预览 / 生成提示词卡片 ---------------- */
-  const handleZoom = useCallback(
-    (nodeId: string) => {
-      const node = nodes.find((n) => n.id === nodeId);
-      if (node?.type === "image") {
-        setZoomImage(node.data.absPath);
-      }
-    },
-    [nodes],
-  );
+  const handleZoom = useCallback((nodeId: string) => {
+    const node = nodesRef.current.find((n) => n.id === nodeId);
+    if (node?.type === "image") {
+      setZoomImage(node.data.absPath);
+    }
+  }, []);
 
   /** 以某图片为参考：新建提示词卡片并自动连线（图片 -> 提示词） */
   const handleCreatePromptFromImage = useCallback(
     (imageNodeId: string) => {
-      const imageNode = nodes.find((n) => n.id === imageNodeId);
+      const imageNode = nodesRef.current.find((n) => n.id === imageNodeId);
       if (!imageNode || imageNode.type !== "image") return;
       const promptId = `prompt-${Date.now()}`;
       setNodes((nds) => [
@@ -340,7 +375,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       setEdges((eds) => [...eds, { id: `edge-${Date.now()}`, source: imageNodeId, target: promptId }]);
       pushLog("已创建提示词卡片并连线该图片");
     },
-    [nodes, config, setNodes, setEdges, pushLog],
+    [config, setNodes, setEdges, pushLog],
   );
 
   /** 新建图片组节点（聚合多图后连到提示词统一管理） */
@@ -360,6 +395,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   /* ---------------- 运行编排：单节点（入边快照）+ 结果回流 + 全部运行（并发 2） ---------------- */
   const runNodeInternal = useCallback(
     async (nodeId: string) => {
+      const nodes = nodesRef.current;
+      const edges = edgesRef.current;
       const node = nodes.find((n) => n.id === nodeId);
       if (!node || node.type !== "prompt" || runningRef.current.has(nodeId)) return;
       const data = node.data;
@@ -452,7 +489,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         runningRef.current.delete(nodeId);
       }
     },
-    [nodes, edges, setNodes, pushLog],
+    [setNodes, pushLog],
   );
 
   const handleRun = useCallback(
@@ -463,7 +500,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   );
 
   const handleRunAll = useCallback(async () => {
-    const promptNodes = nodes.filter((n) => n.type === "prompt");
+    const promptNodes = nodesRef.current.filter((n) => n.type === "prompt");
     if (!promptNodes.length) {
       pushLog("画布上没有提示词节点");
       return;
@@ -485,7 +522,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     } finally {
       setRunningAll(false);
     }
-  }, [nodes, runNodeInternal, pushLog]);
+  }, [runNodeInternal, pushLog]);
 
   /* ---------------- 双击空白：新建提示词节点 ---------------- */
   const onPaneDoubleClick = useCallback(
@@ -655,6 +692,92 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           </div>
         ))}
       </div>
+
+      {/* 保存工作流弹窗：固定目录 output/workflows/，只选名字 */}
+      {showSaveModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setShowSaveModal(false)}
+        >
+          <div
+            className="w-[26rem] max-w-[92vw] rounded-lg bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-3 text-sm font-semibold">保存工作流</h3>
+            <input
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void confirmSave();
+              }}
+              placeholder="输入工作流名字（存到 output/workflows/）"
+              autoFocus
+              className="field-control mb-3"
+            />
+            {workflows.length > 0 && (
+              <div className="mb-3 max-h-36 overflow-auto rounded-lg border border-neutral-200">
+                {workflows.map((w) => (
+                  <button
+                    key={w.name}
+                    type="button"
+                    onClick={() => setSaveName(w.name)}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-neutral-700 hover:bg-brand/5 hover:text-brand"
+                  >
+                    <span className="truncate">{w.name}</span>
+                    <span className="shrink-0 text-[10px] text-neutral-400">{w.modified}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => setShowSaveModal(false)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn-primary !py-1 text-xs"
+                disabled={!saveName.trim()}
+                onClick={() => void confirmSave()}
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 加载工作流弹窗：列出已保存的工作流选择 */}
+      {showLoadModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setShowLoadModal(false)}
+        >
+          <div
+            className="w-[26rem] max-w-[92vw] rounded-lg bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-3 text-sm font-semibold">加载工作流</h3>
+            <div className="max-h-72 overflow-auto rounded-lg border border-neutral-200">
+              {workflows.map((w) => (
+                <button
+                  key={w.name}
+                  type="button"
+                  onClick={() => void loadByName(w.name)}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-neutral-700 hover:bg-brand/5 hover:text-brand"
+                >
+                  <span className="truncate">{w.name}</span>
+                  <span className="shrink-0 text-[10px] text-neutral-400">{w.modified}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => setShowLoadModal(false)}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 放大预览（图片双击菜单「放大预览」触发） */}
       {zoomImage && (

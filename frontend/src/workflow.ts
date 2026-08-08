@@ -59,16 +59,30 @@ export function canvasEntriesToNodes(
   return created;
 }
 
-/** 工作流加载结果转画布：按 missing 列表给对应图片节点打标（红框提示文件缺失） */
+/** 工作流加载结果转画布：按 missing 列表给对应图片节点打标（红框提示文件缺失）；
+ *  prompt 节点归一化（重置运行状态为 idle，位置/参数无损保留） */
 export function workflowToCanvas(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   missing: string[],
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
   const missingSet = new Set(missing);
-  const marked = nodes.map((node) => {
+  const marked = nodes.map((node): WorkflowNode => {
     if (node.type === "image" && missingSet.has(node.data.registryId)) {
-      return { ...node, data: { ...node.data, missing: true } } as WorkflowNode;
+      return { ...node, data: { ...node.data, missing: true } };
+    }
+    if (node.type === "prompt") {
+      // 无损：保留位置/提示词/尺寸/质量/输出路径，仅清掉运行期状态
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          status: "idle" as const,
+          elapsed: undefined,
+          resultCount: undefined,
+          message: undefined,
+        },
+      };
     }
     return node;
   });

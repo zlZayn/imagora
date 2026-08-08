@@ -82,9 +82,9 @@ export function ImageNode({
           删除
         </ActionButton>
       </NodeActions>
-      {/* 固定宽度 w-32，高度随图片比例自动（不裁切） */}
+      {/* 固定宽度 w-32，高度随图片比例自动（不裁切）；不加入场动画类，避免节点重渲染时闪烁 */}
       <div className="w-32 overflow-hidden rounded">
-        <img src={data.url} alt={data.name} className="img-reveal block h-auto w-full" draggable={false} />
+        <img src={data.url} alt={data.name} className="block h-auto w-full" draggable={false} />
       </div>
       <div className="mt-1 max-w-[128px] truncate text-[11px] text-neutral-600" title={data.name}>
         {data.name}
