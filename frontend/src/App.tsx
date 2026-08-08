@@ -38,10 +38,20 @@ function openNewWindow() {
   window.open(url.pathname + url.search, "_blank");
 }
 
-/** 顶部标题区：SVG 叶子图标 + 标题 + 窗口编号徽章 + 新窗口按钮 */
-function TitleBar({ windowId, onNewWindow }: { windowId: number | null; onNewWindow: () => void }) {
+/** 顶部标题区：logo + 标题 + 窗口徽章 + 模式切换（并入标题行省空间）+ 新窗口按钮 */
+function TitleBar({
+  windowId,
+  onNewWindow,
+  mode,
+  onModeChange,
+}: {
+  windowId: number | null;
+  onNewWindow: () => void;
+  mode: "classic" | "canvas";
+  onModeChange: (m: "classic" | "canvas") => void;
+}) {
   return (
-    <header className="enter-up mb-4 flex items-center gap-3 border-b border-neutral-200/70 pb-3">
+    <header className="enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-200/70 pb-3">
       <svg
         width="30"
         height="30"
@@ -62,7 +72,28 @@ function TitleBar({ windowId, onNewWindow }: { windowId: number | null; onNewWin
           窗口 #{windowId}
         </span>
       )}
-      <span className="text-muted ml-auto text-xs">
+      {/* 模式切换：紧凑分段按钮，并入标题行右侧 */}
+      <div className="flex overflow-hidden rounded-md border border-neutral-200">
+        <button
+          type="button"
+          onClick={() => onModeChange("classic")}
+          className={`px-3 py-0.5 text-xs transition-colors ${
+            mode === "classic" ? "bg-brand/10 font-medium text-brand" : "text-neutral-500 hover:bg-neutral-50"
+          }`}
+        >
+          经典表单
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange("canvas")}
+          className={`px-3 py-0.5 text-xs transition-colors ${
+            mode === "canvas" ? "bg-brand/10 font-medium text-brand" : "text-neutral-500 hover:bg-neutral-50"
+          }`}
+        >
+          无限画布
+        </button>
+      </div>
+      <span className="text-muted ml-auto hidden text-xs xl:block">
         文生图 / 图生图 · 不传参考图即文生图 · 生成约需 1-2 分钟
       </span>
       <button type="button" onClick={onNewWindow} className="btn-ghost px-2 py-1 text-xs">
@@ -248,33 +279,7 @@ export default function App() {
       className="mx-auto max-w-[1500px] px-6 py-4"
       style={{ "--color-brand": accent.brand, "--color-brand-dark": accent.brandDark } as CSSProperties}
     >
-      <TitleBar windowId={windowId} onNewWindow={handleNewWindow} />
-
-      {/* 模式切换：经典表单 / 无限画布 */}
-      <div className="mb-4 flex gap-1 border-b border-neutral-200/70">
-        <button
-          type="button"
-          onClick={() => switchMode("classic")}
-          className={`rounded-t-md px-4 py-1.5 text-sm transition-colors ${
-            mode === "classic"
-              ? "border-b-2 border-brand font-medium text-brand"
-              : "text-muted hover:text-neutral-800"
-          }`}
-        >
-          经典表单
-        </button>
-        <button
-          type="button"
-          onClick={() => switchMode("canvas")}
-          className={`rounded-t-md px-4 py-1.5 text-sm transition-colors ${
-            mode === "canvas"
-              ? "border-b-2 border-brand font-medium text-brand"
-              : "text-muted hover:text-neutral-800"
-          }`}
-        >
-          无限画布
-        </button>
-      </div>
+      <TitleBar windowId={windowId} onNewWindow={handleNewWindow} mode={mode} onModeChange={switchMode} />
 
       {config && !config.hasApiKey && (
         <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">

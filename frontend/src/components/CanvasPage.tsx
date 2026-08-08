@@ -571,43 +571,48 @@ export default function CanvasPage({ config }: CanvasPageProps) {
 
   return (
     <div className="flex h-[calc(100vh-130px)] flex-col gap-2">
-      {/* 工具栏 */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-primary !px-3 !py-1 text-xs" onClick={() => fileInputRef.current?.click()}>
-          上传图片
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            void handleUpload(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        {/* 图片节点「替换」用的隐藏文件选择（单张） */}
-        <input
-          ref={replaceInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            void handleReplaceFile(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        <ToolbarButton onClick={handleCreatePrompt}>新建提示词卡片</ToolbarButton>
-        <ToolbarButton onClick={handleCreateGroup}>新建图片组</ToolbarButton>
-        <ToolbarButton onClick={() => void handleSave()}>保存工作流</ToolbarButton>
-        <ToolbarButton onClick={() => void handleLoad()}>加载工作流</ToolbarButton>
-        <ToolbarButton onClick={() => void handleRunAll()} disabled={runningAll}>
-          {runningAll ? "运行中..." : "全部运行"}
-        </ToolbarButton>
-        <span className="text-muted text-xs">
-          用工具栏按钮新建节点 · 悬浮节点显示连接点 · 图片可连提示词或图片组
-        </span>
+      {/* 工具栏：左侧节点创建，右侧工作流操作（按使用习惯分区） */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-primary !px-3 !py-1 text-xs" onClick={() => fileInputRef.current?.click()}>
+            上传图片
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              void handleUpload(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          {/* 图片节点「替换」用的隐藏文件选择（单张） */}
+          <input
+            ref={replaceInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              void handleReplaceFile(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <ToolbarButton onClick={handleCreatePrompt}>新建提示词卡片</ToolbarButton>
+          <ToolbarButton onClick={handleCreateGroup}>新建图片组</ToolbarButton>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <ToolbarButton onClick={() => void handleSave()}>保存工作流</ToolbarButton>
+          <ToolbarButton onClick={() => void handleLoad()}>加载工作流</ToolbarButton>
+          <ToolbarButton onClick={() => void handleRunAll()} disabled={runningAll}>
+            {runningAll ? "运行中..." : "全部运行"}
+          </ToolbarButton>
+        </div>
+      </div>
+      {/* 操作帮助：一行小字，不占位置 */}
+      <div className="text-[10px] leading-tight text-neutral-400">
+        Shift+拖拽框选多选 · 滚轮缩放 · 空白处拖拽平移 · 连接规则：图片→提示词或图片组、图片组→提示词、提示词→图片（生成结果）
       </div>
 
       {/* 画布 */}
