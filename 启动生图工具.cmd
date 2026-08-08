@@ -12,7 +12,7 @@ REM ---- check if server already running ----
 curl -s -o nul -w "%%{http_code}" "%URL%/api/config?win=1" > "%TMPFILE%" 2>nul
 set /p CODE=<"%TMPFILE%"
 if "%CODE%"=="200" (
-    echo Server already running - it will NOT be stopped on Quit.
+    echo Service already running.
     del "%PIDFILE%" >nul 2>&1
     goto ready
 )
@@ -39,25 +39,23 @@ set /p CODE=<"%TMPFILE%"
 if not "!CODE!"=="200" goto wait
 
 :ready
-echo Server ready.
 call :open_window
 
-REM ---- rich interactive menu (N new window / Q quit, stops script-started server) ----
+REM ---- rich interactive menu (N new window / Q quit) ----
 uv run python -m main menu --port %PORT%
 exit /b 0
 
 :open_window
 for /f "tokens=2 delims=:,}" %%i in ('curl -s "%URL%/api/window/next"') do set "WIN=%%i"
 if not defined WIN (
-    echo [ERROR] Cannot get a window number from %URL%.
+    echo [ERROR] Cannot get a window number.
     pause
     exit /b 1
 )
 start "" "%URL%/?win=!WIN!"
-echo Opened window #!WIN!
 exit /b 0
 
 :fail
-echo [ERROR] Server did not become ready in 30 seconds. Check %SERVER_LOG%
+echo [ERROR] Server did not become ready in 30s. Check %SERVER_LOG%
 pause
 exit /b 1

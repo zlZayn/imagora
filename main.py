@@ -119,14 +119,13 @@ def handle_menu_command(args):
     while True:
         console.print(
             Panel(
-                f"[bold cyan]{url}[/bold cyan]\n\n"
-                "[green]N[/green] 打开新窗口（自动编号）\n"
-                "[red]Q[/red] 退出（停止服务）",
+                "[green]N[/green] 打开新窗口\n"
+                "[red]Q[/red] 退出",
                 title="Image Tool",
                 style="green",
             )
         )
-        choice = Prompt.ask("选择", choices=["N", "Q"], default="N")
+        choice = Prompt.ask("选择操作", choices=["N", "Q"], default="N")
         if choice == "Q":
             break
         try:
