@@ -69,3 +69,63 @@ export interface GenerateParams {
   /** 窗口编号（多开页面溯源到日志），无窗口传 0 */
   win: number;
 }
+
+/** 画布图片注册表条目（/api/canvas/* 返回；registry entry + absPath 供生成引用） */
+export interface CanvasImageEntry {
+  id: string;
+  relPath: string;
+  absPath: string;
+  name: string;
+  size: number;
+  ext: string;
+  createdAt: string;
+}
+
+/** 画布图片节点数据（缩略图 + 引用计数 + 删除） */
+export interface CanvasImageNodeData {
+  registryId: string;
+  name: string;
+  url: string;
+  size: number;
+  ext: string;
+  /** 被多少个提示词节点引用（由入边数推导） */
+  refCount: number;
+  /** 工作流加载时文件缺失（红框提示） */
+  missing?: boolean;
+  absPath: string;
+}
+
+/** 画布提示词节点数据（独立任务：idle/running/done/failed） */
+export interface CanvasPromptNodeData {
+  prompt: string;
+  size: string;
+  quality: string;
+  outputDir: string;
+  status: "idle" | "running" | "done" | "failed";
+  /** 运行已等待秒数（running 时实时刷新） */
+  elapsed?: number;
+  /** 成功生成的张数（done 时显示） */
+  resultCount?: number;
+  /** 失败原因（failed 时显示） */
+  message?: string;
+}
+
+/** 画布节点联合类型：图片节点 / 提示词节点 */
+export type WorkflowNode =
+  | { id: string; type: "image"; position: { x: number; y: number }; data: CanvasImageNodeData }
+  | { id: string; type: "prompt"; position: { x: number; y: number }; data: CanvasPromptNodeData };
+
+/** 画布边：source 图片节点 -> target 提示词节点（类型硬约束，仅此方向合法） */
+export interface WorkflowEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+
+/** 工作流文件（version 1，保存/加载的 JSON 结构） */
+export interface WorkflowFile {
+  version: 1;
+  name: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}

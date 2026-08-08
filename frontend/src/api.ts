@@ -1,4 +1,12 @@
-import type { AppConfig, GenerateParams, GenerateResponse, RefItem } from "./types";
+import type {
+  AppConfig,
+  CanvasImageEntry,
+  GenerateParams,
+  GenerateResponse,
+  RefItem,
+  WorkflowEdge,
+  WorkflowNode,
+} from "./types";
 
 /** 通用 JSON 请求，非 2xx 抛错 */
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -80,4 +88,64 @@ export async function generateImage(params: GenerateParams): Promise<GenerateRes
   formData.append("output_dir", params.outputDir);
   formData.append("win", String(params.win)); // 与后端 Form 参数名一致，日志按窗口溯源
   return requestJson<GenerateResponse>("/api/generate", { method: "POST", body: formData });
+}
+
+/* ---------------- 画布工作流（无限画布：图片节点 + 提示词节点） ---------------- */
+
+/** 画布：上传本地图片（multipart），服务端复制进 output/.canvas/ 并登记 registry */
+export async function canvasUpload(files: File[]): Promise<{ images: CanvasImageEntry[] }> {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("images", file);
+  }
+  return requestJson<{ images: CanvasImageEntry[] }>("/api/canvas/upload", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+/** 画布：从输出目录导入图片（目录递归 / 单文件），复制进 .canvas 并登记 */
+export async function canvasImport(
+  paths: string[],
+): Promise<{ imported: CanvasImageEntry[]; skipped: { path: string; reason: string }[] }> {
+  return requestJson("/api/canvas/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths }),
+  });
+}
+
+/** 画布：图片全量（含 absPath，生成时 ref_paths 引用） */
+export async function canvasListImages(): Promise<{ images: CanvasImageEntry[] }> {
+  return requestJson<{ images: CanvasImageEntry[] }>("/api/canvas/images");
+}
+
+/** 画布：删除图片（注册表移除 + 尽力删文件） */
+export async function canvasDeleteImage(id: string): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>("/api/canvas/image/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+}
+
+/** 工作流：保存为 JSON 文件（默认 output/workflows/，可指定路径） */
+export async function workflowSave(params: {
+  path: string;
+  name: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>("/api/canvas/workflow/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
+/** 工作流：加载 JSON 文件（服务端解析相对路径 + 文件存在性校验，缺失进 missing） */
+export async function workflowLoad(
+  path: string,
+): Promise<{ name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[]; missing: string[] }> {
+  return requestJson("/api/canvas/workflow/load?path=" + encodeURIComponent(path));
 }
