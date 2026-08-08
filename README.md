@@ -9,12 +9,12 @@
 - 多开页面并行生图：一个服务开多个窗口，自动编号互不冲突（见「多开页面」）
 - 生成结果实时显示：每张图标注**分辨率、格式、文件大小与费用**，底部汇总**本次总费用与用时**
 - 输出目录自由选择：手输路径或系统文件夹选择器，生成后一键"打开文件夹"定位
-- 批量生图：按产品配置一次生成多张详情页图（预览模式不花钱）
+- 批量生图：按产品配置一次生成多张详情页图（任务预览表格 + 彩色进度条，预览模式不花钱）
 - 命令行单张生图：适合脚本化调用
 
 ## 架构概览
 
-- 后端：FastAPI（`server.py`）+ 核心逻辑 `core/`（配置 / 生图 / 批量 / 日志）
+- 后端：FastAPI（`server.py`）+ 核心逻辑 `core/`（配置 / 生图 / 批量 / 日志 / 终端输出）
 - 前端：Vite + React + TypeScript + Tailwind（`frontend/`），构建产物由 FastAPI 托管，单端口运行
 - 依赖管理：uv（Python）、npm（前端）
 
@@ -24,7 +24,7 @@
 tools/
 ├── main.py            # 入口：ui / batch / gen 子命令
 ├── server.py          # FastAPI 后端：/api/* 路由 + 托管前端产物
-├── core/              # 核心逻辑：config(配置) / api(生图) / batch(批量) / logging(日志)
+├── core/              # 核心逻辑：config(配置) / api(生图) / batch(批量) / logging(日志) / console(终端输出)
 ├── frontend/          # React 前端（npm run dev 开发 / npm run build 产物）
 ├── tests/             # 单元测试（纯函数零成本）
 ├── logs/              # 生成日志（git 忽略）：每次生图记录提示词/结果/费用/耗时

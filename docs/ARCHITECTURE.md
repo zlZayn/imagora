@@ -27,14 +27,14 @@ A站生图 API (2api.aiwanwu.cc)
 tools/
 ├── main.py        # CLI 入口 ──┐
 ├── server.py      # FastAPI ───┼─→ core/api.py ─→ core/config.py（唯一配置源）
-├── core/batch.py  # 批量编排 ──┘       │
+├── core/batch.py  # 批量编排 ──┘       │         ├→ core/console.py（rich 终端输出）
 │                                     ├→ core/logging.py（统一生成日志）
 │                                     └→ A站 API（requests）
 ├── frontend/      # React：api.ts ─→ server.py 的 /api/*
 └── tests/         # 纯函数单元测试（不碰网络）
 ```
 
-依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 只依赖 `core/config.py`；`server.py`/`core/batch.py`/`main.py` 共用 `core/logging.py` 记录生成日志；**没有反向/循环依赖**。
+依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 依赖 `core/config.py`（唯一配置源）与 `core/console.py`；`core/console.py` 只依赖 rich（无业务依赖，可被任意模块引用，CLI 统一输出入口：彩色成功/失败/信息 + Progress 进度条 + Panel 分组）；`server.py`/`core/batch.py`/`main.py` 共用 `core/logging.py` 记录生成日志；**没有反向/循环依赖**。
 
 ## 三条调用链
 
@@ -53,6 +53,7 @@ App.tsx:handleGenerate → api.ts:generateImage（ref_paths 引用已落盘参�
 main.py:handle_batch_command → core.batch:run_batch_generation
   → load_batch_config（项目目录下 batch_prompts.json）
   → filter_jobs_by_module / resolve_base_image_paths（相对配置目录）
+  → rich 预览表格（任务/底图/成本）→ Progress 进度条逐张生成 → Panel 总结
   → 逐张 generate_image → 失败收集 → 返回 failed 列表（退出码 1）
 ```
 
