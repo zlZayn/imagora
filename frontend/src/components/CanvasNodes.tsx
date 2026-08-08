@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { type ReactNode } from "react";
+import { Handle, Position, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
 import type { CanvasGroupNodeData, CanvasImageNodeData, CanvasPromptNodeData } from "../types";
 import FolderPicker from "./FolderPicker";
 import Select from "./Select";
@@ -43,8 +43,8 @@ interface ImageNodeExtraProps {
   onDelete: (nodeId: string) => void;
   /** 放大预览 */
   onZoom: (nodeId: string) => void;
-  /** 以该图片为参考新建提示词卡片并自动连线 */
-  onCreatePromptFromImage: (nodeId: string) => void;
+  /** 双击：在鼠标位置新建提示词卡片并自动连线该图片（画布坐标） */
+  onDoubleClickCreatePrompt: (nodeId: string, position: { x: number; y: number }) => void;
 }
 
 export function ImageNode({
@@ -54,9 +54,9 @@ export function ImageNode({
   onReplace,
   onDelete,
   onZoom,
-  onCreatePromptFromImage,
+  onDoubleClickCreatePrompt,
 }: NodeProps<ImageFlowNode> & ImageNodeExtraProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { screenToFlowPosition } = useReactFlow();
   return (
     <div
       className={`panel-card group relative !p-2 ${data.missing ? "!border-red-400" : ""} ${
@@ -64,7 +64,8 @@ export function ImageNode({
       }`}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        setMenuOpen((v) => !v);
+        // 双击：鼠标位置转为画布坐标，直接新建提示词卡片并连线（不弹菜单）
+        onDoubleClickCreatePrompt(id, screenToFlowPosition({ x: e.clientX, y: e.clientY }));
       }}
     >
       {/* target 锚点：接收提示词节点的产出连线（结果图回流） */}
@@ -94,31 +95,6 @@ export function ImageNode({
       <div className="text-[10px] text-neutral-400">
         {data.refCount > 0 ? `引用 ${data.refCount} 处` : "未引用"}
       </div>
-      {/* 双击菜单：放大 / 生成提示词卡片 */}
-      {menuOpen && (
-        <div className="absolute left-0 top-full z-40 mt-1 w-40 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
-          <button
-            type="button"
-            className="nodrag flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-700 hover:bg-brand/5 hover:text-brand"
-            onClick={() => {
-              onZoom(id);
-              setMenuOpen(false);
-            }}
-          >
-            放大预览
-          </button>
-          <button
-            type="button"
-            className="nodrag flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-700 hover:bg-brand/5 hover:text-brand"
-            onClick={() => {
-              onCreatePromptFromImage(id);
-              setMenuOpen(false);
-            }}
-          >
-            生成提示词卡片
-          </button>
-        </div>
-      )}
     </div>
   );
 }

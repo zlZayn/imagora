@@ -345,9 +345,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     }
   }, []);
 
-  /** 以某图片为参考：新建提示词卡片并自动连线（图片 -> 提示词） */
-  const handleCreatePromptFromImage = useCallback(
-    (imageNodeId: string) => {
+  /** 双击图片：在鼠标位置新建提示词卡片并自动连线该图片（图片 -> 提示词） */
+  const handleDoubleClickCreatePrompt = useCallback(
+    (imageNodeId: string, position: { x: number; y: number }) => {
       const imageNode = nodesRef.current.find((n) => n.id === imageNodeId);
       if (!imageNode || imageNode.type !== "image") return;
       const promptId = `prompt-${Date.now()}`;
@@ -356,7 +356,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         {
           id: promptId,
           type: "prompt" as const,
-          position: { x: imageNode.position.x + 240, y: imageNode.position.y + 20 },
+          position,
           data: {
             prompt: "",
             size: config.sizes[0]?.value ?? "1024x1024",
@@ -367,7 +367,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         },
       ]);
       setEdges((eds) => [...eds, { id: `edge-${Date.now()}`, source: imageNodeId, target: promptId }]);
-      pushLog("已创建提示词卡片并连线该图片");
+      pushLog("已在鼠标位置创建提示词卡片并连线该图片");
     },
     [config, setNodes, setEdges, pushLog],
   );
@@ -575,7 +575,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           onReplace={handleReplaceImage}
           onDelete={handleDeleteNode}
           onZoom={handleZoom}
-          onCreatePromptFromImage={handleCreatePromptFromImage}
+          onDoubleClickCreatePrompt={handleDoubleClickCreatePrompt}
         />
       ),
       group: (props: object) => (
@@ -601,7 +601,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       handleDeleteNode,
       handleReplaceImage,
       handleZoom,
-      handleCreatePromptFromImage,
+      handleDoubleClickCreatePrompt,
       sizeOptions,
       qualityOptions,
     ],
@@ -654,7 +654,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           {runningAll ? "运行中..." : "全部运行"}
         </button>
         <span className="text-muted text-xs">
-          双击空白新建提示词节点 · 双击图片可放大/生成提示词卡片 · 图片可连提示词或图片组
+          双击空白新建提示词节点 · 双击图片在鼠标处建提示词卡片 · 图片可连提示词或图片组
         </span>
       </div>
 
