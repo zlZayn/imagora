@@ -27,14 +27,14 @@ A站生图 API (2api.aiwanwu.cc)
 tools/
 ├── main.py        # CLI 入口 ──┐
 ├── server.py      # FastAPI ───┼─→ core/api.py ─→ core/config.py（唯一配置源）
-├── core/batch.py  # 批量编排 ──┘       │         ├→ core/console.py（rich 终端输出）
+├── core/canvas.py # 画布注册表 ─┘       │         ├→ core/console.py（rich 终端输出）
 │                                     ├→ core/logging.py（统一生成日志）
 │                                     └→ A站 API（requests）
-├── frontend/      # React：api.ts ─→ server.py 的 /api/*
+├── frontend/      # React：api.ts ─→ server.py 的 /api/*（含画布页 CanvasPage）
 └── tests/         # 纯函数单元测试（不碰网络）
 ```
 
-依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 依赖 `core/config.py`（唯一配置源）与 `core/console.py`；`core/console.py` 只依赖 rich（无业务依赖，可被任意模块引用，CLI 统一输出入口：彩色成功/失败/信息 + Progress 进度条 + Panel 分组）；`server.py`/`core/batch.py`/`main.py` 共用 `core/logging.py` 记录生成日志；**没有反向/循环依赖**。
+依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 依赖 `core/config.py`（唯一配置源）与 `core/console.py`；`core/console.py` 只依赖 rich（无业务依赖，可被任意模块引用，CLI 统一输出入口：彩色成功/失败/信息 + Progress 进度条 + Panel 分组）；`core/canvas.py` 依赖 `core/config.py`（画布图片注册表与工作流存取，纯逻辑无 HTTP），`server.py` 路由薄层调用它；`server.py`/`core/batch.py`/`main.py` 共用 `core/logging.py` 记录生成日志；**没有反向/循环依赖**。
 
 ## 三条调用链
 
@@ -76,8 +76,14 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | POST | `/api/output-dir` | { path } | { ok }（记住输出路径：用户一改前端即上报，重启后 config 默认返回） |
 | POST | `/api/generate` | multipart：prompt、size、quality、output_dir、win，图片二选一：`images`(多张同名，未上传的本地兜底) 或 `ref_paths`(JSON 字符串数组，引用已上传参考图，优先) | { results[status,message,url?,size,cost,fileSize?,ext?], messages[], totalCost } |
 | GET | `/api/image` | ?path= | 图片文件（FileResponse） |
+| POST | `/api/canvas/upload` | multipart：images(多张) | { images[ id, relPath, absPath, name, size, ext, createdAt ] }（复制进 `output/.canvas/` 并登记，同内容去重） |
+| POST | `/api/canvas/import` | { paths: [目录或文件绝对路径] } | { imported[entry], skipped[{path,reason}] }（目录递归收集图片，路径必须落在 output 根内） |
+| GET | `/api/canvas/images` | 无 | { images[entry+absPath] }（注册表全量） |
+| POST | `/api/canvas/image/delete` | { id } | { ok }（注册表移除 + 尽力删文件） |
+| POST | `/api/canvas/workflow/save` | { path, name, nodes, edges } | { ok }（写 version 1 JSON 文件，用户指定路径） |
+| GET | `/api/canvas/workflow/load` | ?path= | { name, nodes, edges, missing[registryId] }（相对路径解析 + 文件存在性校验，缺失进 missing） |
 
-`/api/upload-ref` 返回的 `url` 复用 `/api/image`，前端可直接 `<img>` 加载；`/api/generate` 的 `ref_paths` 仅接受 `output/.refs/` 目录内的路径（`realpath` 校验，防路径穿越），与 `images` 互斥、`ref_paths` 优先——图生图不二次上传大图。
+`/api/upload-ref` 返回的 `url` 复用 `/api/image`，前端可直接 `<img>` 加载；`/api/generate` 的 `ref_paths` 接受 `output/.refs/` 与 `output/.canvas/` 两个目录内的路径（`safe_ref_path_allowlist` 逐根 commonpath 校验，跨盘 root 单独捕获不误伤，防路径穿越），与 `images` 互斥、`ref_paths` 优先——图生图不二次上传大图。
 
 前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerateResponse` / `ResultItem`），与后端返回结构一一对应。
 
@@ -117,6 +123,8 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | `tests/test_core_config.py` | 3 | `get_api_key`（环境变量/缺失报错）/ RATIOS 表结构 |
 | `tests/test_server_helpers.py` | 13 | `size_cost` / `display_path` / `get_config` 窗口分配（递增/沿用/非法回退）/ `next_window` 共用计数器 / `generate` 为同步函数（不阻塞事件循环）/ `safe_ref_path`（REF_DIR 内放行、穿越拒绝）/ `upload-ref` 元信息与落盘 / `delete-ref`（删除/容忍缺失/非法路径） |
 | `tests/test_core_logging.py` | 7 | `log_generation` 写入 / 字段 / win 可选 / 并发串行写 / 路径相对化 |
+| `tests/test_core_canvas.py` | 14 | 注册表读写/原子写/损坏兜底 / register 内容去重（同内容一文件）/ 不同内容 / 不存在 / import 目录递归 + 单文件 + 越界拒绝 + 缺失跳过 + 非图片跳过 / delete 移除 + 容忍文件缺失 / list 含 absPath / allowlist 双根放行 + 穿越拒绝 |
+| `tests/test_server_canvas.py` | 13 | canvas upload 登记 / import 目录+单文件+越界 skipped / images 列表 / image delete + 容忍缺失 / workflow save 写 version1 + 不可序列化报错 / load 往返 + missing 收集 + 版本错误 + 文件缺失 / generate ref_paths 放行 canvas（monkeypatch 挡真实 API） |
 
 未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API），编排与请求层靠 dry_run 与人工验证。
 
@@ -141,3 +149,4 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **超时**：生成请求 300 秒（图生图 + 2K 可能 1-2 分钟）
 - **生成不阻塞事件循环**：`/api/generate` 用同步 `def`（FastAPI 自动放线程池），生成期间其他请求（开新窗口/加载页面/查看图片）照常响应；若写成 `async def` 且内部同步调 API，会卡死整个 uvicorn 事件循环——生成 1-2 分钟里所有请求全部挂起
 - **端口**：默认 7860，`main.py ui --port` 可改
+- **画布工作流（无限画布）**：顶部「经典表单 / 无限画布」tab 切换（`?mode=canvas` 直达），React Flow v12（`@xyflow/react`）受控模式。**独立任务模型**：图片节点 + 提示词节点，连线=参考图输入（非执行顺序），提示词节点之间无依赖，「全部运行」= 并发 2 队列并行，无全局启动节点——每个提示词节点都是自己的启动节点。**图片三源归一**：本地上传 / 输出目录导入 / 生成结果回流，全部复制进 `output/.canvas/`（永不自动清理，区别于 `.refs` 24h 清理）并登记 `registry.json`（`{id, relPath, name, size, ext, createdAt}`，id=内容 sha1 前缀，同内容去重——画布上同一文件只一个节点，复用走多出边）。**连线硬约束**：图片节点仅 source 锚点、提示词节点仅 target 锚点，`isValidConnection` 拒绝其余连接。**可视化核验**：悬停/选中提示词节点高亮入边（`.edge-highlight`）+ 关联图片描边（`.node-related`）+ 引用计数徽标，运行日志明示参考图张数。**运行快照**：点运行时 `snapshotIncomingAbsPaths` 锁定入边集合（纯函数），运行中改画布不打断已提交任务。**删除分层**：删节点仅断连线不删文件；删文件是图片节点显式操作（前端校验画布内无引用）。**工作流文件**：version 1 JSON（nodes[image 存 registryId+position / prompt 存 data+position] + edges），保存/加载走 `/api/canvas/workflow/*`，后端相对路径解析 + 文件存在性校验 + missing 列表（前端标红），默认 `output/workflows/`；`core/canvas.py` 纯逻辑（注册表线程锁 + 原子写）供 server 薄层调用。**经典模式**保持原行为不变（回归测试覆盖）
