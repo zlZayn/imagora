@@ -1,73 +1,57 @@
 /**
  * 窗口状态继承：仅「＋ 新窗口」按钮触发。
- * 通过 sessionStorage 传递（window.open 的新标签页会拷贝一份），
+ * 参考图本体已在上传区落盘服务端（output/.refs/），此处只把元信息
+ * （path/name/size/ext）写入 sessionStorage——几百字节，永不会触发 5MB 配额，
  * 新窗口挂载时读取并清除；命令行 / 直接输 URL 打开无该键，保持全新。
  */
 
 const INHERIT_KEY = "aig-window-inherit";
 
-export interface InheritedFileData {
+/** 跨窗口传递的参考图元信息（不含图片数据） */
+export interface InheritedRef {
+  path: string;
   name: string;
-  type: string;
   size: number;
-  dataUrl: string;
+  ext: string;
 }
 
 export interface InheritedState {
-  files: InheritedFileData[];
+  refs: InheritedRef[];
   size: string;
   quality: string;
   outputDir: string;
+  /** 需要在新窗口展示的提示（如部分参考图未上传成功） */
+  notice?: string;
 }
 
 export interface SaveResult {
   /** 状态已保存（至少参数成功） */
   ok: boolean;
-  /** 图片是否一并保存（图片过大时可能被丢弃） */
+  /** 参考图是否一并保存（未上传成功的图会被剔除） */
   filesIncluded: boolean;
 }
 
-/** File → dataURL，跨窗口传递 */
-function fileToDataUrl(file: File): Promise<InheritedFileData> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () =>
-      resolve({ name: file.name, type: file.type, size: file.size, dataUrl: String(reader.result) });
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-/** dataURL → File，还原参考图 */
-export function dataUrlToFile(data: InheritedFileData): File {
-  const [meta, b64] = data.dataUrl.split(",");
-  const mime = meta.match(/data:(.*?);/)?.[1] ?? data.type;
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new File([bytes], data.name, { type: mime });
-}
-
-/** 保存当前窗口状态到 sessionStorage，供新窗口继承（不含提示词） */
-export async function saveInheritedState(
-  files: File[],
+/** 保存当前窗口状态到 sessionStorage，供新窗口继承（不含提示词、不含图片数据） */
+export function saveInheritedState(
+  refs: { path: string; name: string; size: number; ext: string }[],
   size: string,
   quality: string,
   outputDir: string,
-): Promise<SaveResult> {
-  const base = { files: [], size, quality, outputDir };
+  notice?: string,
+): SaveResult {
+  const state: InheritedState = {
+    refs,
+    size,
+    quality,
+    outputDir,
+    ...(notice ? { notice } : {}),
+  };
   try {
-    const full: InheritedState = { ...base, files: await Promise.all(files.map(fileToDataUrl)) };
-    sessionStorage.setItem(INHERIT_KEY, JSON.stringify(full));
-    return { ok: true, filesIncluded: true };
+    sessionStorage.setItem(INHERIT_KEY, JSON.stringify(state));
+    return { ok: true, filesIncluded: refs.length > 0 };
   } catch {
-    // 图片超 sessionStorage 配额：回退为仅继承参数
-    try {
-      sessionStorage.setItem(INHERIT_KEY, JSON.stringify(base));
-      return { ok: true, filesIncluded: false };
-    } catch {
-      return { ok: false, filesIncluded: false };
-    }
+    // sessionStorage 整体不可用（极少见）：放弃继承
+    return { ok: false, filesIncluded: false };
   }
 }
 

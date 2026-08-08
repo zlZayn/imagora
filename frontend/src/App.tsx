@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { generateImage, getConfig, openFolder } from "./api";
 import { accentForWindow } from "./accent";
-import type { AppConfig, ResultItem } from "./types";
-import { clearInheritedState, dataUrlToFile, readInheritedState, saveInheritedState } from "./windowInherit";
+import type { AppConfig, RefItem, ResultItem } from "./types";
+import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
 import UploadZone from "./components/UploadZone";
 import FolderPicker from "./components/FolderPicker";
 import Gallery from "./components/Gallery";
@@ -74,7 +74,7 @@ export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [windowId, setWindowId] = useState<number | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [refs, setRefs] = useState<RefItem[]>([]);
   const [size, setSize] = useState("");
   const [quality, setQuality] = useState("low");
   const [outputDir, setOutputDir] = useState("");
@@ -113,9 +113,23 @@ export default function App() {
             setQuality(inherited.quality);
           }
           if (inherited.outputDir) setOutputDir(inherited.outputDir);
-          if (inherited.files.length) {
-            setFiles(inherited.files.map(dataUrlToFile));
+          // 参考图本体已在服务端，只还原元信息，直接渲染 URL
+          if (inherited.refs.length) {
+            setRefs(
+              inherited.refs.map((r) => ({
+                id: r.path,
+                path: r.path,
+                url: `/api/image?path=${encodeURIComponent(r.path)}`,
+                name: r.name,
+                size: r.size,
+                ext: r.ext,
+                mime: "",
+                synced: true,
+              })),
+            );
           }
+          // 继承提示（如部分图片未上传成功）显示在新窗口的日志区
+          if (inherited.notice) setLogs([inherited.notice]);
         }
       })
       .catch((err) => setLogs([`加载配置失败: ${String(err)}`]));
@@ -144,7 +158,18 @@ export default function App() {
     // 实时计时：每秒刷新已等待秒数
     timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
     try {
-      const res = await generateImage({ prompt, files, size, quality, outputDir, win: windowId ?? 0 });
+      // 已上传的走 ref_paths 复用服务端文件；未上传成功的本地兜底走 multipart
+      const syncedRefs = refs.filter((r) => r.synced);
+      const pendingFiles = refs.filter((r) => !r.synced).flatMap((r) => (r.file ? [r.file] : []));
+      const res = await generateImage({
+        prompt,
+        refPaths: syncedRefs.map((r) => r.path),
+        files: pendingFiles,
+        size,
+        quality,
+        outputDir,
+        win: windowId ?? 0,
+      });
       setResults(res.results);
       setLogs([...res.messages, `总用时 ${((Date.now() - startedAt) / 1000).toFixed(1)} 秒`]);
     } catch (err) {
@@ -167,13 +192,26 @@ export default function App() {
 
   const accent = accentForWindow(windowId);
 
-  /** 新窗口：把当前图片/参数/输出路径写入 sessionStorage 后再开，提示词不保留 */
-  const handleNewWindow = async () => {
-    const saved = await saveInheritedState(files, size, quality, outputDir);
+  /** 新窗口：参考图已存服务端，只把元信息 + 参数写入 sessionStorage 后开窗（提示词不保留）。
+   *  继承失败的提示随状态带到新窗口，显示在新窗口的日志区（而非原窗口）。 */
+  const handleNewWindow = () => {
+    const syncedRefs = refs.filter((r) => r.synced);
+    let notice: string | undefined;
+    if (refs.length > 0 && syncedRefs.length === 0) {
+      notice = "提示: 参考图上传失败，新窗口未继承图片，仅继承尺寸/质量/输出路径";
+    } else if (syncedRefs.length < refs.length) {
+      notice = `提示: ${refs.length - syncedRefs.length} 张参考图上传失败，未继承`;
+    }
+    const saved = saveInheritedState(
+      syncedRefs.map(({ path, name, size, ext }) => ({ path, name, size, ext })),
+      size,
+      quality,
+      outputDir,
+      notice,
+    );
     if (!saved.ok) {
-      setLogs([`提示: 无法保存当前状态到新窗口（存储空间不足），新窗口将使用默认设置`]);
-    } else if (!saved.filesIncluded && files.length > 0) {
-      setLogs([`提示: 图片体积过大，新窗口未继承图片，仅继承尺寸/质量/输出路径`]);
+      // sessionStorage 整体不可用（极少见）：新窗口从默认设置开始
+      setLogs(["提示: 无法保存当前状态到新窗口，新窗口将使用默认设置"]);
     }
     openNewWindow();
   };
@@ -206,7 +244,7 @@ export default function App() {
               placeholder="英文优先，减少歧义。例如：a red apple on white background, product photo"
               className="field-control resize-y"
             />
-            <UploadZone files={files} onChange={setFiles} />
+            <UploadZone refs={refs} onChange={setRefs} />
           </div>
 
           <div className="panel-card enter-up enter-delay-1 relative z-30">
