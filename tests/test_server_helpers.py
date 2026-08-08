@@ -138,6 +138,17 @@ def test_get_config_remembers_last_output_dir(monkeypatch, tmp_path):
     assert cfg["defaultOutputDir"] == last_dir
 
 
+def test_remember_output_dir_saves(monkeypatch, tmp_path):
+    """POST /api/output-dir -> 调用 save_last_output_dir 落盘记录"""
+    from server import remember_output_dir
+
+    saved = {}
+    monkeypatch.setattr("server.save_last_output_dir", lambda p: saved.update(path=p))
+    target = str(tmp_path / "my_output")
+    assert remember_output_dir(target)["ok"] is True
+    assert saved["path"] == target
+
+
 def test_next_window_increments_and_shares_counter():
     """连续调用 -> 编号递增；与 config 无参调用共用同一计数器（脚本开窗不撞号）"""
     from server import get_config, next_window

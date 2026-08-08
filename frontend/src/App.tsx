@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { generateImage, getConfig, openFolder } from "./api";
+import { generateImage, getConfig, openFolder, rememberOutputDir } from "./api";
 import { accentForWindow } from "./accent";
 import type { AppConfig, RefItem, ResultItem } from "./types";
 import { errMessage } from "./format";
@@ -82,6 +82,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<number | null>(null);
+  /** 输出路径防抖上报定时器（用户改路径 300ms 后记住到服务端） */
+  const outputDirTimerRef = useRef<number | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [results, setResults] = useState<ResultItem[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
@@ -191,6 +193,19 @@ export default function App() {
     }
   };
 
+  /** 输出路径变更：本地更新 + 防抖上报服务端记住（挂载/继承的默认值不走这里，避免覆盖记录） */
+  const handleOutputDirChange = (path: string) => {
+    setOutputDir(path);
+    if (outputDirTimerRef.current) {
+      window.clearTimeout(outputDirTimerRef.current);
+    }
+    outputDirTimerRef.current = window.setTimeout(() => {
+      rememberOutputDir(path).catch(() => {
+        // 尽力而为：记录失败不影响界面
+      });
+    }, 300);
+  };
+
   const accent = accentForWindow(windowId);
 
   /** 新窗口：参考图已存服务端，只把元信息 + 参数写入 sessionStorage 后开窗（提示词不保留）。
@@ -281,7 +296,7 @@ export default function App() {
             <label className="field-label" htmlFor="output-dir">
               输出路径
             </label>
-            <FolderPicker value={outputDir} onChange={setOutputDir} />
+            <FolderPicker value={outputDir} onChange={handleOutputDirChange} />
             <div className="flex gap-2">
               <button
                 type="button"

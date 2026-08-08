@@ -197,6 +197,13 @@ def delete_ref(path: str = Body(..., embed=True)):
     return {"ok": True}
 
 
+@app.post("/api/output-dir")
+def remember_output_dir(path: str = Body(..., embed=True)):
+    """记住输出路径：用户一改路径前端即上报，服务重启后 /api/config 默认返回它"""
+    save_last_output_dir(str(path))
+    return {"ok": True}
+
+
 @app.post("/api/select-folder")
 def select_folder(body: dict):
     """弹出系统文件夹选择器；取消则返回原路径

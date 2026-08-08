@@ -54,6 +54,15 @@ export async function deleteRef(path: string): Promise<void> {
   });
 }
 
+/** 记住输出路径：用户一改路径即上报，服务重启后默认沿用（失败不影响界面） */
+export async function rememberOutputDir(path: string): Promise<void> {
+  await requestJson("/api/output-dir", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+}
+
 /** 文生图 / 图生图（refPaths 优先复用已上传参考图，files 为未上传兜底） */
 export async function generateImage(params: GenerateParams): Promise<GenerateResponse> {
   const formData = new FormData();
