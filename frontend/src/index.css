@@ -149,6 +149,18 @@ body {
 }
 
 /* ============ 画布工作流：连线/节点高亮核验 ============ */
+/* React Flow 会给 .react-flow__node-* 自定义类型套用内置默认节点样式
+   （固定 width:150px + 深色边框），导致容器比内部卡片小、黑框错位割裂。
+   我们的节点自带尺寸与样式，覆盖掉库默认。 */
+.react-flow__node-image,
+.react-flow__node-group,
+.react-flow__node-prompt {
+  width: auto !important;
+  min-width: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
 /* 悬停/选中提示词节点时：入边加粗变色 + 关联图片节点描边（一眼核对参考图集合） */
 .react-flow__edge.edge-highlight .react-flow__edge-path {
   stroke: var(--color-brand) !important;
