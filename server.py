@@ -239,8 +239,8 @@ def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
         try:
             ref_list = json.loads(ref_paths)
         except json.JSONDecodeError:
-            results.append({"status": "error", "message": "ref_paths 参数非法"})
-            messages.append("失败 · ref_paths 参数非法")
+            results.append({"status": "error", "message": "参考图参数非法"})
+            messages.append("失败 · 参考图参数非法")
             messages.append("本次成功 0 张 · 费用 0.00 元")
             log_generation(
                 prompt=prompt, mode="img2img", refs=0, size=size, quality=quality,

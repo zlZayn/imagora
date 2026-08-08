@@ -70,7 +70,7 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
         os.makedirs(module_dir, exist_ok=True)
         output_path = os.path.join(module_dir, f"{job['id']}_{job['name']}.png")
 
-        print(f"\n生成中 [{job['id']}] {job['name']} ...", flush=True)
+        print(f"\n生成中 [{job['id']}] {job['name']} …", flush=True)
         job_started_at = time.time()
         try:
             generate_image(

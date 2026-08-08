@@ -107,7 +107,7 @@ def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
         response = requests.post(url, headers=headers, json=payload, timeout=300)
 
     if response.status_code != 200:
-        raise RuntimeError(f"请求失败 [{response.status_code}]: {response.text[:500]}")
+        raise RuntimeError(f"接口请求失败（HTTP {response.status_code}）：{response.text[:200]}")
 
     item = response.json()["data"][0]
     if "b64_json" in item:
@@ -119,6 +119,6 @@ def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
         with open(output_path, "wb") as f:
             f.write(raw)
     else:
-        raise RuntimeError(f"响应里没有图片数据: {str(item)[:300]}")
+        raise RuntimeError("接口响应没有图片数据")
 
-    print(f"已保存: {output_path} ({len(raw)} bytes)")
+    print(f"已保存: {output_path}")
