@@ -65,6 +65,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const [logs, setLogs] = useState<string[]>([]);
   /** 高亮核验：悬停/选中的提示词节点（高亮其入边与关联图片） */
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  /** 当前选中的节点数（Shift 框选多选后显示批量删除） */
+  const [selectedCount, setSelectedCount] = useState(0);
+  const selectedIdsRef = useRef<Set<string>>(new Set());
   const [runningAll, setRunningAll] = useState(false);
   const runningRef = useRef<Set<string>>(new Set());
   /** 放大预览：当前预览的图片绝对路径（null 关闭）与文件名 */
@@ -192,8 +195,10 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   );
   const onNodeMouseLeave: NodeMouseHandler = useCallback(() => setHighlightId(null), []);
   const onSelectionChange = useCallback(({ nodes: selected }: { nodes: Node[] }) => {
+    selectedIdsRef.current = new Set(selected.map((n) => n.id));
+    setSelectedCount(selected.length);
     const first = selected[0];
-    setHighlightId(first && first.type === "prompt" ? first.id : null);
+    setHighlightId(selected.length === 1 && first.type === "prompt" ? first.id : null);
   }, []);
   useEffect(() => {
     applyHighlight(highlightId, edges);
@@ -385,15 +390,26 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const handleCreateGroup = useCallback(() => {
     setNodes((nds) => [
       ...nds,
-        {
-          id: `group-${Date.now()}`,
-          type: "group" as const,
-          position: { x: 280 + (nds.length % 6) * 30, y: 260 + (nds.length % 4) * 30 },
-          data: { name: "图片组", imageCount: 0, totalSize: 0 },
-        },
+      {
+        id: `group-${Date.now()}`,
+        type: "group" as const,
+        position: { x: 280 + (nds.length % 6) * 30, y: 260 + (nds.length % 4) * 30 },
+        data: { name: "图片组", imageCount: 0, totalSize: 0 },
+      },
     ]);
     pushLog("已新建图片组，把图片连进来即可");
   }, [setNodes, pushLog]);
+
+  /** 批量删除：移除所有选中节点及其连线（文件保留） */
+  const handleDeleteSelected = useCallback(() => {
+    const ids = selectedIdsRef.current;
+    if (!ids.size) return;
+    setNodes((nds) => nds.filter((n) => !ids.has(n.id)));
+    setEdges((eds) => eds.filter((e) => !ids.has(e.source) && !ids.has(e.target)));
+    setSelectedCount(0);
+    selectedIdsRef.current = new Set();
+    pushLog(`已删除 ${ids.size} 个选中节点（文件保留）`);
+  }, [setNodes, setEdges, pushLog]);
 
   /* ---------------- 运行编排：单节点（入边快照）+ 结果回流 + 全部运行（并发 2） ---------------- */
   const runNodeInternal = useCallback(
@@ -660,7 +676,17 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       </div>
 
       {/* 画布 */}
-      <div className="panel-card min-h-0 flex-1 overflow-hidden">
+      <div className="panel-card relative min-h-0 flex-1 overflow-hidden">
+        {/* 多选批量删除（Shift+框选后显示，沿用右上角小按钮风格） */}
+        {selectedCount >= 2 && (
+          <button
+            type="button"
+            onClick={handleDeleteSelected}
+            className="nodrag btn-ghost absolute right-3 top-3 z-40 !border-red-200 !bg-white/95 !px-2 !py-1 text-xs text-red-500 shadow"
+          >
+            删除所选 ({selectedCount})
+          </button>
+        )}
         <ReactFlow
           nodes={nodes}
           edges={edges}
