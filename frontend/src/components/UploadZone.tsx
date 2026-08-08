@@ -17,6 +17,9 @@ export default function UploadZone({ refs, onChange }: UploadZoneProps) {
   const [dragging, setDragging] = useState(false);
   /** 正在移除的文件标识：先播 fade-out，动画结束才真正移除 */
   const [removing, setRemoving] = useState<string | null>(null);
+  /** 上传中状态 / 上传失败的可见提示（不再静默） */
+  const [pendingCount, setPendingCount] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const refsRef = useRef(refs);
   refsRef.current = refs;
@@ -51,13 +54,18 @@ export default function UploadZone({ refs, onChange }: UploadZoneProps) {
     }));
     const next = [...refsRef.current, ...placeholders];
     onChange(next);
+    setPendingCount(incoming.length);
+    setUploadError(null);
     try {
       const uploaded = await uploadRefs(incoming);
       // 同一请求内返回顺序与上传顺序一致，按位置挂回本地 File 引用
       const synced = uploaded.map((r, i) => ({ ...r, file: incoming[i], synced: true }));
       onChange([...refsRef.current.slice(0, refsRef.current.length - incoming.length), ...synced]);
     } catch {
-      // 上传失败：保留占位（synced=false），生成时走 multipart 兜底，不阻断用户
+      // 上传失败：保留占位（synced=false），生成时走 multipart 兜底；可见提示告知新窗口无法继承
+      setUploadError(`${incoming.length} 张图片上传失败，可正常生成，新窗口无法继承`);
+    } finally {
+      setPendingCount(0);
     }
   };
 
@@ -152,6 +160,10 @@ export default function UploadZone({ refs, onChange }: UploadZoneProps) {
               );
             })}
           </ul>
+          {pendingCount > 0 && (
+            <p className="mt-2 text-[10px] text-neutral-400">上传中 {pendingCount} 张…</p>
+          )}
+          {uploadError && <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>}
         </>
       )}
     </div>

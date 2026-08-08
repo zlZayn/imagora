@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { generateImage, getConfig, openFolder } from "./api";
 import { accentForWindow } from "./accent";
 import type { AppConfig, RefItem, ResultItem } from "./types";
+import { errMessage } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
 import UploadZone from "./components/UploadZone";
 import FolderPicker from "./components/FolderPicker";
@@ -132,7 +133,7 @@ export default function App() {
           if (inherited.notice) setLogs([inherited.notice]);
         }
       })
-      .catch((err) => setLogs([`加载配置失败: ${String(err)}`]));
+      .catch((err) => setLogs([`初始化失败：${errMessage(err)}`]));
   }, []);
 
   // 尺寸 / 质量下拉选项（由后端配置派生）
@@ -154,7 +155,7 @@ export default function App() {
     setBusy(true);
     setResults([]);
     setElapsed(0);
-    setLogs(["生成中 ..."]);
+    setLogs(["生成中…"]);
     // 实时计时：每秒刷新已等待秒数
     timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
     try {
@@ -173,7 +174,7 @@ export default function App() {
       setResults(res.results);
       setLogs([...res.messages, `总用时 ${((Date.now() - startedAt) / 1000).toFixed(1)} 秒`]);
     } catch (err) {
-      setLogs([`请求失败: ${String(err)}`]);
+      setLogs([`生成失败：${errMessage(err)}`]);
     } finally {
       if (timerRef.current) {
         window.clearInterval(timerRef.current);
@@ -186,7 +187,7 @@ export default function App() {
   const handleOpenFolder = async () => {
     const res = await openFolder(outputDir);
     if (!res.ok) {
-      setLogs([`无法打开文件夹: ${outputDir}`]);
+      setLogs(["打开文件夹失败"]);
     }
   };
 
@@ -198,9 +199,9 @@ export default function App() {
     const syncedRefs = refs.filter((r) => r.synced);
     let notice: string | undefined;
     if (refs.length > 0 && syncedRefs.length === 0) {
-      notice = "提示: 参考图上传失败，新窗口未继承图片，仅继承尺寸/质量/输出路径";
+      notice = "参考图上传失败，新窗口未继承图片";
     } else if (syncedRefs.length < refs.length) {
-      notice = `提示: ${refs.length - syncedRefs.length} 张参考图上传失败，未继承`;
+      notice = `${refs.length - syncedRefs.length} 张参考图上传失败，新窗口未继承`;
     }
     const saved = saveInheritedState(
       syncedRefs.map(({ path, name, size, ext }) => ({ path, name, size, ext })),
@@ -211,7 +212,7 @@ export default function App() {
     );
     if (!saved.ok) {
       // sessionStorage 整体不可用（极少见）：新窗口从默认设置开始
-      setLogs(["提示: 无法保存当前状态到新窗口，新窗口将使用默认设置"]);
+      setLogs(["无法保存状态到新窗口，新窗口使用默认设置"]);
     }
     openNewWindow();
   };
@@ -225,7 +226,7 @@ export default function App() {
 
       {config && !config.hasApiKey && (
         <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          未配置 API Key（AIWANWU_API_KEY），生成图片将失败。请参考 README「首次使用」配置。
+          未配置 API Key（AIWANWU_API_KEY），生图会失败。见 README「首次使用」。
         </div>
       )}
 
