@@ -25,7 +25,6 @@ import {
   canvasImport,
   canvasUpload,
   generateImage,
-  selectFolder,
   workflowList,
   workflowLoad,
   workflowSave,
@@ -96,7 +95,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     setLogs((prev) => [...prev.slice(-50), line]);
   }, []);
 
-  /* ---------------- 连线：类型硬约束（图片 -> 提示词 | 图片组；图片组 -> 提示词） ---------------- */
+  /* ---------------- 连线：类型硬约束（图片 -> 提示词 | 图片组；图片组 -> 提示词；提示词 -> 图片[产出]） ---------------- */
   const isValidConnection: IsValidConnection = useCallback((connection) => {
     const source = nodesRef.current.find((n) => n.id === connection.source);
     const target = nodesRef.current.find((n) => n.id === connection.target);
@@ -105,6 +104,10 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     }
     if (source?.type === "group") {
       return target?.type === "prompt";
+    }
+    // 产出边：提示词节点连到结果图片（生成结果自动连线，也可手动拖）
+    if (source?.type === "prompt") {
+      return target?.type === "image";
     }
     return false;
   }, []);
@@ -212,22 +215,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       pushLog(`已上传 ${images.length} 张图片到画布`);
     } catch (err) {
       pushLog(`上传失败：${errMessage(err)}`);
-    }
-  };
-
-  const handleImportDir = async () => {
-    try {
-      const { path } = await selectFolder(config.defaultOutputDir);
-      if (!path) return;
-      const { imported, skipped } = await canvasImport([path]);
-      if (imported.length) {
-        setNodes((nds) => [...nds, ...canvasEntriesToNodes(imported, nds)]);
-      }
-      pushLog(
-        `导入目录 ${imported.length} 张${skipped.length ? `，跳过 ${skipped.length} 项` : ""}`,
-      );
-    } catch (err) {
-      pushLog(`导入失败：${errMessage(err)}`);
     }
   };
 
@@ -460,16 +447,27 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         if (resultPaths.length) {
           const { imported } = await canvasImport(resultPaths);
           resultCount = imported.length;
+          const resultIds: string[] = [];
           setNodes((nds) => {
             const promptNode = nds.find((n) => n.id === nodeId);
             const baseX = (promptNode?.position.x ?? 40) + 340;
             const baseY = (promptNode?.position.y ?? 40) + 20;
-            const created = imported.map((entry, i) =>
-              buildImageNode(entry, { x: baseX, y: baseY + i * 130 }),
-            );
+            const created = imported.map((entry, i) => {
+              resultIds.push(`img-${entry.id}`);
+              return buildImageNode(entry, { x: baseX, y: baseY + i * 130 });
+            });
             return [...nds, ...created];
           });
-          pushLog(`节点 ${nodeId}：生成 ${resultCount} 张并已回流画布`);
+          // 结果图自动连线：提示词节点 -> 结果图片（产出边，右边出线）
+          setEdges((eds) => [
+            ...eds,
+            ...resultIds.map((targetId) => ({
+              id: `${nodeId}->${targetId}`,
+              source: nodeId,
+              target: targetId,
+            })),
+          ]);
+          pushLog(`节点 ${nodeId}：生成 ${resultCount} 张并已回流画布（自动连线）`);
         } else {
           pushLog(`节点 ${nodeId}：生成失败（无结果）`);
         }
@@ -638,9 +636,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             e.target.value = "";
           }}
         />
-        <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => void handleImportDir()}>
-          导入目录
-        </button>
         <button type="button" className="btn-ghost !py-1 text-xs" onClick={handleCreateGroup}>
           新建图片组
         </button>

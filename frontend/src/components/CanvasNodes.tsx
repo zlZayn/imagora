@@ -67,6 +67,8 @@ export function ImageNode({
         setMenuOpen((v) => !v);
       }}
     >
+      {/* target 锚点：接收提示词节点的产出连线（结果图回流） */}
+      <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-0 !bg-neutral-400" />
       {/* source 锚点：只允许图片 -> 提示词 / 图片组 */}
       <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-0 !bg-brand" />
       {data.missing && (
@@ -213,8 +215,10 @@ export function PromptNode({
   const running = data.status === "running";
   return (
     <div className={`panel-card group relative z-30 !min-w-[280px] !p-3 ${selected ? "node-selected" : ""}`}>
-      {/* target 锚点：接收图片 / 图片组连入 */}
+      {/* target 锚点：接收图片 / 图片组连入（参考图） */}
       <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-0 !bg-neutral-400" />
+      {/* source 锚点：连到结果图片（产出边） */}
+      <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-0 !bg-brand" />
       {/* 右上角统一操作区：状态徽标 + 删除 */}
       <NodeActions>
         <StatusBadge data={data} />
