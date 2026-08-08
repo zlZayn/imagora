@@ -15,6 +15,7 @@ from pathlib import Path
 
 from core import api
 from core.batch import run_batch_generation
+from core.console import print_error, print_success
 
 _reconfigure = getattr(sys.stdout, "reconfigure", None)
 if _reconfigure is not None:
@@ -31,6 +32,7 @@ def handle_ui_command(args):
     from server import app
 
     url = f"http://127.0.0.1:{args.port}"
+    print_success(f"服务已启动: {url}")
     if not getattr(args, "no_browser", False):
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host="127.0.0.1", port=args.port)
@@ -40,9 +42,11 @@ def handle_batch_command(args):
     """执行批量生图"""
     config_path = Path(args.config) if args.config else (Path.cwd() / "batch_prompts.json")
     if not config_path.exists():
-        sys.exit(f"未找到配置文件: {config_path}，请用 --config 指定项目配置路径")
+        print_error(f"未找到配置文件: {config_path}，请用 --config 指定项目配置路径")
+        sys.exit(1)
     failed = run_batch_generation(config_path, module_filter=args.only, dry_run=args.dry_run)
     if failed:
+        print_error(f"批量结束 · {len(failed)} 张失败")
         sys.exit(1)
 
 
@@ -68,9 +72,9 @@ def handle_gen_command(args):
             output_path=output_path,
         )
         job_ok = True
-    except Exception:
+    except Exception as e:
         job_ok = False
-        raise
+        print_error(f"生成失败: {api.format_error(e)}")
     finally:
         log_generation(
             prompt=args.prompt,
@@ -83,6 +87,8 @@ def handle_gen_command(args):
             cost=0.0,
             seconds=time.time() - started_at,
         )
+    if not job_ok:
+        sys.exit(1)
 
 
 def build_argument_parser():

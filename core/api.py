@@ -24,6 +24,7 @@ from core.config import (
     RATIOS,
     get_api_key,
 )
+from core.console import print_success
 
 # 全局序号：保证默认文件名在并发/多窗口下唯一（时间戳只有秒级，同秒必撞）
 _SEQ = itertools.count(1)
@@ -121,4 +122,4 @@ def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
     else:
         raise RuntimeError("接口响应没有图片数据")
 
-    print(f"已保存: {output_path}")
+    print_success(f"已保存: {output_path}")
