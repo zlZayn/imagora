@@ -23,7 +23,6 @@ import "@xyflow/react/dist/style.css";
 
 import {
   canvasImport,
-  canvasListImages,
   canvasUpload,
   generateImage,
   selectFolder,
@@ -519,13 +518,16 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   );
 
   const handleRunAll = useCallback(async () => {
-    const promptNodes = nodesRef.current.filter((n) => n.type === "prompt");
-    if (!promptNodes.length) {
-      pushLog("画布上没有提示词节点");
+    const all = nodesRef.current.filter((n) => n.type === "prompt");
+    // 跳过正在运行的节点（不重复启动），只运行未在运行的
+    const queue = all.map((n) => n.id).filter((id) => !runningRef.current.has(id));
+    if (!queue.length) {
+      pushLog(
+        all.length ? "全部节点已在运行中" : "画布上没有提示词节点",
+      );
       return;
     }
     setRunningAll(true);
-    const queue = [...promptNodes.map((n) => n.id)];
     const workers = Array.from(
       { length: Math.min(RUN_CONCURRENCY, queue.length) },
       async () => {
@@ -537,7 +539,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     );
     try {
       await Promise.all(workers);
-      pushLog(`全部运行完成：${promptNodes.length} 个节点`);
+      pushLog(`全部运行完成：${queue.length} 个节点`);
     } finally {
       setRunningAll(false);
     }
@@ -565,20 +567,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     },
     [config, setNodes],
   );
-
-  /* ---------------- 挂载：列出已有画布图片 ---------------- */
-  useEffect(() => {
-    canvasListImages()
-      .then(({ images }) => {
-        if (images.length) {
-          setNodes((nds) => [...canvasEntriesToNodes(images, nds), ...nds]);
-        }
-      })
-      .catch(() => {
-        // 画布图片加载失败不阻断使用
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   /* ---------------- 渲染 ---------------- */
   const nodeTypes = useMemo(
