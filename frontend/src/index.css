@@ -147,3 +147,15 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============ 画布工作流：连线/节点高亮核验 ============ */
+/* 悬停/选中提示词节点时：入边加粗变色 + 关联图片节点描边（一眼核对参考图集合） */
+.react-flow__edge.edge-highlight .react-flow__edge-path {
+  stroke: var(--color-brand) !important;
+  stroke-width: 3 !important;
+}
+.react-flow__node.node-related .panel-card,
+.react-flow__node.node-selected .panel-card {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 1px;
+}

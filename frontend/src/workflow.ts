@@ -61,17 +61,18 @@ export function canvasEntriesToNodes(
 
 /** 工作流加载结果转画布：按 missing 列表给对应图片节点打标（红框提示文件缺失） */
 export function workflowToCanvas(
-  wf: WorkflowFile,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
   missing: string[],
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
   const missingSet = new Set(missing);
-  const nodes = wf.nodes.map((node) => {
+  const marked = nodes.map((node) => {
     if (node.type === "image" && missingSet.has(node.data.registryId)) {
       return { ...node, data: { ...node.data, missing: true } } as WorkflowNode;
     }
     return node;
   });
-  return { nodes, edges: wf.edges };
+  return { nodes: marked, edges };
 }
 
 /** 画布序列化为工作流文件（version 1，保存/加载共用） */

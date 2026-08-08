@@ -8,6 +8,7 @@ import UploadZone from "./components/UploadZone";
 import FolderPicker from "./components/FolderPicker";
 import Gallery from "./components/Gallery";
 import Select from "./components/Select";
+import CanvasPage from "./components/CanvasPage";
 
 const WIN_KEY = "aig-win";
 
@@ -74,6 +75,10 @@ function TitleBar({ windowId, onNewWindow }: { windowId: number | null; onNewWin
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [windowId, setWindowId] = useState<number | null>(null);
+  /** 界面模式：经典表单 / 无限画布（?mode=canvas 直达画布） */
+  const [mode, setMode] = useState<"classic" | "canvas">(() =>
+    new URLSearchParams(window.location.search).get("mode") === "canvas" ? "canvas" : "classic",
+  );
   const [prompt, setPrompt] = useState("");
   const [refs, setRefs] = useState<RefItem[]>([]);
   const [size, setSize] = useState("");
@@ -239,12 +244,45 @@ export default function App() {
     >
       <TitleBar windowId={windowId} onNewWindow={handleNewWindow} />
 
+      {/* 模式切换：经典表单 / 无限画布 */}
+      <div className="mb-4 flex gap-1 border-b border-neutral-200/70">
+        <button
+          type="button"
+          onClick={() => setMode("classic")}
+          className={`rounded-t-md px-4 py-1.5 text-sm transition-colors ${
+            mode === "classic"
+              ? "border-b-2 border-brand font-medium text-brand"
+              : "text-muted hover:text-neutral-800"
+          }`}
+        >
+          经典表单
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("canvas")}
+          className={`rounded-t-md px-4 py-1.5 text-sm transition-colors ${
+            mode === "canvas"
+              ? "border-b-2 border-brand font-medium text-brand"
+              : "text-muted hover:text-neutral-800"
+          }`}
+        >
+          无限画布
+        </button>
+      </div>
+
       {config && !config.hasApiKey && (
         <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           未配置 API Key（AIWANWU_API_KEY），生图会失败。见 README「首次使用」。
         </div>
       )}
 
+      {mode === "canvas" ? (
+        config ? (
+          <CanvasPage config={config} />
+        ) : (
+          <div className="py-16 text-center text-sm text-neutral-400">配置加载中...</div>
+        )
+      ) : (
       <main className="grid grid-cols-[6fr_4fr] items-start gap-5">
         {/* 左栏：输入面板 */}
         <section className="space-y-4">
@@ -330,6 +368,7 @@ export default function App() {
           <Gallery items={results} />
         </section>
       </main>
+      )}
     </div>
   );
 }
