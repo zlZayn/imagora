@@ -109,7 +109,7 @@ export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowN
   const mb = data.totalSize > 0 ? (data.totalSize / (1024 * 1024)).toFixed(1) : "0.0";
   return (
     <div
-      className={`group relative w-32 rounded-lg border-2 border-dashed border-brand/40 bg-brand/5 !p-2 ${
+      className={`group relative w-44 rounded-lg border-2 border-dashed border-brand/40 bg-brand/5 !p-3 ${
         selected ? "node-selected" : ""
       }`}
     >
@@ -129,11 +129,11 @@ export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowN
           删除
         </ActionButton>
       </NodeActions>
-      <div className="py-1 text-center">
-        <div className="text-sm font-semibold text-brand-dark">
+      <div className="py-2 text-center">
+        <div className="text-lg font-semibold leading-tight text-brand-dark">
           {data.imageCount} 张图
         </div>
-        <div className="text-[10px] text-neutral-500">{mb} MB</div>
+        <div className="mt-0.5 text-sm text-neutral-500">{mb} MB</div>
       </div>
     </div>
   );

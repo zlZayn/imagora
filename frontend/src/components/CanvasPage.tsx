@@ -587,7 +587,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     <div className="flex h-[calc(100vh-130px)] flex-col gap-2">
       {/* 工具栏 */}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-primary !py-1 text-xs" onClick={() => fileInputRef.current?.click()}>
+        <button type="button" className="btn-primary !px-3 !py-1 text-xs" onClick={() => fileInputRef.current?.click()}>
           上传图片
         </button>
         <input
@@ -612,21 +612,21 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             e.target.value = "";
           }}
         />
-        <button type="button" className="btn-ghost !py-1 text-xs" onClick={handleCreatePrompt}>
+        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={handleCreatePrompt}>
           新建提示词卡片
         </button>
-        <button type="button" className="btn-ghost !py-1 text-xs" onClick={handleCreateGroup}>
+        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={handleCreateGroup}>
           新建图片组
         </button>
-        <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => void handleSave()}>
+        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => void handleSave()}>
           保存工作流
         </button>
-        <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => void handleLoad()}>
+        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => void handleLoad()}>
           加载工作流
         </button>
         <button
           type="button"
-          className="btn-ghost !py-1 text-xs"
+          className="btn-ghost !px-3 !py-1 text-xs"
           onClick={() => void handleRunAll()}
           disabled={runningAll}
         >
@@ -719,12 +719,12 @@ export default function CanvasPage({ config }: CanvasPageProps) {
               </div>
             )}
             <div className="flex justify-end gap-2">
-              <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => setShowSaveModal(false)}>
+              <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => setShowSaveModal(false)}>
                 取消
               </button>
               <button
                 type="button"
-                className="btn-primary !py-1 text-xs"
+                className="btn-primary !px-4 !py-1 text-xs"
                 disabled={!saveName.trim()}
                 onClick={() => void confirmSave()}
               >
@@ -760,7 +760,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
               ))}
             </div>
             <div className="mt-3 flex justify-end">
-              <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => setShowLoadModal(false)}>
+              <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => setShowLoadModal(false)}>
                 取消
               </button>
             </div>
