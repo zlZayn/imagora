@@ -153,6 +153,8 @@ def test_generate_ref_paths_accepts_canvas_dir(canvas_env, monkeypatch):
         Path(kwargs["output_path"]).write_bytes(b"generated")
     monkeypatch.setattr("server.generate_image", fake_generate_image)
     monkeypatch.setattr("server.log_generation", lambda **kw: None)
+    # 防止测试副作用污染真实 output/.last_output_dir（generate 成功后默认会写入）
+    monkeypatch.setattr("server.save_last_output_dir", lambda p: None)
 
     result = generate(
         prompt="测试",

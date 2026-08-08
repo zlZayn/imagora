@@ -112,10 +112,18 @@ export interface CanvasPromptNodeData {
   [key: string]: unknown;
 }
 
+/** React Flow 节点公共字段（画布高亮/选中/拖拽由画布层维护） */
+interface WorkflowNodeBase {
+  id: string;
+  position: { x: number; y: number };
+  className?: string;
+  selected?: boolean;
+}
+
 /** 画布节点联合类型：图片节点 / 提示词节点 */
 export type WorkflowNode =
-  | { id: string; type: "image"; position: { x: number; y: number }; data: CanvasImageNodeData }
-  | { id: string; type: "prompt"; position: { x: number; y: number }; data: CanvasPromptNodeData };
+  | (WorkflowNodeBase & { type: "image"; data: CanvasImageNodeData })
+  | (WorkflowNodeBase & { type: "prompt"; data: CanvasPromptNodeData });
 
 /** 画布边：source 图片节点 -> target 提示词节点（类型硬约束，仅此方向合法） */
 export interface WorkflowEdge {

@@ -121,26 +121,33 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   }, [edges]);
 
   /* ---------------- 高亮核验：hover/选中提示词节点 -> 入边加粗 + 图片描边 ---------------- */
+  // 注意：setEdges/setNodes 必须条件更新（className 无变化返回原引用），
+  // 否则 effect 依赖 edges 变化 -> 无条件新数组 -> 无限更新循环（React #185）。
   const applyHighlight = useCallback(
-    (id: string | null) => {
-      setEdges((eds) =>
-        eds.map((e) => ({
-          ...e,
-          className: id !== null && e.target === id ? "edge-highlight" : "",
-        })),
-      );
-      setNodes((nds) =>
-        nds.map((n) => {
+    (id: string | null, currentEdges: Edge[]) => {
+      const target = id;
+      setEdges((eds) => {
+        let changed = false;
+        const next = eds.map((e) => {
+          const cls = target !== null && e.target === target ? "edge-highlight" : "";
+          if (e.className !== cls) changed = true;
+          return e.className === cls ? e : { ...e, className: cls };
+        });
+        return changed ? next : eds;
+      });
+      setNodes((nds) => {
+        let changed = false;
+        const next = nds.map((n) => {
           if (n.type !== "image") return n;
-          const related = id !== null && edges.some((e) => e.source === n.id && e.target === id);
-          return {
-            ...n,
-            className: related ? "node-related" : "",
-          };
-        }),
-      );
+          const related = target !== null && currentEdges.some((e) => e.source === n.id && e.target === target);
+          const cls = related ? "node-related" : "";
+          if (n.className !== cls) changed = true;
+          return n.className === cls ? n : { ...n, className: cls };
+        });
+        return changed ? next : nds;
+      });
     },
-    [setEdges, setNodes, edges],
+    [setEdges, setNodes],
   );
 
   const onNodeMouseEnter: NodeMouseHandler = useCallback(
@@ -153,8 +160,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     setHighlightId(first && first.type === "prompt" ? first.id : null);
   }, []);
   useEffect(() => {
-    applyHighlight(highlightId);
-  }, [highlightId, applyHighlight]);
+    applyHighlight(highlightId, edges);
+  }, [highlightId, edges, applyHighlight]);
 
   /* ---------------- 工具栏：上传 / 导入目录 / 保存 / 加载 ---------------- */
   const handleUpload = async (files: FileList | null) => {
