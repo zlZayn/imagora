@@ -13,6 +13,7 @@ API:
 """
 import ctypes
 import itertools
+import json
 import os
 import subprocess
 import sys
@@ -22,7 +23,7 @@ import time
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import Body, FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -35,8 +36,37 @@ from core.logging import log_generation
 _WIN_COUNTER = itertools.count(1)
 # 生成文件名全局序号：秒级时间戳同秒并发必撞，加序号保证唯一
 _SEQ = itertools.count(1)
+# 参考图缓存：前端「添加即上传」落盘于此，跨窗口只传路径引用（不占浏览器存储配额）
+REF_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".refs")
+# 参考图文件名全局序号
+_REF_SEQ = itertools.count(1)
+# 参考图孤儿文件最长保留时长（前端删除失败 / 上传未用的情况兜底清理）
+REF_MAX_AGE_SECONDS = 24 * 3600
 # 串行化有界面副作用的系统调用（tkinter 选择器、explorer 置前）
 _UI_LOCK = threading.Lock()
+
+
+def safe_ref_path(path: str) -> str | None:
+    """仅接受 REF_DIR 内的绝对路径（防路径穿越）；非法返回 None"""
+    abs_path = os.path.abspath(path)
+    ref_root = os.path.abspath(REF_DIR)
+    if os.path.commonpath([abs_path, ref_root]) != ref_root:
+        return None
+    return abs_path
+
+
+def cleanup_stale_refs(max_age_seconds: int = REF_MAX_AGE_SECONDS) -> None:
+    """清理 REF_DIR 中超时的孤儿参考图（服务启动时调用一次）"""
+    if not os.path.isdir(REF_DIR):
+        return
+    now = time.time()
+    for name in os.listdir(REF_DIR):
+        p = os.path.join(REF_DIR, name)
+        try:
+            if now - os.path.getmtime(p) > max_age_seconds:
+                os.unlink(p)
+        except OSError:
+            pass
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -65,6 +95,9 @@ QUALITY_OPTIONS = ["low", "medium", "high"]
 
 app = FastAPI(title="A站生图工具")
 app.add_middleware(NoCacheMiddleware)
+
+# 启动时清理超时的孤儿参考图（前端删除失败 / 上传未用的情况兜底）
+cleanup_stale_refs()
 
 
 def has_api_key() -> bool:
@@ -97,6 +130,46 @@ def get_config(win: int | None = None):
 def next_window():
     """分配下一个窗口编号（多开脚本 / 界面按钮用，与 /api/config 共用计数器，全局唯一）"""
     return {"windowId": next(_WIN_COUNTER)}
+
+
+@app.post("/api/upload-ref")
+def upload_ref(images: list[UploadFile] = File(default=[])):
+    """参考图落盘 output/.refs/，返回元信息供前端渲染与跨窗口继承。
+
+    前端「添加进上传区时」即调用：大图不走 sessionStorage（5MB 配额），
+    继承/生成只引用返回的 path，一次上传多处复用。
+    """
+    os.makedirs(REF_DIR, exist_ok=True)
+    refs = []
+    for image in images:
+        data = image.file.read()
+        ext = (Path(image.filename or "img").suffix or ".png").lower()
+        name = f"ref_{int(time.time())}_{next(_REF_SEQ):04d}{ext}"
+        dest = os.path.join(REF_DIR, name)
+        with open(dest, "wb") as f:
+            f.write(data)
+        refs.append({
+            "id": name,
+            "path": dest,
+            "url": image_url(dest),
+            "name": image.filename or name,
+            "size": len(data),
+            "ext": ext.lstrip("."),
+            "mime": image.content_type or "application/octet-stream",
+        })
+    return {"refs": refs}
+
+
+@app.post("/api/delete-ref")
+def delete_ref(path: str = Body(..., embed=True)):
+    """删除已落盘参考图（尽力而为，文件不存在也算成功）"""
+    abs_path = safe_ref_path(path)
+    if abs_path:
+        try:
+            os.unlink(abs_path)
+        except OSError:
+            pass
+    return {"ok": True}
 
 
 @app.post("/api/select-folder")
@@ -143,10 +216,12 @@ def display_path(path: str) -> str:
 def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
              quality: str = Form("low"), output_dir: str = Form(""),
              images: list[UploadFile] = File(default=[]),
+             ref_paths: str = Form(""),
              win: int = Form(0)):
-    """文生图 / 图生图。有 images 时多张参考图一次提交（用途由提示词决定），否则文生图。
+    """文生图 / 图生图。图生图二选一：ref_paths（JSON 字符串数组，引用已上传参考图，优先）
+    或 images（未上传的本地兜底，落临时文件）；都不传即文生图。
 
-    每个结果带尺寸与费用；响应含本次成功张数的总费用。
+    每个结果带尺寸/费用/文件大小/后缀；响应含本次成功张数的总费用。
     文件名带全局序号：多窗口同秒并发生成互不覆盖。
     同步 def：走 FastAPI 线程池，生成期间不阻塞事件循环，其他请求（开新窗口/加载页面）照常响应。
     """
@@ -158,13 +233,46 @@ def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
     results = []
     messages = []
 
-    if images:
-        seq = next(_SEQ)
-        dest = os.path.join(out_dir, f"img2img_{stamp}_{seq:03d}.png")
-        messages.append(f"图生图 · 参考图 {len(images)} 张")
-        temp_bases = []
+    # ref_paths 解析（JSON 字符串数组）；非法直接返回错误，不进入生成
+    ref_list: list[str] = []
+    if ref_paths:
         try:
-            # 底图先落临时文件，结果写到输出目录
+            ref_list = json.loads(ref_paths)
+        except json.JSONDecodeError:
+            results.append({"status": "error", "message": "ref_paths 参数非法"})
+            messages.append("失败 · ref_paths 参数非法")
+            messages.append("本次成功 0 张 · 费用 0.00 元")
+            log_generation(
+                prompt=prompt, mode="img2img", refs=0, size=size, quality=quality,
+                status="error", output="", cost=0.0,
+                seconds=time.time() - started_at, win=win or None,
+            )
+            return {"results": results, "messages": messages, "totalCost": 0.0}
+
+    ref_bases: list[str] = []   # 已落盘参考图（持久缓存，不清理）
+    temp_bases: list[str] = []  # multipart 上传的临时文件（生成后清理）
+    try:
+        if ref_list:
+            # 复用已上传参考图：只接受 REF_DIR 内路径，防路径穿越
+            for p in ref_list:
+                safe = safe_ref_path(p)
+                if not safe or not os.path.isfile(safe):
+                    raise ValueError(f"非法参考图路径: {p}")
+                ref_bases.append(safe)
+            seq = next(_SEQ)
+            dest = os.path.join(out_dir, f"img2img_{stamp}_{seq:03d}.png")
+            messages.append(f"图生图 · 参考图 {len(ref_bases)} 张")
+            generate_image(
+                prompt=prompt, images=ref_bases, size=size,
+                quality=quality, output_format="png", output_path=dest,
+            )
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            messages.append(f"已保存 · {display_path(dest)}（{size}）")
+        elif images:
+            # 未上传的本地兜底：底图先落临时文件，结果写到输出目录
+            seq = next(_SEQ)
+            dest = os.path.join(out_dir, f"img2img_{stamp}_{seq:03d}.png")
+            messages.append(f"图生图 · 参考图 {len(images)} 张")
             for image in images:
                 with tempfile.NamedTemporaryFile(
                     suffix=Path(image.filename or "img").suffix or ".png", delete=False
@@ -175,31 +283,27 @@ def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
                 prompt=prompt, images=temp_bases, size=size,
                 quality=quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost})
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
             messages.append(f"已保存 · {display_path(dest)}（{size}）")
-        except Exception as e:
-            results.append({"status": "error", "message": format_error(e)})
-            messages.append(f"失败 · {format_error(e)}")
-        finally:
-            for tmp in temp_bases:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
-    else:
-        seq = next(_SEQ)
-        dest = os.path.join(out_dir, f"txt2img_{stamp}_{seq:03d}.png")
-        messages.append("文生图")
-        try:
+        else:
+            seq = next(_SEQ)
+            dest = os.path.join(out_dir, f"txt2img_{stamp}_{seq:03d}.png")
+            messages.append("文生图")
             generate_image(
                 prompt=prompt, image_path=None, size=size,
                 quality=quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost})
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
             messages.append(f"已保存 · {display_path(dest)}（{size}）")
-        except Exception as e:
-            results.append({"status": "error", "message": format_error(e)})
-            messages.append(f"失败 · {format_error(e)}")
+    except Exception as e:
+        results.append({"status": "error", "message": format_error(e)})
+        messages.append(f"失败 · {format_error(e)}")
+    finally:
+        for tmp in temp_bases:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
     total_cost = sum(r.get("cost", 0) for r in results if r.get("status") == "ok")
     ok_count = sum(1 for r in results if r.get("status") == "ok")

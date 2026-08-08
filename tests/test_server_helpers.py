@@ -2,9 +2,15 @@
 # -*- coding: utf-8 -*-
 """server.py 纯函数单元测试
 
-覆盖: 尺寸费用查询、路径展示（相对工作根 + 正斜杠）。
+覆盖: 尺寸费用查询、路径展示（相对工作根 + 正斜杠）、参考图服务端化（路径校验/上传/删除）。
 不启动服务、不调 API。
 """
+import os
+from io import BytesIO
+
+from fastapi import UploadFile
+from starlette.datastructures import Headers
+
 from core.config import WORK_ROOT
 
 from server import display_path, size_cost
@@ -32,6 +38,63 @@ def test_display_path_outside_work_root_uses_relative_up():
     assert "\\" not in result
     assert result.startswith("../../")
     assert result.endswith("other/place/b.png")
+
+
+def test_safe_ref_path_accepts_inside_ref_dir():
+    """REF_DIR 内的路径 -> 放行（返回绝对路径）"""
+    from server import REF_DIR, safe_ref_path
+
+    p = os.path.join(REF_DIR, "ref_test.png")
+    assert safe_ref_path(p) == os.path.abspath(p)
+
+
+def test_safe_ref_path_rejects_outside():
+    """REF_DIR 外的路径（含 ../ 穿越）-> 返回 None"""
+    from server import safe_ref_path
+
+    assert safe_ref_path(r"D:\outside\evil.png") is None
+    assert safe_ref_path(os.path.join("..", "..", "evil.png")) is None
+
+
+def test_upload_ref_returns_metadata_and_persists():
+    """上传参考图 -> 返回 id/path/url/name/size/ext/mime，文件落盘 REF_DIR"""
+    from server import REF_DIR, upload_ref
+
+    upload = UploadFile(filename="a.png", file=BytesIO(b"fake-png-bytes"), headers=Headers({"content-type": "image/png"}))
+    try:
+        refs = upload_ref(images=[upload])["refs"]
+        assert len(refs) == 1
+        ref = refs[0]
+        assert ref["name"] == "a.png"
+        assert ref["size"] == len(b"fake-png-bytes")
+        assert ref["ext"] == "png"
+        assert ref["mime"] == "image/png"
+        assert ref["path"].startswith(REF_DIR)
+        assert os.path.isfile(ref["path"])
+        assert ref["url"].startswith("/api/image?path=")
+    finally:
+        upload.file.close()
+        ref_path = refs[0]["path"] if refs else None
+        if ref_path and os.path.isfile(ref_path):
+            os.unlink(ref_path)
+
+
+def test_delete_ref_removes_file_and_tolerates_missing():
+    """删除已落盘参考图 -> ok 且文件消失；文件不存在 / 非法路径也不抛错"""
+    from server import REF_DIR, delete_ref, upload_ref
+
+    upload = UploadFile(filename="b.jpg", file=BytesIO(b"jpeg-bytes"))
+    try:
+        dest = upload_ref(images=[upload])["refs"][0]["path"]
+        assert os.path.isfile(dest)
+        assert delete_ref(dest)["ok"] is True
+        assert not os.path.isfile(dest)
+        # 不存在也算成功
+        assert delete_ref(os.path.join(REF_DIR, "ghost.png"))["ok"] is True
+        # 非法路径不炸
+        assert delete_ref(r"D:\outside.png")["ok"] is True
+    finally:
+        upload.file.close()
 
 
 def test_get_config_window_id_increments():
