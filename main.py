@@ -4,6 +4,7 @@
 
 用法（在网店实习根目录运行）:
   python tools/main.py ui                                                    # 启动网页界面
+  python tools/main.py menu --port 7860                                      # 交互菜单（启动脚本用）
   python tools/main.py batch --config 项目/batch_prompts.json                # 批量生图
   python tools/main.py batch --config 项目/batch_prompts.json --dry-run      # 预览不花钱
   python tools/main.py gen "提示词" [-i 参考图] [-o 输出.png] [--ratio 9:16]  # 单张生图
@@ -15,7 +16,7 @@ from pathlib import Path
 
 from core import api
 from core.batch import run_batch_generation
-from core.console import print_error, print_success
+from core.console import console, print_error, print_info, print_success
 
 _reconfigure = getattr(sys.stdout, "reconfigure", None)
 if _reconfigure is not None:
@@ -91,6 +92,60 @@ def handle_gen_command(args):
         sys.exit(1)
 
 
+def handle_menu_command(args):
+    """交互菜单（rich 渲染）：N 开新窗口 / Q 退出（停止脚本启动的服务）。
+
+    由「启动生图工具.cmd」调用：服务后台启动后就进入本菜单。
+    服务进程 PID 由脚本写入 %TEMP%/aig_pid_{port}.txt；文件不存在说明是既有服务，Q 不误杀。
+    """
+    import subprocess
+    import time
+    import webbrowser
+
+    import requests
+    from rich.panel import Panel
+    from rich.prompt import Prompt
+
+    url = f"http://127.0.0.1:{args.port}"
+    pid_file = Path(os.environ.get("TEMP", "/tmp")) / f"aig_pid_{args.port}.txt"
+
+    def read_pid() -> int | None:
+        try:
+            return int(pid_file.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return None
+
+    print_success(f"服务已就绪: {url}")
+    while True:
+        console.print(
+            Panel(
+                f"[bold cyan]{url}[/bold cyan]\n\n"
+                "[green]N[/green] 打开新窗口（自动编号）\n"
+                "[red]Q[/red] 退出（停止服务）",
+                title="Image Tool",
+                style="green",
+            )
+        )
+        choice = Prompt.ask("选择", choices=["N", "Q"], default="N")
+        if choice == "Q":
+            break
+        try:
+            resp = requests.get(f"{url}/api/window/next", timeout=5)
+            win = resp.json()["windowId"]
+            webbrowser.open(f"{url}/?win={win}")
+            print_success(f"已打开窗口 #{win}")
+        except Exception as e:
+            print_error(f"开新窗口失败: {e}")
+            time.sleep(2)
+
+    pid = read_pid()
+    if pid:
+        subprocess.run(["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True)
+        print_info("服务已停止")
+    else:
+        print_info("既有服务保持运行，未停止")
+
+
 def build_argument_parser():
     """构建命令行参数解析器"""
     parser = argparse.ArgumentParser(description="A站生图工具")
@@ -100,6 +155,10 @@ def build_argument_parser():
     sub_ui.add_argument("--port", type=int, default=7860, help="监听端口（默认 7860）")
     sub_ui.add_argument("--no-browser", action="store_true", help="不自动打开浏览器（由外部脚本控制开窗）")
     sub_ui.set_defaults(handler=handle_ui_command)
+
+    sub_menu = subparsers.add_parser("menu", help="交互菜单（启动脚本用）：N 开新窗口 / Q 退出")
+    sub_menu.add_argument("--port", type=int, default=7860, help="监听端口（默认 7860）")
+    sub_menu.set_defaults(handler=handle_menu_command)
 
     sub_batch = subparsers.add_parser("batch", help="批量生图")
     sub_batch.add_argument("--config", help="项目配置文件 batch_prompts.json 路径（默认找当前目录）")

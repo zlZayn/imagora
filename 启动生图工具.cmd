@@ -13,6 +13,7 @@ curl -s -o nul -w "%%{http_code}" "%URL%/api/config?win=1" > "%TMPFILE%" 2>nul
 set /p CODE=<"%TMPFILE%"
 if "%CODE%"=="200" (
     echo Server already running - it will NOT be stopped on Quit.
+    del "%PIDFILE%" >nul 2>&1
     goto ready
 )
 
@@ -41,17 +42,9 @@ if not "!CODE!"=="200" goto wait
 echo Server ready.
 call :open_window
 
-echo.
-echo ============================================================
-echo   Image Tool  -  %URL%
-echo   [N] Open a new window (auto numbered)
-echo   [Q] Quit  (stop the server)
-echo ============================================================
-:menu
-choice /c NQ /n /m "Select [N]ew-window / [Q]uit: "
-if errorlevel 2 goto quit
-call :open_window
-goto menu
+REM ---- rich 交互菜单（N 开新窗口 / Q 退出，退出时按 PID 停服务） ----
+uv run python -m main menu --port %PORT%
+exit /b 0
 
 :open_window
 for /f "tokens=2 delims=:,}" %%i in ('curl -s "%URL%/api/window/next"') do set "WIN=%%i"
@@ -68,12 +61,3 @@ exit /b 0
 echo [ERROR] Server did not become ready in 30 seconds. Check %SERVER_LOG%
 pause
 exit /b 1
-
-:quit
-if defined SRV_PID (
-    taskkill /pid %SRV_PID% /f /t >nul 2>&1
-    echo Server stopped. Bye.
-) else (
-    echo Quit. Existing server left running.
-)
-exit /b 0
