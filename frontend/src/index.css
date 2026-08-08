@@ -160,15 +160,22 @@ body {
   outline-offset: 1px;
 }
 
-/* 连接点（Handle）：竖直长条形，常显（视觉不碍事）；
+/* 连接点（Handle）：竖直长条形，默认隐藏，仅悬浮节点时半透明显示（不挡视野）；
    绝对大小——scale 抵消画布缩放（--canvas-zoom 由 CanvasPage onMove 实时写入），
    任意缩放级别视觉大小恒定。!important：React Flow 自带 style.css 会覆盖 transform。 */
 .react-flow__handle {
+  opacity: 0;
   border-radius: 4px !important;
   transform: translate(-50%, -50%) scale(calc(1 / var(--canvas-zoom, 1))) !important;
+  transition: opacity 0.15s ease;
 }
-/* 连线进行中：可连接的 target 高亮描边，提示可接入 */
+.react-flow__node:hover .react-flow__handle,
+.react-flow__handle.connectingfrom {
+  opacity: 0.7;
+}
+/* 连线进行中：可连接的 target 高亮（更高透明度 + 描边提示可接入） */
 .react-flow__handle.connectingto {
+  opacity: 1;
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
 }
