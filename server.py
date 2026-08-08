@@ -23,12 +23,14 @@ import time
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import Body, FastAPI, File, Form, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from core import canvas
 from core.api import format_error, generate_image
+from core.canvas import safe_ref_path_allowlist
 from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT, get_api_key
 from core.logging import log_generation
 
@@ -204,6 +206,78 @@ def remember_output_dir(path: str = Body(..., embed=True)):
     return {"ok": True}
 
 
+@app.post("/api/canvas/upload")
+def canvas_upload(images: list[UploadFile] = File(default=[])):
+    """画布图片上传：复制进 output/.canvas/ 并登记 registry（同内容去重）"""
+    entries = []
+    for image in images:
+        ext = (Path(image.filename or "img").suffix or ".png").lower()
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(image.file.read())
+            tmp_path = tmp.name
+        try:
+            entry = canvas.register_file(tmp_path, image.filename or "image")
+            if entry:
+                entries.append(entry)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    return {"images": entries}
+
+
+@app.post("/api/canvas/import")
+def canvas_import(body: dict):
+    """从输出目录导入图片（目录递归 / 单文件）到画布：复制进 .canvas 并登记
+
+    路径必须落在 output 根内（realpath 前缀校验防穿越）；校验失败逐条进 skipped。
+    """
+    paths = [str(p) for p in body.get("paths", [])]
+    return canvas.import_images(paths)
+
+
+@app.get("/api/canvas/images")
+def canvas_images():
+    """画布图片全量（每条含 absPath，生成时 ref_paths 引用）"""
+    return {"images": canvas.list_images()}
+
+
+@app.post("/api/canvas/image/delete")
+def canvas_image_delete(body: dict):
+    """删除画布图片（注册表移除 + 尽力删文件；文件不存在容忍）"""
+    img_id = str(body.get("id", ""))
+    return {"ok": canvas.delete_image(img_id)}
+
+
+@app.post("/api/canvas/workflow/save")
+def canvas_workflow_save(body: dict):
+    """保存工作流为 JSON 文件（version 1，用户指定路径）"""
+    result = canvas.workflow_save(
+        str(body.get("path", "")),
+        str(body.get("name", "")),
+        body.get("nodes", []),
+        body.get("edges", []),
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "保存失败"))
+    return {"ok": True}
+
+
+@app.get("/api/canvas/workflow/load")
+def canvas_workflow_load(path: str):
+    """加载工作流 JSON：相对路径解析 + 文件存在性校验，缺失 registryId 进 missing"""
+    result = canvas.workflow_load(path)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "加载失败"))
+    return {
+        "name": result["name"],
+        "nodes": result["nodes"],
+        "edges": result["edges"],
+        "missing": result["missing"],
+    }
+
+
 @app.post("/api/select-folder")
 def select_folder(body: dict):
     """弹出系统文件夹选择器；取消则返回原路径
@@ -285,9 +359,9 @@ def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
     temp_bases: list[str] = []  # multipart 上传的临时文件（生成后清理）
     try:
         if ref_list:
-            # 复用已上传参考图：只接受 REF_DIR 内路径，防路径穿越
+            # 复用已上传参考图：只接受 REF_DIR / CANVAS_DIR 内路径，防路径穿越
             for p in ref_list:
-                safe = safe_ref_path(p)
+                safe = safe_ref_path_allowlist(p, [REF_DIR, canvas.CANVAS_DIR])
                 if not safe or not os.path.isfile(safe):
                     raise ValueError(f"非法参考图路径: {p}")
                 ref_bases.append(safe)

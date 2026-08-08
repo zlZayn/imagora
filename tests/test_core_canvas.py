@@ -47,9 +47,10 @@ def test_register_and_load(canvas_env):
     assert entry["size"] == len(content)
     assert entry["relPath"] == f".canvas/canv_{entry['id']}.png"
     assert (canvas_env / ".canvas" / f"canv_{entry['id']}.png").exists()
-    # registry 落盘可读回
+    # registry 落盘可读回（落盘条目不含 absPath，返回条目附带）
     entries = canvas.load_registry()
-    assert entries[entry["id"]] == entry
+    stored = entries[entry["id"]]
+    assert {k: v for k, v in entry.items() if k != "absPath"} == stored
 
 
 def test_register_dedup_same_content(canvas_env):
