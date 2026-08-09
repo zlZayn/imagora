@@ -109,6 +109,11 @@ body {
   animation: log-line 0.25s ease-out both;
 }
 
+/* 画布右下角日志轮播：新条目淡入上移，与整体 easeOutQuint 协调 */
+.log-toast {
+  animation: log-toast 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 /* 生成中按钮呼吸光晕（颜色跟随窗口主题色） */
 .btn-busy {
   animation: pulse-glow 1.6s ease-in-out infinite;
@@ -133,6 +138,10 @@ body {
 @keyframes log-line {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes log-toast {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-brand) 0%, transparent); }
@@ -159,6 +168,11 @@ body {
   min-width: 0 !important;
   border: none !important;
   background: transparent !important;
+}
+
+/* 悬停节点时整体置顶：高于 selected/dragging（1000），确保右侧操作栏不被相邻卡片遮挡。 */
+.react-flow__node:hover {
+  z-index: 1001 !important;
 }
 
 /* 悬停/选中提示词节点时：入边加粗变色 + 关联图片节点描边（一眼核对参考图集合） */

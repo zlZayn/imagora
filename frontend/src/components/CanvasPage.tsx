@@ -85,6 +85,25 @@ function ToolbarButton({
   );
 }
 
+/** 画布右下角日志轮播：只露最新几条，新条目淡入上移，旧的自然被挤出去。
+ *  pointer-events-none 保证不挡画布拖拽。 */
+const LOG_VISIBLE_COUNT = 5;
+function CanvasLog({ logs }: { logs: { id: number; text: string }[] }) {
+  const recent = logs.slice(-LOG_VISIBLE_COUNT);
+  return (
+    <div className="pointer-events-none absolute bottom-3 right-3 z-40 flex max-w-xs flex-col items-end gap-0.5">
+      {recent.map((log) => (
+        <div
+          key={log.id}
+          className="log-toast text-[11px] font-medium leading-relaxed text-brand/80 [text-shadow:0_1px_3px_rgb(255_255_255_/_0.95)]"
+        >
+          {log.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface CanvasPageProps {
   config: AppConfig;
 }
@@ -105,7 +124,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   nodesRef.current = nodes;
   const edgesRef = useRef<Edge[]>(edges);
   edgesRef.current = edges;
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<{ id: number; text: string }[]>([]);
+  /** 日志自增 id：稳定 key 触发轮播入场动画（index 复用会原地改文字不触发） */
+  const logIdRef = useRef(0);
   /** 高亮核验：悬停/选中的提示词节点（高亮其入边与关联图片） */
   const [highlightId, setHighlightId] = useState<string | null>(null);
   /** 当前选中的节点数（Shift 框选多选后显示批量删除） */
@@ -141,7 +162,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
 
   /** 日志追加（画布内运行反馈） */
   const pushLog = useCallback((line: string) => {
-    setLogs((prev) => [...prev.slice(-50), line]);
+    setLogs((prev) => [...prev.slice(-50), { id: ++logIdRef.current, text: line }]);
   }, []);
 
   const refreshHistoryControls = useCallback(() => setHistoryVersion((version) => version + 1), []);
@@ -174,15 +195,22 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     onLog: pushLog,
   });
 
-  /* ---------------- 连线：类型硬约束（图片 -> 提示词 | 图片组；图片组 -> 提示词；提示词 -> 图片[产出]） ---------------- */
+  /* ---------------- 连线：类型硬约束（图片 -> 提示词 | 图片组；图片组 -> 提示词；提示词 -> 图片[产出]） ----------------
+   * 提示词节点顶部 target 仅允许一条入边：多图请经「图片组」聚合后连入。 */
   const isValidConnection: IsValidConnection = useCallback((connection) => {
     const source = nodesRef.current.find((n) => n.id === connection.source);
     const target = nodesRef.current.find((n) => n.id === connection.target);
     if (source?.type === "image") {
-      return target?.type === "prompt" || target?.type === "group";
+      if (target?.type !== "prompt" && target?.type !== "group") return false;
+      if (target?.type === "prompt" && edgesRef.current.some((e) => e.target === connection.target)) {
+        return false;
+      }
+      return true;
     }
     if (source?.type === "group") {
-      return target?.type === "prompt";
+      if (target?.type !== "prompt") return false;
+      if (edgesRef.current.some((e) => e.target === connection.target)) return false;
+      return true;
     }
     // 产出边：提示词节点连到结果图片（生成结果自动连线，也可手动拖）
     if (source?.type === "prompt") {
@@ -814,9 +842,13 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           </ToolbarButton>
         </div>
       </div>
-      {/* 操作帮助：一行小字，不占位置 */}
-      <div className="text-[10px] leading-tight text-neutral-400">
-        Shift+拖拽框选多选 · 滚轮缩放 · 空白处拖拽平移 · 连接规则：图片→提示词或图片组、图片组→提示词、提示词→图片（生成结果）
+      {/* 操作帮助：单行小字，画布/节点/连线三类交互用分隔符紧凑展示 */}
+      <div className="flex flex-wrap items-center gap-x-1 text-[10px] leading-tight text-neutral-400">
+        <span className="font-medium text-neutral-500">画布</span>Shift+拖拽框选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除
+        <span className="text-neutral-300">｜</span>
+        <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 双击图片放大
+        <span className="text-neutral-300">｜</span>
+        <span className="font-medium text-neutral-500">连线</span>图片→提示词/图片组 · 图片组→提示词 · 提示词→图片；提示词顶部仅一条入边，多图用图片组聚合
       </div>
 
       <TaskCenter tasks={queueTasks} onCancel={handleCancelTask} onRetryFailed={handleRetryFailed} />
@@ -855,20 +887,13 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           fitView
           minZoom={0.2}
           maxZoom={2}
+          proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
           <Controls />
         </ReactFlow>
         </div>
-      </div>
-
-      {/* 画布日志 */}
-      <div className="log-box max-h-24 overflow-auto text-xs">
-        {logs.map((line, i) => (
-          <div key={i} className="log-line">
-            {line}
-          </div>
-        ))}
+        <CanvasLog logs={logs} />
       </div>
 
       {/* 保存 / 加载 / 放大预览 弹窗（独立展示组件，交互经回调上抛） */}
