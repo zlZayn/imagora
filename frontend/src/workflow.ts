@@ -77,6 +77,7 @@ export function workflowToCanvas(
         ...node,
         data: {
           ...node.data,
+          quality: node.data.quality ?? "high",
           status: "idle" as const,
           elapsed: undefined,
           resultCount: undefined,
@@ -164,4 +165,268 @@ export function snapshotIncomingAbsPaths(
     }
   }
   return paths;
+}
+
+/** 自动补齐明显的连线：只处理孤立节点，已有连线保持不动。 */
+export function autoConnect(nodes: WorkflowNode[], edges: WorkflowEdge[]): WorkflowEdge[] {
+  const prompts = nodes.filter((node) => node.type === "prompt");
+  const groups = nodes.filter((node) => node.type === "group");
+  if (!prompts.length && !groups.length) return edges;
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const promptIds = new Set(prompts.map((prompt) => prompt.id));
+  const next = [...edges];
+  const connected = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+  const pairs = new Set(edges.map((edge) => `${edge.source}->${edge.target}`));
+  const distance = (a: WorkflowNode, b: WorkflowNode) => {
+    const dx = a.position.x - b.position.x;
+    const dy = a.position.y - b.position.y;
+    return dx * dx + dy * dy;
+  };
+  const nearest = (node: WorkflowNode, candidates: WorkflowNode[]) =>
+    candidates.reduce<WorkflowNode | null>((closest, candidate) => (
+      !closest || distance(node, candidate) < distance(node, closest) ? candidate : closest
+    ), null);
+  const add = (source: WorkflowNode, target: WorkflowNode) => {
+    const id = `${source.id}->${target.id}`;
+    if (pairs.has(id)) return;
+    next.push({ id, source: source.id, target: target.id });
+    pairs.add(id);
+    connected.add(source.id);
+  };
+
+  // 图片优先归入就近的图片组（否则直接连提示词）。
+  for (const image of nodes.filter((node) => node.type === "image" && !connected.has(node.id))) {
+    const prompt = nearest(image, prompts);
+    if (prompt && image.position.y > prompt.position.y) {
+      add(prompt, image);
+      continue;
+    }
+    const nearbyGroup = nearest(image, groups.filter((group) => group.position.y >= image.position.y));
+    if (nearbyGroup && (!prompt || distance(image, nearbyGroup) < distance(image, prompt))) {
+      add(image, nearbyGroup);
+    } else if (prompt) {
+      add(image, prompt);
+    }
+  }
+  // 最后把仍孤立的图片组连接到最近的提示词。
+  for (const group of groups) {
+    const hasPromptConnection = next.some(
+      (edge) => edge.source === group.id && promptIds.has(edge.target),
+    );
+    if (!hasPromptConnection) {
+      const prompt = nearest(group, prompts);
+      if (prompt) add(group, prompt);
+    }
+  }
+  // 已有图片组可以复用：每张新提示词卡片都应获得一个参考来源。
+  const populatedGroups = groups.filter((group) => next.some(
+    (edge) => edge.target === group.id && nodeById.get(edge.source)?.type === "image",
+  ));
+  const referenceGroups = populatedGroups.length ? populatedGroups : groups;
+  for (const prompt of prompts) {
+    const hasReference = next.some((edge) => {
+      const sourceType = nodeById.get(edge.source)?.type;
+      return edge.target === prompt.id && (sourceType === "image" || sourceType === "group");
+    });
+    if (hasReference) continue;
+    const group = nearest(prompt, referenceGroups);
+    if (group) add(group, prompt);
+  }
+  return next;
+}
+
+/* ---------------- 自动布局：以提示词为中心的模块化布局 ---------------- */
+
+/** 各节点类型的估算尺寸（用于对齐计算，无需与实际像素完全一致） */
+const NODE_SIZES: Record<WorkflowNode["type"], { width: number; height: number }> = {
+  image: { width: 144, height: 220 },
+  prompt: { width: 300, height: 320 },
+  group: { width: 224, height: 120 },
+};
+
+function nodeSize(node: WorkflowNode): { width: number; height: number } {
+  const measured = (node as WorkflowNode & {
+    measured?: { width?: number; height?: number };
+  }).measured;
+  const fallback = NODE_SIZES[node.type];
+  return {
+    width: Math.max(measured?.width ?? 0, fallback.width),
+    height: Math.max(measured?.height ?? 0, fallback.height),
+  };
+}
+
+/** 布局间距参数 */
+const LAYOUT = {
+  /** 参考图与提示词之间的水平间距 */
+  refGap: 60,
+  /** 提示词与结果图之间的水平间距 */
+  resultGap: 60,
+  /** 同列节点之间的垂直间距 */
+  nodeGap: 16,
+  /** 不同提示词组之间的垂直间距 */
+  groupGap: 60,
+  /** 画布左边距 */
+  leftMargin: 60,
+  /** 画布上边距 */
+  topMargin: 40,
+  /** 孤立节点列宽 */
+  orphanColWidth: 144,
+};
+
+/** 全局三段式布局：
+ *  参考图和图片组在上方，提示词横向排列在中间，生成结果在下方。
+ *  返回带新 position 的节点数组（边不变）。 */
+export function autoLayout(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+): WorkflowNode[] {
+  if (!nodes.length) return nodes;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const promptNodes = nodes
+    .filter((node) => node.type === "prompt")
+    .sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
+  const groupNodes = nodes
+    .filter((node) => node.type === "group")
+    .sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
+  const imageNodes = nodes.filter((node) => node.type === "image");
+  const promptIds = new Set(promptNodes.map((node) => node.id));
+  const groupIds = new Set(groupNodes.map((node) => node.id));
+  const resultIds = new Set(
+    edges
+      .filter((edge) => promptIds.has(edge.source) && byId.get(edge.target)?.type === "image")
+      .map((edge) => edge.target),
+  );
+  const topImages = imageNodes.filter((node) => !resultIds.has(node.id));
+  const positions = new Map<string, { x: number; y: number }>();
+
+  const maxHeight = (items: WorkflowNode[]) => items.reduce(
+    (height, node) => Math.max(height, nodeSize(node).height),
+    0,
+  );
+  let bandY = LAYOUT.topMargin;
+  const imageY = bandY;
+  if (topImages.length) bandY += maxHeight(topImages) + LAYOUT.refGap;
+  const groupY = bandY;
+  if (groupNodes.length) bandY += maxHeight(groupNodes) + LAYOUT.groupGap;
+  const promptY = bandY;
+  const promptHeight = maxHeight(promptNodes);
+  const resultY = promptY + promptHeight + LAYOUT.resultGap;
+
+  // 中层：提示词保持同一横排，并保留整理前的视觉顺序。
+  let promptX = LAYOUT.leftMargin;
+  for (const prompt of promptNodes) {
+    positions.set(prompt.id, { x: promptX, y: promptY });
+    promptX += nodeSize(prompt).width + LAYOUT.groupGap;
+  }
+
+  const promptCenter = (promptId: string) => {
+    const prompt = byId.get(promptId);
+    const position = positions.get(promptId);
+    return prompt && position ? position.x + nodeSize(prompt).width / 2 : null;
+  };
+
+  // 图片组放在其关联提示词范围的水平中心；无关联组进入上层待整理区。
+  const desiredGroups = groupNodes.map((group) => {
+    const centers = edges
+      .filter((edge) => edge.source === group.id && promptIds.has(edge.target))
+      .map((edge) => promptCenter(edge.target))
+      .filter((center): center is number => center !== null);
+    const center = centers.length
+      ? (Math.min(...centers) + Math.max(...centers)) / 2
+      : LAYOUT.leftMargin + nodeSize(group).width / 2;
+    return { group, desiredX: center - nodeSize(group).width / 2 };
+  }).sort((a, b) => a.desiredX - b.desiredX);
+  let groupRight = LAYOUT.leftMargin;
+  for (const { group, desiredX } of desiredGroups) {
+    const x = Math.max(LAYOUT.leftMargin, desiredX, groupRight);
+    positions.set(group.id, { x, y: groupY });
+    groupRight = x + nodeSize(group).width + LAYOUT.nodeGap;
+  }
+
+  interface DesiredPlacement {
+    node: WorkflowNode;
+    desiredX: number;
+  }
+  const topPlacements: DesiredPlacement[] = [];
+  const claimedTopIds = new Set<string>();
+  for (const group of groupNodes) {
+    const members = edges
+      .filter((edge) => edge.target === group.id && byId.get(edge.source)?.type === "image")
+      .map((edge) => byId.get(edge.source)!)
+      .filter((node) => !resultIds.has(node.id) && !claimedTopIds.has(node.id));
+    const groupPosition = positions.get(group.id);
+    if (!groupPosition || !members.length) continue;
+    const blockWidth = members.reduce(
+      (width, node, index) => width + nodeSize(node).width + (index ? LAYOUT.nodeGap : 0),
+      0,
+    );
+    let x = groupPosition.x + nodeSize(group).width / 2 - blockWidth / 2;
+    for (const member of members) {
+      topPlacements.push({ node: member, desiredX: x });
+      claimedTopIds.add(member.id);
+      x += nodeSize(member).width + LAYOUT.nodeGap;
+    }
+  }
+  for (const image of topImages.filter((node) => !claimedTopIds.has(node.id))) {
+    const centers = edges
+      .filter((edge) => edge.source === image.id && promptIds.has(edge.target))
+      .map((edge) => promptCenter(edge.target))
+      .filter((center): center is number => center !== null);
+    const center = centers.length
+      ? (Math.min(...centers) + Math.max(...centers)) / 2
+      : promptX + topPlacements.length * LAYOUT.nodeGap;
+    topPlacements.push({ node: image, desiredX: center - nodeSize(image).width / 2 });
+  }
+  topPlacements.sort((a, b) => a.desiredX - b.desiredX);
+  let topRight = LAYOUT.leftMargin;
+  for (const { node, desiredX } of topPlacements) {
+    const x = Math.max(LAYOUT.leftMargin, desiredX, topRight);
+    positions.set(node.id, { x, y: imageY });
+    topRight = x + nodeSize(node).width + LAYOUT.nodeGap;
+  }
+
+  // 下层：结果图以来源提示词为中心横向展开，跨提示词时做水平避让。
+  const resultPlacements: DesiredPlacement[] = [];
+  const claimedResultIds = new Set<string>();
+  for (const prompt of promptNodes) {
+    const results = edges
+      .filter((edge) => edge.source === prompt.id && byId.get(edge.target)?.type === "image")
+      .map((edge) => byId.get(edge.target)!)
+      .filter((node) => !claimedResultIds.has(node.id));
+    const center = promptCenter(prompt.id);
+    if (center === null || !results.length) continue;
+    const blockWidth = results.reduce(
+      (width, node, index) => width + nodeSize(node).width + (index ? LAYOUT.nodeGap : 0),
+      0,
+    );
+    let x = center - blockWidth / 2;
+    for (const result of results) {
+      resultPlacements.push({ node: result, desiredX: x });
+      claimedResultIds.add(result.id);
+      x += nodeSize(result).width + LAYOUT.nodeGap;
+    }
+  }
+  resultPlacements.sort((a, b) => a.desiredX - b.desiredX);
+  let resultRight = LAYOUT.leftMargin;
+  for (const { node, desiredX } of resultPlacements) {
+    const x = Math.max(LAYOUT.leftMargin, desiredX, resultRight);
+    positions.set(node.id, { x, y: resultY });
+    resultRight = x + nodeSize(node).width + LAYOUT.nodeGap;
+  }
+
+  // 防御性兜底：未识别的分组关系仍进入上层，不保留可能重叠的旧坐标。
+  let fallbackX = Math.max(topRight, groupRight, promptX) + LAYOUT.nodeGap;
+  for (const node of nodes) {
+    if (positions.has(node.id)) continue;
+    const y = groupIds.has(node.id) ? groupY : imageY;
+    positions.set(node.id, { x: fallbackX, y });
+    fallbackX += nodeSize(node).width + LAYOUT.nodeGap;
+  }
+
+  return nodes.map((node) => {
+    const pos = positions.get(node.id);
+    return pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)
+      ? { ...node, position: pos }
+      : node;
+  });
 }

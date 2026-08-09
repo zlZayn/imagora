@@ -56,6 +56,31 @@ def test_safe_ref_path_rejects_outside():
     assert safe_ref_path(os.path.join("..", "..", "evil.png")) is None
 
 
+def test_safe_ref_path_rejects_cross_drive_without_raising():
+    """不同盘符的路径必须直接拒绝，不能把 commonpath 的 ValueError 泄漏到路由层。"""
+    from server import safe_ref_path
+
+    assert safe_ref_path(r"Z:\foreign\image.png") is None
+
+
+def test_display_path_cross_drive_hides_drive_letter():
+    """跨盘展示不泄漏原始绝对路径，并保持可读的正斜杠格式。"""
+    result = display_path(r"Z:\foreign\image.png")
+    assert not result.startswith("Z:")
+    assert result.startswith("../../")
+    assert result.endswith("foreign/image.png")
+
+
+def test_resolve_history_output_path_uses_work_root_for_relative_logs(tmp_path, monkeypatch):
+    """历史日志里的相对输出路径必须以项目工作根解析，而不是进程当前目录。"""
+    from server import resolve_history_output_path
+
+    monkeypatch.setattr("server.WORK_ROOT", tmp_path)
+    assert resolve_history_output_path("output/result.png") == os.path.normpath(
+        str(tmp_path / "output" / "result.png")
+    )
+
+
 def test_upload_ref_returns_metadata_and_persists():
     """上传参考图 -> 返回 id/path/url/name/size/ext/mime，文件落盘 REF_DIR"""
     from server import REF_DIR, upload_ref
@@ -136,6 +161,69 @@ def test_get_config_remembers_last_output_dir(monkeypatch, tmp_path):
     monkeypatch.setattr("server.load_last_output_dir", lambda: last_dir)
     cfg = get_config(None)
     assert cfg["defaultOutputDir"] == last_dir
+
+
+def test_generation_history_route_adds_existing_image_url(monkeypatch, tmp_path):
+    """历史路由只给仍存在的输出文件添加可访问 URL。"""
+    from server import generation_history
+
+    image = tmp_path / "result.png"
+    image.write_bytes(b"png")
+    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
+        {"prompt": "ok", "status": "ok", "output": str(image)},
+        {"prompt": "missing", "status": "ok", "output": str(tmp_path / "missing.png")},
+    ])
+
+    result = generation_history(limit=20, query="", status="")
+
+    assert result["items"][0]["url"].startswith("/api/image?path=")
+    assert result["items"][0]["exists"] is True
+    assert result["items"][1]["url"] == ""
+    assert result["items"][1]["exists"] is False
+
+
+def test_history_import_only_accepts_recorded_existing_output(monkeypatch, tmp_path):
+    """历史导入只允许日志中存在的输出文件，不能变成任意路径读取接口。"""
+    from server import canvas_history_import
+
+    recorded = tmp_path / "recorded.png"
+    recorded.write_bytes(b"png")
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"png")
+    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
+        {"output": str(recorded)},
+    ])
+    monkeypatch.setattr("server.canvas.register_file", lambda path, name: {
+        "id": "abc", "absPath": path, "name": name,
+    })
+
+    accepted = canvas_history_import({"path": str(recorded)})
+    rejected = canvas_history_import({"path": str(outside)})
+
+    assert accepted["imported"][0]["id"] == "abc"
+    assert rejected["imported"] == []
+    assert rejected["skipped"]
+
+
+def test_health_details_reports_actionable_checks(monkeypatch, tmp_path):
+    """启动自检只返回状态和可读问题，不返回密钥。"""
+    from server import health_details
+
+    dist = tmp_path / "dist"
+    output = tmp_path / "output"
+    monkeypatch.setattr("server.DIST_DIR", dist)
+    monkeypatch.setattr("server.DEFAULT_OUTPUT_DIR", str(output))
+    monkeypatch.setattr("server.load_last_output_dir", lambda: None)
+    monkeypatch.setattr("server.has_api_key", lambda: False)
+
+    result = health_details()
+
+    assert result["ok"] is False
+    assert result["checks"]["apiKey"] is False
+    assert result["checks"]["frontendBuilt"] is False
+    assert result["checks"]["outputWritable"] is True
+    assert any("API Key" in issue for issue in result["issues"])
+    assert "secret" not in str(result).lower()
 
 
 def test_remember_output_dir_saves(monkeypatch, tmp_path):

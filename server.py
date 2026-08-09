@@ -31,7 +31,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from core import canvas
 from core.api import format_error, generate_image
 from core.canvas import safe_ref_path_allowlist
-from core.config import DEFAULT_OUTPUT_DIR, WORK_ROOT, get_api_key
+from core.config import DEFAULT_OUTPUT_DIR, DEFAULT_QUALITY, WORK_ROOT, get_api_key
+from core.history import read_generation_history
 from core.logging import log_generation
 
 # 多开窗口：服务端原子分配递增编号（GIL 保证并发安全）
@@ -74,9 +75,24 @@ def safe_ref_path(path: str) -> str | None:
     """仅接受 REF_DIR 内的绝对路径（防路径穿越）；非法返回 None"""
     abs_path = os.path.abspath(path)
     ref_root = os.path.abspath(REF_DIR)
-    if os.path.commonpath([abs_path, ref_root]) != ref_root:
+    try:
+        inside_ref_dir = os.path.commonpath([abs_path, ref_root]) == ref_root
+    except ValueError:
+        # Windows 不同盘符没有公共路径，按越界路径处理。
+        return None
+    if not inside_ref_dir:
         return None
     return abs_path
+
+
+def relative_display_path(path: str, root: str | os.PathLike[str]) -> str:
+    """返回不含盘符的可读相对路径；Windows 跨盘时使用稳定的上跳形式。"""
+    try:
+        rel = os.path.relpath(path, root)
+    except ValueError:
+        _, tail = os.path.splitdrive(os.path.abspath(path))
+        rel = os.path.join("..", "..", tail.lstrip("\\/"))
+    return rel.replace("\\", "/")
 
 
 def cleanup_stale_refs(max_age_seconds: int = REF_MAX_AGE_SECONDS) -> None:
@@ -133,6 +149,49 @@ def has_api_key() -> bool:
         return False
 
 
+def _directory_writable(path: str) -> bool:
+    probe = ""
+    try:
+        os.makedirs(path, exist_ok=True)
+        fd, probe = tempfile.mkstemp(prefix=".imagora_probe_", dir=path)
+        os.close(fd)
+        return True
+    except OSError:
+        return False
+    finally:
+        if probe:
+            try:
+                os.unlink(probe)
+            except OSError:
+                pass
+
+
+def resolve_history_output_path(output: str) -> str:
+    """把日志里的输出路径解析为绝对路径，兼容从项目父目录启动。"""
+    raw = str(output or "").strip()
+    if not raw:
+        return ""
+    return os.path.normpath(raw if os.path.isabs(raw) else os.path.join(WORK_ROOT, raw))
+
+
+@app.get("/api/health/details")
+def health_details():
+    """启动自检：只返回布尔状态和处理建议，不泄漏配置值。"""
+    checks = {
+        "apiKey": has_api_key(),
+        "frontendBuilt": (DIST_DIR / "index.html").is_file(),
+        "outputWritable": _directory_writable(load_last_output_dir() or DEFAULT_OUTPUT_DIR),
+    }
+    issues = []
+    if not checks["apiKey"]:
+        issues.append("未配置 API Key，生图任务暂不可用")
+    if not checks["frontendBuilt"]:
+        issues.append("前端尚未构建，请运行 npm run build")
+    if not checks["outputWritable"]:
+        issues.append("输出目录不可写，请检查目录权限")
+    return {"ok": all(checks.values()), "checks": checks, "issues": issues}
+
+
 @app.get("/api/config")
 def get_config(win: int | None = None):
     """前端初始化配置。
@@ -157,6 +216,42 @@ def get_config(win: int | None = None):
 def next_window():
     """分配下一个窗口编号（多开脚本 / 界面按钮用，与 /api/config 共用计数器，全局唯一）"""
     return {"windowId": next(_WIN_COUNTER)}
+
+
+@app.get("/api/history")
+def generation_history(limit: int = 200, query: str = "", status: str = ""):
+    """读取本地生成历史；仅给仍存在的图片附加预览 URL。"""
+    records = read_generation_history(limit=limit, query=query, status=status)
+    items = []
+    for record in records:
+        output = str(record.get("output", ""))
+        abs_path = resolve_history_output_path(output)
+        exists = bool(abs_path and os.path.isfile(abs_path))
+        items.append({
+            **record,
+            "exists": exists,
+            "path": abs_path if exists else "",
+            "url": image_url(abs_path) if exists else "",
+        })
+    return {"items": items}
+
+
+@app.post("/api/history/import")
+def canvas_history_import(body: dict):
+    """把日志中真实存在的历史结果导入画布，拒绝任意未记录路径。"""
+    requested = os.path.normcase(resolve_history_output_path(str(body.get("path", ""))))
+    recorded_paths = {
+        os.path.normcase(resolve_history_output_path(str(record.get("output", ""))))
+        for record in read_generation_history(limit=500)
+        if record.get("output")
+    }
+    if requested not in recorded_paths or not os.path.isfile(requested):
+        return {"imported": [], "skipped": [{"path": requested, "reason": "不是可用的历史输出"}]}
+    entry = canvas.register_file(requested, os.path.basename(requested))
+    return {
+        "imported": [entry] if entry else [],
+        "skipped": [] if entry else [{"path": requested, "reason": "导入失败"}],
+    }
 
 
 @app.post("/api/upload-ref")
@@ -283,6 +378,21 @@ def canvas_workflow_load(name: str):
     }
 
 
+@app.post("/api/canvas/recovery/save")
+def canvas_recovery_save(body: dict):
+    """创建一份独立恢复快照，不覆盖手动命名工作流。"""
+    result = canvas.recovery_save(body.get("nodes", []), body.get("edges", []))
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "自动保存失败"))
+    return result
+
+
+@app.get("/api/canvas/recovery/latest")
+def canvas_recovery_latest():
+    """返回最近一份可读恢复快照；没有快照时返回 empty。"""
+    return canvas.recovery_latest()
+
+
 @app.post("/api/select-folder")
 def select_folder(body: dict):
     """弹出系统文件夹选择器；取消则返回原路径
@@ -316,16 +426,12 @@ def size_cost(size: str) -> float:
 
 def display_path(path: str) -> str:
     """路径展示：相对工作根 + 统一正斜杠，便于阅读"""
-    try:
-        rel = os.path.relpath(path, WORK_ROOT)
-    except ValueError:
-        rel = path
-    return rel.replace("\\", "/")
+    return relative_display_path(path, WORK_ROOT)
 
 
 @app.post("/api/generate")
 def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
-             quality: str = Form("low"), output_dir: str = Form(""),
+             quality: str = Form(DEFAULT_QUALITY), output_dir: str = Form(""),
              images: list[UploadFile] = File(default=[]),
              ref_paths: str = Form(""),
              win: int = Form(0)):
@@ -427,8 +533,8 @@ def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
     ok = results and results[0].get("status") == "ok"
     log_generation(
         prompt=prompt,
-        mode="img2img" if images else "txt2img",
-        refs=len(images),
+        mode="img2img" if (images or ref_list) else "txt2img",
+        refs=len(images) + len(ref_list),
         size=size,
         quality=quality,
         status="ok" if ok else "error",

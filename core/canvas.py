@@ -192,6 +192,10 @@ def safe_ref_path_allowlist(path: str, roots: list[str]) -> str | None:
 
 # 工作流固定保存目录（相对 output 根，用户只需选名字）
 WORKFLOWS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "workflows")
+# 自动恢复使用独立子目录，每次写新快照，不会覆盖用户手动命名的工作流。
+RECOVERY_DIR = os.path.join(WORKFLOWS_DIR, ".recovery")
+RECOVERY_LIMIT = 20
+_RECOVERY_LOCK = threading.Lock()
 
 # Windows / 通用非法文件名字符（含路径分隔符，防穿越）
 _INVALID_NAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -203,6 +207,40 @@ def sanitize_workflow_name(name: str) -> str | None:
     if not cleaned or cleaned in (".", ".."):
         return None
     return cleaned
+
+
+def _atomic_write_json(path: str, payload: dict) -> None:
+    """用唯一临时文件原子写 JSON，支持多窗口同时保存。"""
+    tmp = f"{path}.{threading.get_ident()}.{time.time_ns()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def _missing_image_ids(nodes: list) -> list[str]:
+    entries = load_registry()
+    missing: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("type") != "image":
+            continue
+        data_part = node.get("data")
+        if not isinstance(data_part, dict):
+            continue
+        reg_id = str(data_part.get("registryId", ""))
+        entry = entries.get(reg_id)
+        abs_path = (
+            os.path.normpath(os.path.join(DEFAULT_OUTPUT_DIR, entry["relPath"]))
+            if entry else None
+        )
+        if not abs_path or not os.path.isfile(abs_path):
+            missing.append(reg_id)
+    return missing
 
 
 def workflow_save(name: str, nodes: list, edges: list) -> dict:
@@ -273,26 +311,78 @@ def workflow_load(name: str) -> dict:
     edges = data.get("edges", [])
     if not isinstance(nodes, list) or not isinstance(edges, list):
         return {"ok": False, "error": "工作流结构非法"}
-    entries = load_registry()
-    missing: list[str] = []
-    for node in nodes:
-        if not isinstance(node, dict) or node.get("type") != "image":
-            continue
-        data_part = node.get("data")
-        if not isinstance(data_part, dict):
-            continue
-        reg_id = str(data_part.get("registryId", ""))
-        entry = entries.get(reg_id)
-        abs_path = (
-            os.path.normpath(os.path.join(DEFAULT_OUTPUT_DIR, entry["relPath"]))
-            if entry else None
-        )
-        if not abs_path or not os.path.isfile(abs_path):
-            missing.append(reg_id)
     return {
         "ok": True,
         "name": str(data.get("name", "")),
         "nodes": nodes,
         "edges": edges,
-        "missing": missing,
+        "missing": _missing_image_ids(nodes),
     }
+
+
+def _recovery_paths() -> list[str]:
+    try:
+        names = [
+            name for name in os.listdir(RECOVERY_DIR)
+            if name.startswith("recovery_") and name.endswith(".json")
+        ]
+    except OSError:
+        return []
+    return [os.path.join(RECOVERY_DIR, name) for name in sorted(names, reverse=True)]
+
+
+def _prune_recovery_snapshots(limit: int = RECOVERY_LIMIT) -> None:
+    for path in _recovery_paths()[max(0, limit):]:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def recovery_save(nodes: list, edges: list) -> dict:
+    """创建独立恢复快照并轮转；永不写入手动工作流文件。"""
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return {"ok": False, "error": "恢复快照结构非法"}
+    saved_at = time.strftime("%Y-%m-%d %H:%M:%S")
+    name = f"recovery_{time.time_ns()}"
+    path = os.path.join(RECOVERY_DIR, f"{name}.json")
+    payload = {
+        "version": 1,
+        "name": name,
+        "savedAt": saved_at,
+        "nodes": nodes,
+        "edges": edges,
+    }
+    try:
+        with _RECOVERY_LOCK:
+            os.makedirs(RECOVERY_DIR, exist_ok=True)
+            _atomic_write_json(path, payload)
+            _prune_recovery_snapshots(RECOVERY_LIMIT)
+        return {"ok": True, "path": path, "name": name, "savedAt": saved_at}
+    except (OSError, TypeError, ValueError) as e:
+        return {"ok": False, "error": str(e)}
+
+
+def recovery_latest() -> dict:
+    """读取最近一份可用恢复快照；损坏文件自动跳过。"""
+    for path in _recovery_paths():
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or data.get("version") != 1:
+            continue
+        nodes = data.get("nodes")
+        edges = data.get("edges")
+        if not isinstance(nodes, list) or not isinstance(edges, list):
+            continue
+        return {
+            "ok": True,
+            "name": str(data.get("name", "")),
+            "savedAt": str(data.get("savedAt", "")),
+            "nodes": nodes,
+            "edges": edges,
+            "missing": _missing_image_ids(nodes),
+        }
+    return {"ok": False, "empty": True}

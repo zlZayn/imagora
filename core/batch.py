@@ -15,6 +15,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from rich.table import Table
 
 from core.api import format_error, generate_image
+from core.config import DEFAULT_QUALITY
 from core.console import console, print_dim, print_panel
 from core.logging import log_generation
 
@@ -99,7 +100,7 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
                     prompt=job["prompt"],
                     image_path=image_path,
                     size=config["size"],
-                    quality="low",
+                    quality=DEFAULT_QUALITY,
                     output_format="png",
                     output_path=output_path,
                 )
@@ -114,7 +115,7 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
                 mode="img2img" if image_path else "txt2img",
                 refs=1 if image_path else 0,
                 size=config["size"],
-                quality="low",
+                quality=DEFAULT_QUALITY,
                 status="ok" if job_ok else "error",
                 output=output_path if job_ok else "",
                 cost=config.get("tier_cost", 0.10) if job_ok else 0.0,

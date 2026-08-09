@@ -1,13 +1,17 @@
 import { type ReactNode } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import type { CanvasGroupNodeData, CanvasImageNodeData, CanvasPromptNodeData } from "../types";
 import FolderPicker from "./FolderPicker";
 import Select from "./Select";
 
-/* ---------------- 统一节点右上角操作区（hover 显示，全部 nodrag 防误拖） ---------------- */
-function NodeActions({ children }: { children: ReactNode }) {
+/* ---------------- 统一节点右侧操作区（hover 显示，竖排不遮挡内容，全部 nodrag 防误拖） ---------------- */
+function NodeActions({ children, testId }: { children: ReactNode; testId?: string }) {
   return (
-    <div className="absolute -top-3 right-0 z-30 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+    <div
+      data-testid={testId}
+      className="absolute left-full top-2 z-30 ml-2 flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+    >
       {children}
     </div>
   );
@@ -16,16 +20,20 @@ function NodeActions({ children }: { children: ReactNode }) {
 function ActionButton({
   onClick,
   danger,
+  label,
   children,
 }: {
   onClick: () => void;
   danger?: boolean;
+  label?: string;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={label}
+      title={label}
       className={`nodrag btn-ghost !px-1.5 !py-0.5 text-[10px] ${danger ? "text-red-500" : ""}`}
     >
       {children}
@@ -59,39 +67,48 @@ export function ImageNode({
         selected ? "node-selected" : ""
       }`}
     >
-      {/* target 锚点：接收提示词节点的产出连线（结果图回流）；竖直长条形、绝对大小 */}
+      {/* 顶部接收提示词产出；底部作为参考图输出。 */}
       <Handle
         type="target"
-        position={Position.Left}
-        className="!h-8 !w-3 !rounded !border-0 !bg-brand/90"
+        position={Position.Top}
+        className="!rounded !border-0 !bg-brand/90"
       />
-      {/* source 锚点：只允许图片 -> 提示词 / 图片组 */}
       <Handle
         type="source"
-        position={Position.Right}
-        className="!h-8 !w-3 !rounded !border-0 !bg-brand"
+        position={Position.Bottom}
+        className="!rounded !border-0 !bg-brand"
       />
       {data.missing && (
-        <span className="absolute right-1 top-1 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
+        <span className="absolute right-1 top-1 z-20 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
           文件缺失
         </span>
       )}
-      {/* 右上角统一操作区 */}
-      <NodeActions>
-        <ActionButton onClick={() => onZoom(id)}>放大</ActionButton>
-        <ActionButton onClick={() => onReplace(id)}>替换</ActionButton>
-        <ActionButton onClick={() => onDelete(id)} danger>
-          删除
+      {/* 图片专用操作区：悬停时在右侧显示，不遮挡图片。 */}
+      <NodeActions testId="image-action-rail">
+        <ActionButton label="预览大图" onClick={() => onZoom(id)}>
+          <Eye aria-hidden="true" size={14} />
+        </ActionButton>
+        <ActionButton label="替换图片" onClick={() => onReplace(id)}>
+          <RefreshCw aria-hidden="true" size={14} />
+        </ActionButton>
+        <ActionButton label="删除图片" onClick={() => onDelete(id)} danger>
+          <Trash2 aria-hidden="true" size={14} />
         </ActionButton>
       </NodeActions>
-      {/* 固定宽度 w-32，高度随图片比例自动（不裁切）；不加入场动画类，避免节点重渲染时闪烁 */}
-      <div className="w-32 overflow-hidden rounded">
-        <img src={data.url} alt={data.name} className="block h-auto w-full" draggable={false} />
+      {/* 固定展示框避免图片加载后撑高节点，object-contain 保留完整画面。 */}
+      <div
+        className="h-40 w-32 cursor-zoom-in overflow-hidden rounded bg-neutral-50"
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          onZoom(id);
+        }}
+      >
+        <img src={data.url} alt={data.name} className="block h-full w-full object-contain" draggable={false} />
       </div>
       <div className="mt-1 max-w-[128px] truncate text-[11px] text-neutral-600" title={data.name}>
         {data.name}
       </div>
-      <div className="text-[10px] text-neutral-400">
+      <div className={`text-[10px] ${data.refCount > 0 ? "text-brand" : "text-neutral-400"}`}>
         {data.refCount > 0 ? `引用 ${data.refCount} 处` : "未引用"}
       </div>
     </div>
@@ -113,20 +130,20 @@ export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowN
         selected ? "ring-2 ring-brand" : ""
       }`}
     >
-      {/* 输入：接收图片节点连入；输出：连到提示词节点；竖直长条形、绝对大小 */}
+      {/* 顶部接收图片，底部输出到提示词。 */}
       <Handle
         type="target"
-        position={Position.Left}
-        className="!h-8 !w-3 !rounded !border-0 !bg-brand/90"
+        position={Position.Top}
+        className="!rounded !border-0 !bg-brand/90"
       />
       <Handle
         type="source"
-        position={Position.Right}
-        className="!h-8 !w-3 !rounded !border-0 !bg-brand"
+        position={Position.Bottom}
+        className="!rounded !border-0 !bg-brand"
       />
       <NodeActions>
-        <ActionButton onClick={() => onDelete(id)} danger>
-          删除
+        <ActionButton label="删除图片组" onClick={() => onDelete(id)} danger>
+          <Trash2 aria-hidden="true" size={14} />
         </ActionButton>
       </NodeActions>
       <div className="py-2 text-center">
@@ -156,33 +173,36 @@ interface PromptNodeExtraProps {
 
 type PromptNodeProps = NodeProps<PromptFlowNode> & PromptNodeExtraProps;
 
-function StatusBadge({ data }: { data: CanvasPromptNodeData }) {
+/* 状态指示灯：圆点颜色映射状态，悬停 title 看详情（秒数 / 张数 / 失败原因）。
+ * 就绪灰、排队琥珀、生成中品牌色呼吸、完成绿、失败红。 */
+function StatusLight({ data }: { data: CanvasPromptNodeData }) {
+  let color = "bg-neutral-300";
+  let pulse = "";
+  let title = "就绪";
   switch (data.status) {
+    case "queued":
+      color = "bg-amber-400";
+      title = "排队中";
+      break;
     case "running":
-      return (
-        <span className="rounded-md bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
-          生成中 {data.elapsed ?? 0}s
-        </span>
-      );
+      color = "bg-brand";
+      pulse = "animate-pulse";
+      title = `生成中 · ${data.elapsed ?? 0}s`;
+      break;
     case "done":
-      return (
-        <span className="rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
-          完成 {data.resultCount ?? 0} 张
-        </span>
-      );
+      color = "bg-green-500";
+      title = `完成 · ${data.resultCount ?? 0} 张`;
+      break;
     case "failed":
-      return (
-        <span className="rounded-md bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-600" title={data.message}>
-          失败
-        </span>
-      );
-    default:
-      return (
-        <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
-          就绪
-        </span>
-      );
+      color = "bg-red-500";
+      title = data.message ? `失败：${data.message}` : "失败";
+      break;
   }
+  return (
+    <span className="flex justify-center py-0.5" title={title}>
+      <span className={`h-2.5 w-2.5 rounded-full ${color} ${pulse}`} />
+    </span>
+  );
 }
 
 export function PromptNode({
@@ -196,34 +216,35 @@ export function PromptNode({
   qualityOptions,
 }: PromptNodeProps) {
   const running = data.status === "running";
+  const queued = data.status === "queued";
+  const busy = running || queued;
   return (
-    <div className={`panel-card group relative z-30 !min-w-[280px] !p-3 ${selected ? "node-selected" : ""}`}>
-      {/* target 锚点：接收图片 / 图片组连入（参考图）；竖直长条形、绝对大小 */}
+    <div className={`panel-card group relative !min-w-[300px] !p-3 ${selected ? "node-selected" : ""}`}>
+      {/* 顶部接收参考图，底部输出生成结果。 */}
       <Handle
         type="target"
-        position={Position.Left}
-        className="!h-8 !w-3 !rounded !border-0 !bg-brand/90"
+        position={Position.Top}
+        className="!rounded !border-0 !bg-brand/90"
       />
-      {/* source 锚点：连到结果图片（产出边） */}
       <Handle
         type="source"
-        position={Position.Right}
-        className="!h-8 !w-3 !rounded !border-0 !bg-brand"
+        position={Position.Bottom}
+        className="!rounded !border-0 !bg-brand"
       />
-      {/* 右上角统一操作区：状态徽标 + 删除 */}
+      {/* 右侧统一操作区：状态灯 + 删除 */}
       <NodeActions>
-        <StatusBadge data={data} />
-        <ActionButton onClick={() => onDelete(id)} danger>
-          删除
+        <StatusLight data={data} />
+        <ActionButton label="删除" onClick={() => onDelete(id)} danger>
+          <Trash2 aria-hidden="true" size={14} />
         </ActionButton>
       </NodeActions>
-      <div className="mb-2 text-xs font-semibold text-neutral-700">提示词生成</div>
+      <div className="mb-2 text-xs font-semibold text-brand-dark">提示词生成</div>
       <textarea
         value={data.prompt}
         onChange={(e) => onUpdate(id, { prompt: e.target.value })}
-        rows={2}
+        rows={5}
         placeholder="英文提示词，例如：a red apple on white background"
-        className="nodrag field-control resize-y text-xs"
+        className="nodrag field-control resize-y text-xs leading-relaxed"
       />
       <div className="nodrag mt-2 grid grid-cols-[7fr_3fr] gap-2">
         <div>
@@ -255,10 +276,10 @@ export function PromptNode({
         <button
           type="button"
           onClick={() => onRun(id)}
-          disabled={running || !data.prompt.trim()}
-          className={`btn-primary flex-1 !py-1 text-xs ${running ? "btn-busy" : ""}`}
+          disabled={busy || !data.prompt.trim()}
+          className={`btn-primary flex-1 !py-1 text-xs ${busy ? "btn-busy" : ""}`}
         >
-          {running ? "生成中..." : "运行"}
+          {running ? "生成中..." : queued ? "排队中..." : "运行"}
         </button>
         {data.message && (
           <span className="min-w-0 flex-1 truncate text-[10px] text-red-500" title={data.message}>

@@ -10,7 +10,6 @@ build/
 
 *.log
 frontend/node_modules/
-frontend/dist/
 logs/
 
 # 运行产物：输出图片 / 参考图缓存 / 上次路径记录
@@ -18,4 +17,10 @@ output/
 
 # 规划/执行工件（Prometheus 计划、draft、boulder、ledger）
 .omo/
+.superpowers/
+
+# 系统文件（Windows / macOS）
+Thumbs.db
+desktop.ini
+.DS_Store
 
