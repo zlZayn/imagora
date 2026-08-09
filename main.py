@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """Imagora 统一入口
 
-用法（在网店实习根目录运行）:
-  python tools/main.py ui                                                    # 启动网页界面
-  python tools/main.py menu --port 7860                                      # 交互菜单（启动脚本用）
-  python tools/main.py batch --config 项目/batch_prompts.json                # 批量生图
-  python tools/main.py batch --config 项目/batch_prompts.json --dry-run      # 预览不花钱
-  python tools/main.py gen "提示词" [-i 参考图] [-o 输出.png] [--ratio 9:16]  # 单张生图
+用法（在 tools 目录运行）:
+  python -m main ui                                                    # 启动网页界面
+  python -m main menu --port 7860                                      # 交互菜单（启动脚本用）
+  python -m main batch --config 项目/batch_prompts.json                # 批量生图
+  python -m main batch --config 项目/batch_prompts.json --dry-run      # 预览不花钱
+  python -m main gen "提示词" [-i 参考图] [-o 输出.png] [--ratio 9:16]  # 单张生图
 """
 import argparse
 import os
@@ -17,7 +17,7 @@ from pathlib import Path
 from core import api
 from core.batch import run_batch_generation
 from core.console import console, print_error, print_info, print_success
-from core.config import DEFAULT_QUALITY
+from core.config import DEFAULT_MODEL, DEFAULT_QUALITY, DEFAULT_TIER
 
 _reconfigure = getattr(sys.stdout, "reconfigure", None)
 if _reconfigure is not None:
@@ -172,11 +172,11 @@ def build_argument_parser():
     sub_gen.add_argument("-o", "--output", help="输出路径（默认 output/ai_时间戳.png）")
     sub_gen.add_argument("--size", default=None, help="分辨率（与 --ratio 二选一，默认 1024x1024）")
     sub_gen.add_argument("--ratio", default=None, help="宽高比：1:1 / 3:2 / 2:3 / 16:9 / 9:16 / 7:4 / 4:7")
-    sub_gen.add_argument("--tier", default="2K", choices=["1K", "2K", "4K"], help="配合 --ratio 的档位，默认 2K")
-    sub_gen.add_argument("--quality", default=DEFAULT_QUALITY, choices=["low", "medium", "high"])
-    sub_gen.add_argument("--model", default="gpt-image-2")
-    sub_gen.add_argument("--n", type=int, default=1)
-    sub_gen.add_argument("--format", default="png", choices=["png", "jpg", "webp"])
+    sub_gen.add_argument("--tier", default=DEFAULT_TIER, choices=["1K", "2K", "4K"], help="配合 --ratio 的档位，默认 2K")
+    sub_gen.add_argument("--quality", default=DEFAULT_QUALITY, choices=["low", "medium", "high"], help="质量，默认 high")
+    sub_gen.add_argument("--model", default=DEFAULT_MODEL, help="模型名")
+    sub_gen.add_argument("--n", type=int, default=1, help="生成张数，默认 1")
+    sub_gen.add_argument("--format", default="png", choices=["png", "jpg", "webp"], help="输出格式，默认 png")
     sub_gen.set_defaults(handler=handle_gen_command)
 
     return parser

@@ -5,11 +5,27 @@
 启动: uv run python -m main ui（http://127.0.0.1:7860）
 
 API:
-  GET  /api/config          尺寸/质量选项、默认输出路径、Key 状态
-  POST /api/select-folder   弹出系统文件夹选择器，返回路径
-  POST /api/open-folder     资源管理器打开文件夹（置前）
-  POST /api/generate        文生图 / 图生图（multipart）
-  GET  /api/image?path=     读取生成的图片文件
+  GET  /api/config                    初始化配置（尺寸/质量/默认输出路径/窗口号）
+  GET  /api/health/details            启动自检（Key / 前端构建 / 输出可写）
+  GET  /api/window/next               分配下一个窗口编号
+  GET  /api/history                   生成历史（limit/query/status 筛选）
+  POST /api/history/import            历史结果导入画布
+  POST /api/upload-ref                参考图落盘 output/.refs/
+  POST /api/delete-ref                删除已落盘参考图
+  POST /api/output-dir                记住输出路径（重启沿用）
+  POST /api/generate                  文生图 / 图生图（multipart）
+  POST /api/select-folder             弹出系统文件夹选择器
+  POST /api/open-folder               资源管理器打开文件夹（置前）
+  GET  /api/image?path=               读取图片文件
+  POST /api/canvas/upload             画布图片上传（复制进 output/.canvas/）
+  POST /api/canvas/import             输出目录导入画布（目录递归/单文件）
+  GET  /api/canvas/images             画布图片全量
+  POST /api/canvas/image/delete       删除画布图片
+  POST /api/canvas/workflow/save      保存工作流 JSON（output/workflows/）
+  GET  /api/canvas/workflow/list      列出所有工作流
+  GET  /api/canvas/workflow/load      按名加载工作流
+  POST /api/canvas/recovery/save      创建恢复快照
+  GET  /api/canvas/recovery/latest    读取最近恢复快照
 """
 import ctypes
 import itertools
@@ -31,7 +47,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from core import canvas
 from core.api import format_error, generate_image
 from core.canvas import safe_ref_path_allowlist
-from core.config import DEFAULT_OUTPUT_DIR, DEFAULT_QUALITY, WORK_ROOT, get_api_key
+from core.config import DEFAULT_OUTPUT_DIR, DEFAULT_QUALITY, DEFAULT_SIZE, WORK_ROOT, get_api_key
 from core.history import read_generation_history
 from core.logging import log_generation
 
@@ -207,7 +223,6 @@ def get_config(win: int | None = None):
         "sizes": SIZE_OPTIONS,
         "qualities": QUALITY_OPTIONS,
         "defaultOutputDir": default_dir,
-        "hasApiKey": has_api_key(),
         "windowId": window_id,
     }
 
@@ -430,7 +445,7 @@ def display_path(path: str) -> str:
 
 
 @app.post("/api/generate")
-def generate(prompt: str = Form(...), size: str = Form("1024x1024"),
+def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
              quality: str = Form(DEFAULT_QUALITY), output_dir: str = Form(""),
              images: list[UploadFile] = File(default=[]),
              ref_paths: str = Form(""),

@@ -29,12 +29,13 @@ tools/
 ├── server.py      # FastAPI ───┼─→ core/api.py ─→ core/config.py（唯一配置源）
 ├── core/canvas.py # 画布注册表 ─┘       │         ├→ core/console.py（rich 终端输出）
 │                                     ├→ core/logging.py（统一生成日志）
+│                                     ├→ core/history.py（生成历史读取）
 │                                     └→ 上游 API（requests）
 ├── frontend/      # React：api.ts ─→ server.py 的 /api/*（含画布页 CanvasPage）
 └── tests/         # 纯函数单元测试（不碰网络）
 ```
 
-依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 依赖 `core/config.py`（唯一配置源）与 `core/console.py`；`core/console.py` 只依赖 rich（无业务依赖，可被任意模块引用，CLI 统一输出入口：彩色成功/失败/信息 + Progress 进度条 + Panel 分组）；`core/canvas.py` 依赖 `core/config.py`（画布图片注册表与工作流存取，纯逻辑无 HTTP），`server.py` 路由薄层调用它；`server.py`/`core/batch.py`/`main.py` 共用 `core/logging.py` 记录生成日志；**没有反向/循环依赖**。
+依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 依赖 `core/config.py`（唯一配置源）与 `core/console.py`；`core/console.py` 只依赖 rich（无业务依赖，可被任意模块引用，CLI 统一输出入口：彩色成功/失败/信息 + Progress 进度条 + Panel 分组）；`core/canvas.py` 依赖 `core/config.py`（画布图片注册表与工作流存取，纯逻辑无 HTTP），`server.py` 路由薄层调用它；`core/history.py` 依赖 `core/logging.py` 的 `LOGS_DIR`（生成历史 JSONL 读取，纯逻辑无 HTTP）；`server.py`/`core/batch.py`/`main.py` 共用 `core/logging.py` 记录生成日志；**没有反向/循环依赖**。
 
 ## 三条调用链
 
@@ -67,7 +68,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 | 方法 | 路径 | 请求 | 响应 |
 | --- | --- | --- | --- |
-| GET | `/api/config` | `?win=`（可选，沿用已有窗口号，缺省由服务端分配） | sizes[] / qualities[] / defaultOutputDir（优先记住的上次输出路径，无记录按窗口分区 `output/win{N}`）/ hasApiKey / windowId |
+| GET | `/api/config` | `?win=`（可选，沿用已有窗口号，缺省由服务端分配） | sizes[] / qualities[] / defaultOutputDir（优先记住的上次输出路径，无记录按窗口分区 `output/win{N}`）/ windowId |
 | GET | `/api/window/next` | 无 | { windowId }（原子分配下一个窗口编号，启动脚本 / 界面按钮开新窗口用，与 config 共用计数器） |
 | POST | `/api/select-folder` | { current } | { path }（系统弹窗选择，取消返回原值） |
 | POST | `/api/open-folder` | { path } | { ok }（不存在自动创建；explorer 打开并置前） |
@@ -80,8 +81,14 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | POST | `/api/canvas/import` | { paths: [目录或文件绝对路径] } | { imported[entry], skipped[{path,reason}] }（目录递归收集图片，路径必须落在 output 根内） |
 | GET | `/api/canvas/images` | 无 | { images[entry+absPath] }（注册表全量） |
 | POST | `/api/canvas/image/delete` | { id } | { ok }（注册表移除 + 尽力删文件） |
-| POST | `/api/canvas/workflow/save` | { path, name, nodes, edges } | { ok }（写 version 1 JSON 文件，用户指定路径） |
-| GET | `/api/canvas/workflow/load` | ?path= | { name, nodes, edges, missing[registryId] }（相对路径解析 + 文件存在性校验，缺失进 missing） |
+| GET | `/api/health/details` | 无 | { ok, checks[apiKey/frontendBuilt/outputWritable], issues[] }（启动自检，不泄漏配置值） |
+| GET | `/api/history` | ?limit=&query=&status= | { items[记录字段 + exists/path/url] }（读取本地生成历史，仅给仍存在的图片附加预览 URL） |
+| POST | `/api/history/import` | { path } | { imported[entry], skipped[{path,reason}] }（把日志中真实存在的历史结果导入画布，拒绝任意未记录路径） |
+| POST | `/api/canvas/workflow/save` | { name, nodes, edges } | { ok, path }（写 version 1 JSON 文件到固定目录 `output/workflows/`，仅需名字） |
+| GET | `/api/canvas/workflow/list` | 无 | { workflows[ name, modified ] }（按修改时间倒序） |
+| GET | `/api/canvas/workflow/load` | ?name= | { name, nodes, edges, missing[registryId] }（固定目录按名解析 + 文件存在性校验，缺失进 missing） |
+| POST | `/api/canvas/recovery/save` | { nodes, edges } | { ok, path, name, savedAt }（独立恢复快照，不覆盖手动命名工作流） |
+| GET | `/api/canvas/recovery/latest` | 无 | { ok, empty? | name?, savedAt?, nodes?, edges?, missing? }（最近可读快照，无则 empty） |
 
 `/api/upload-ref` 返回的 `url` 复用 `/api/image`，前端可直接 `<img>` 加载；`/api/generate` 的 `ref_paths` 接受 `output/.refs/` 与 `output/.canvas/` 两个目录内的路径（`safe_ref_path_allowlist` 逐根 commonpath 校验，跨盘 root 单独捕获不误伤，防路径穿越），与 `images` 互斥、`ref_paths` 优先——图生图不二次上传大图。
 
@@ -119,12 +126,13 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | 文件 | 用例数 | 覆盖 |
 | --- | --- | --- |
 | `tests/test_core_api.py` | 13 | `resolve_size_with_ratio` / `build_default_output_path`（含并发唯一）/ `format_error` |
-| `tests/test_core_batch.py` | 9 | 配置读取 / 路径解析 / 模块过滤 / dry_run 预览 |
-| `tests/test_core_config.py` | 3 | `get_api_key`（环境变量/缺失报错）/ RATIOS 表结构 |
-| `tests/test_server_helpers.py` | 13 | `size_cost` / `display_path` / `get_config` 窗口分配（递增/沿用/非法回退）/ `next_window` 共用计数器 / `generate` 为同步函数（不阻塞事件循环）/ `safe_ref_path`（REF_DIR 内放行、穿越拒绝）/ `upload-ref` 元信息与落盘 / `delete-ref`（删除/容忍缺失/非法路径） |
+| `tests/test_core_batch.py` | 10 | 配置读取 / 路径解析 / 模块过滤 / dry_run 预览 |
+| `tests/test_core_config.py` | 4 | `get_api_key`（环境变量/缺失报错）/ RATIOS 表结构 |
+| `tests/test_server_helpers.py` | 21 | `size_cost` / `display_path` / `get_config` 窗口分配（递增/沿用/非法回退）/ `next_window` 共用计数器 / `generate` 为同步函数（不阻塞事件循环）/ `safe_ref_path`（REF_DIR 内放行、穿越拒绝）/ `upload-ref` 元信息与落盘 / `delete-ref`（删除/容忍缺失/非法路径） |
 | `tests/test_core_logging.py` | 7 | `log_generation` 写入 / 字段 / win 可选 / 并发串行写 / 路径相对化 |
-| `tests/test_core_canvas.py` | 14 | 注册表读写/原子写/损坏兜底 / register 内容去重（同内容一文件）/ 不同内容 / 不存在 / import 目录递归 + 单文件 + 越界拒绝 + 缺失跳过 + 非图片跳过 / delete 移除 + 容忍文件缺失 / list 含 absPath / allowlist 双根放行 + 穿越拒绝 |
-| `tests/test_server_canvas.py` | 13 | canvas upload 登记 / import 目录+单文件+越界 skipped / images 列表 / image delete + 容忍缺失 / workflow save 写 version1 + 不可序列化报错 / load 往返 + missing 收集 + 版本错误 + 文件缺失 / generate ref_paths 放行 canvas（monkeypatch 挡真实 API） |
+| `tests/test_core_history.py` | 2 | `read_generation_history` 读取 / 坏行容忍 / limit 上限 / query/status 筛选 |
+| `tests/test_core_canvas.py` | 16 | 注册表读写/原子写/损坏兜底 / register 内容去重（同内容一文件）/ 不同内容 / 不存在 / import 目录递归 + 单文件 + 越界拒绝 + 缺失跳过 + 非图片跳过 / delete 移除 + 容忍文件缺失 / list 含 absPath / allowlist 双根放行 + 穿越拒绝 |
+| `tests/test_server_canvas.py` | 17 | canvas upload 登记 / import 目录+单文件+越界 skipped / images 列表 / image delete + 容忍缺失 / workflow save 写 version1 + 不可序列化报错 / load 往返 + missing 收集 + 版本错误 + 文件缺失 / generate ref_paths 放行 canvas（monkeypatch 挡真实 API） |
 
 未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API），编排与请求层靠 dry_run 与人工验证。
 
@@ -137,7 +145,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **打开文件夹置前**：后台进程启动的 explorer 窗口默认不抢前台，用 Win32 API（枚举窗口 + 模拟 Alt 绕过前台锁）置前
 - **前端未构建**：dist 缺失时根路径返回 503 提示页，不静默空白
 - **生成日志**：每次生成（UI/批量/CLI）由 `core/logging.py` 统一记录到 `logs/generation.jsonl`（git 忽略），字段：时间/模式/参考图数/提示词/尺寸/质量/结果/费用/耗时/输出路径/窗口号（多开时）
-- **多开窗口**：服务端 `itertools.count` 原子分配递增编号；前端沿用优先级 `?win= > window.name（跨刷新记忆，复制标签不继承）> 服务端分配`；默认输出优先记住的上次路径（`output/.last_output_dir`：用户改路径前端即 `POST /api/output-dir` 上报 + generate 成功兜底写入，config 读取，服务重启沿用），无记录才按窗口分区 `output/win{N}`，顶栏显示「窗口 #N」，可一键开新窗口；启动脚本按 N 开新窗、Q 停服务（隐藏后台启动 + PID 记录，`--no-browser` 由脚本统一控制开窗；交互菜单由 `main.py menu` 子命令用 rich 渲染 Panel，PID 从 `%TEMP%/aig_pid_{port}.txt` 读取，文件不存在则视为既有服务、Q 不误杀）
+- **多开窗口**：服务端 `itertools.count` 原子分配递增编号；前端沿用优先级 `?win= > window.name（跨刷新记忆，复制标签不继承）> 服务端分配`；默认输出优先记住的上次路径（`output/.last_output_dir`：用户改路径前端即 `POST /api/output-dir` 上报 + generate 成功兜底写入，config 读取，服务重启沿用），无记录才按窗口分区 `output/win{N}`，顶栏显示「窗口 #N」，可一键开新窗口；启动脚本按 N 开新窗、Q 停服务（`start /b` 同控制台启动，关闭窗口即停止服务；`--no-browser` 由脚本统一控制开窗；交互菜单由 `main.py menu` 子命令用 rich 渲染 Panel，PID 由脚本 `netstat` 探测监听端口所得并写入 `%TEMP%/aig_pid_{port}.txt`，文件不存在则视为既有服务、Q 不误杀）
 - **新窗口状态继承**：页面内「＋ 新窗口」不再序列化图片——参考图在拖入上传区时已落盘服务端（见「参考图服务端化」），继承时只把 `refs` 元信息（path / name / size / ext）+ 尺寸/质量/输出路径写入 `sessionStorage`（几百字节，永不会超 5MB 配额），再 `window.open`——新标签拷贝一份 sessionStorage，挂载时读取并清除，用 `/api/image?path=` 直接渲染参考图；仅提示词不保留；命令行 `?win=` 直开无该键，保持全新窗口
 - **参考图服务端化**：参考图在**添加进上传区时**即 `POST /api/upload-ref` 落盘 `output/.refs/`（输出根下隐藏缓存目录，独立于窗口输出分区，不混入生成产物），返回 `{ id, path, url, name, size, ext, mime }`；前端缩略图直接加载 `url`，移除时 `POST /api/delete-ref` 尽力删除；生成时传 `ref_paths` 复用已落盘文件，避免大图二次上传。存储位置与文件名复用「按名管理 / 并发唯一」约定（全局序号 + 时间戳防撞）。清理：服务启动时删除 `output/.refs/` 中 mtime 超 24h 的孤儿文件（前端删除失败 / 上传后未用的情况兜底），不引入引用计数
 - **窗口主题色**：`accent.ts` 按编号黄金角取色（137.508° 分布，相邻编号色相差大），运行时覆盖 `--color-brand` CSS 变量，全局强调色（按钮/焦点/图标/徽章/上传阴影）随窗口变色；确定性函数，同编号恒定、刷新不变

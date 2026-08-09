@@ -10,9 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@types/dagre": "^0.7.54",
     "@xyflow/react": "^12.11.2",
-    "dagre": "^0.8.5",
     "lucide-react": "^1.30.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

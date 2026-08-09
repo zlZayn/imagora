@@ -10,7 +10,6 @@ export interface AppConfig {
   sizes: SizeOption[];
   qualities: string[];
   defaultOutputDir: string;
-  hasApiKey: boolean;
   /** 窗口编号（多开页面时由后端分配或沿用已有编号） */
   windowId: number;
 }

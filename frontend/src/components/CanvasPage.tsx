@@ -684,7 +684,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog("全部运行完成");
   }, [generationQueue, pushLog]);
 
-  /** 自动整理：dagre 分层布局所有节点（参考图→提示词→结果图左中右排列），整理后自适应居中 */
+  /** 自动整理：手写几何布局所有节点（参考图→提示词→结果图左中右排列），整理后自适应居中 */
   const handleAutoLayout = useCallback(() => {
     const current = nodesRef.current;
     if (!current.length) {

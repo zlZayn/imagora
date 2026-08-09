@@ -14,7 +14,7 @@ AI 生图工作台：基于 OpenAI 兼容接口的生图工具，文生图 / 图
 
 ## 架构概览
 
-- 后端：FastAPI（`server.py`）+ 核心逻辑 `core/`（配置 / 生图 / 批量 / 日志 / 终端输出）
+- 后端：FastAPI（`server.py`）+ 核心逻辑 `core/`（配置 / 生图 / 批量 / 画布 / 历史 / 日志 / 终端输出）
 - 前端：Vite + React + TypeScript + Tailwind（`frontend/`），构建产物由 FastAPI 托管，单端口运行
 - 依赖管理：uv（Python）、npm（前端）
 
@@ -22,9 +22,9 @@ AI 生图工作台：基于 OpenAI 兼容接口的生图工具，文生图 / 图
 
 ```
 tools/
-├── main.py            # 入口：ui / batch / gen 子命令
+├── main.py            # 入口：ui / batch / gen / menu 子命令
 ├── server.py          # FastAPI 后端：/api/* 路由 + 托管前端产物
-├── core/              # 核心逻辑：config(配置) / api(生图) / batch(批量) / logging(日志) / console(终端输出)
+├── core/              # 核心逻辑：config(配置) / api(生图) / batch(批量) / canvas(画布) / history(历史) / logging(日志) / console(终端输出)
 ├── frontend/          # React 前端（npm run dev 开发 / npm run build 产物）
 ├── tests/             # 单元测试（纯函数零成本）
 ├── logs/              # 生成日志（git 忽略）：每次生图记录提示词/结果/费用/耗时
