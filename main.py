@@ -17,6 +17,7 @@ from pathlib import Path
 from core import api
 from core.batch import run_batch_generation
 from core.console import console, print_error, print_info, print_success
+from core.config import DEFAULT_QUALITY
 
 _reconfigure = getattr(sys.stdout, "reconfigure", None)
 if _reconfigure is not None:
@@ -172,7 +173,7 @@ def build_argument_parser():
     sub_gen.add_argument("--size", default=None, help="分辨率（与 --ratio 二选一，默认 1024x1024）")
     sub_gen.add_argument("--ratio", default=None, help="宽高比：1:1 / 3:2 / 2:3 / 16:9 / 9:16 / 7:4 / 4:7")
     sub_gen.add_argument("--tier", default="2K", choices=["1K", "2K", "4K"], help="配合 --ratio 的档位，默认 2K")
-    sub_gen.add_argument("--quality", default="low", choices=["low", "medium", "high"])
+    sub_gen.add_argument("--quality", default=DEFAULT_QUALITY, choices=["low", "medium", "high"])
     sub_gen.add_argument("--model", default="gpt-image-2")
     sub_gen.add_argument("--n", type=int, default=1)
     sub_gen.add_argument("--format", default="png", choices=["png", "jpg", "webp"])

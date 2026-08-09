@@ -102,7 +102,7 @@ export interface CanvasPromptNodeData {
   size: string;
   quality: string;
   outputDir: string;
-  status: "idle" | "running" | "done" | "failed";
+  status: "idle" | "queued" | "running" | "done" | "failed";
   /** 运行已等待秒数（running 时实时刷新） */
   elapsed?: number;
   /** 成功生成的张数（done 时显示） */

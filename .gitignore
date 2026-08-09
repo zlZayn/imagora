@@ -18,4 +18,5 @@ output/
 
 # 规划/执行工件（Prometheus 计划、draft、boulder、ledger）
 .omo/
+.superpowers/
 
