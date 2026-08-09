@@ -93,39 +93,71 @@ def handle_gen_command(args):
         sys.exit(1)
 
 
-def handle_menu_command(args):
-    """交互菜单（rich 渲染）：N 开新窗口 / Q 退出（停止脚本启动的服务）。
+def find_port_pid(port: int) -> int | None:
+    """探测监听指定端口的进程 PID（服务状态的唯一真相源）。
 
-    由「启动生图工具.cmd」调用：服务后台启动后就进入本菜单。
-    服务进程 PID 由脚本写入 %TEMP%/aig_pid_{port}.txt；文件不存在说明是既有服务，Q 不误杀。
+    netstat 动态探测：不依赖临时 PID 文件，多开脚本 / 谁先谁后都不会失效。
     """
     import subprocess
+
+    try:
+        out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            if f":{port}" in line and "LISTENING" in line.upper():
+                parts = line.split()
+                if parts:
+                    return int(parts[-1])
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def handle_menu_command(args):
+    """交互菜单（rich 渲染）：N 开新窗口 / Q 退出并停止服务。
+
+    由「启动生图工具.cmd」调用：服务后台启动后就进入本菜单。
+    - 服务状态实时探测：PID 用 netstat 找端口监听者，窗口数用 /api/status，
+      不再依赖会被多开脚本互相覆盖的 PID 文件；
+    - Q 退出：停掉端口上的唯一服务进程（无论它由哪个脚本启动），
+      所有连它的窗口随之失效 —— 天然实现「本次关闭时全部同时关闭」。
+    """
     import time
     import webbrowser
 
     import requests
     from rich.panel import Panel
     from rich.prompt import Prompt
+    from rich.table import Table
 
     url = f"http://127.0.0.1:{args.port}"
-    pid_file = Path(os.environ.get("TEMP", "/tmp")) / f"aig_pid_{args.port}.txt"
 
-    def read_pid() -> int | None:
+    def fetch_window_count() -> int:
         try:
-            return int(pid_file.read_text(encoding="utf-8").strip())
-        except (OSError, ValueError):
-            return None
+            resp = requests.get(f"{url}/api/status", timeout=5)
+            return int(resp.json().get("windowCounter", 0))
+        except Exception:
+            return 0
 
-    print_success(f"服务已就绪: {url}")
-    while True:
-        console.print(
-            Panel(
-                "[green]N[/green] 打开新窗口\n"
-                "[red]Q[/red] 退出",
-                title="Imagora",
-                style="green",
-            )
+    def render_status_panel() -> Panel:
+        pid = find_port_pid(args.port)
+        win_count = fetch_window_count()
+        running = pid is not None
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        table.add_column(style="bold", justify="right", width=8)
+        table.add_column(style="white")
+        table.add_row("服务地址", f"{url}")
+        table.add_row("服务进程", f"PID {pid}" if running else "未运行")
+        table.add_row("已开窗口", f"编号已分配至 #{win_count}" if win_count else "暂无")
+        return Panel(
+            table,
+            title="[bold]Imagora · AI 生图工作台[/bold]",
+            border_style="green" if running else "yellow",
+            subtitle="[N] 打开新窗口    [Q] 退出并停止服务",
+            padding=(1, 2),
         )
+
+    while True:
+        console.print(render_status_panel())
         choice = Prompt.ask("选择操作", choices=["N", "Q"], default="N")
         if choice == "Q":
             break
@@ -138,12 +170,14 @@ def handle_menu_command(args):
             print_error(f"开新窗口失败: {e}")
             time.sleep(2)
 
-    pid = read_pid()
-    if pid:
+    pid = find_port_pid(args.port)
+    if pid is not None:
+        import subprocess
+
         subprocess.run(["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True)
-        print_info("服务已停止")
+        print_success(f"服务已停止（PID {pid}）")
     else:
-        print_info("既有服务保持运行，未停止")
+        print_info("服务未在运行，无需停止")
 
 
 def build_argument_parser():

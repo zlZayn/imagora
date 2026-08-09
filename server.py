@@ -52,11 +52,26 @@ from core.history import read_generation_history
 from core.logging import log_generation
 
 # 多开窗口：服务端原子分配递增编号（GIL 保证并发安全）
-_WIN_COUNTER = itertools.count(1)
+_WIN_LOCK = threading.Lock()
+_WIN_VALUE = 0
 # 生成文件名全局序号：秒级时间戳同秒并发必撞，加序号保证唯一
 _SEQ = itertools.count(1)
 # 参考图缓存：前端「添加即上传」落盘于此，跨窗口只传路径引用（不占浏览器存储配额）
 REF_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".refs")
+
+
+def _next_window_id() -> int:
+    """分配下一个窗口编号（全局唯一，线程安全）"""
+    global _WIN_VALUE
+    with _WIN_LOCK:
+        _WIN_VALUE += 1
+        return _WIN_VALUE
+
+
+def current_window_id() -> int:
+    """当前已分配的最大窗口编号（只读，供状态展示）"""
+    return _WIN_VALUE
+
 # 参考图文件名全局序号
 _REF_SEQ = itertools.count(1)
 # 参考图孤儿文件最长保留时长（前端删除失败 / 上传未用的情况兜底清理）
@@ -215,7 +230,7 @@ def get_config(win: int | None = None):
     多开页面：前端传已有窗口号（URL ?win= 或 window.name 记忆）则沿用，
     否则服务端原子分配下一个编号；默认输出目录按窗口分区 output/win{N}。
     """
-    window_id = win if win and win > 0 else next(_WIN_COUNTER)
+    window_id = win if win and win > 0 else _next_window_id()
     # 默认输出路径：优先记住的上次路径（服务重启沿用），无记录才按窗口分区
     last_dir = load_last_output_dir()
     default_dir = last_dir or os.path.join(DEFAULT_OUTPUT_DIR, f"win{window_id}")
@@ -230,7 +245,13 @@ def get_config(win: int | None = None):
 @app.get("/api/window/next")
 def next_window():
     """分配下一个窗口编号（多开脚本 / 界面按钮用，与 /api/config 共用计数器，全局唯一）"""
-    return {"windowId": next(_WIN_COUNTER)}
+    return {"windowId": _next_window_id()}
+
+
+@app.get("/api/status")
+def server_status():
+    """只读服务状态：已分配的最大窗口编号（供启动脚本 / 控制台菜单展示）"""
+    return {"windowCounter": current_window_id()}
 
 
 @app.get("/api/history")

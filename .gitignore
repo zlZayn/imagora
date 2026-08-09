@@ -19,6 +19,10 @@ output/
 .omo/
 .superpowers/
 
+# 代码索引（CodeGraph）与浏览器自动化（Playwright MCP）数据
+.codegraph/
+.playwright-mcp/
+
 # 系统文件（Windows / macOS）
 Thumbs.db
 desktop.ini
