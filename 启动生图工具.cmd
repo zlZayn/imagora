@@ -17,16 +17,10 @@ if "%CODE%"=="200" (
     goto ready
 )
 
-echo Starting Imagora UI (hidden background) ... %URL%
+echo Starting Imagora UI ... %URL%
 
-REM ---- start server hidden, record its PID ----
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$uv=(Get-Command uv).Source; $p=Start-Process -FilePath $uv -ArgumentList @('run','python','-m','main','ui','--no-browser','--port','%PORT%') -WorkingDirectory '%~dp0' -WindowStyle Hidden -RedirectStandardError '%SERVER_LOG%' -PassThru; [System.IO.File]::WriteAllText('%PIDFILE%', [string]$p.Id)"
-set /p SRV_PID=<"%PIDFILE%"
-if not defined SRV_PID (
-    echo [ERROR] Failed to start server process.
-    pause
-    exit /b 1
-)
+REM ---- start server attached to THIS console: closing the window stops the service ----
+start "" /b uv run python -m main ui --no-browser --port %PORT% > "%SERVER_LOG%" 2>&1
 
 REM ---- wait for server ready (max 30s) ----
 set /a TRIES=0
@@ -37,6 +31,16 @@ timeout /t 1 /nobreak >nul
 curl -s -o nul -w "%%{http_code}" "%URL%/api/config?win=1" > "%TMPFILE%" 2>nul
 set /p CODE=<"%TMPFILE%"
 if not "!CODE!"=="200" goto wait
+
+REM ---- record server PID (for Q-quit path) ----
+set "SRV_PID="
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":%PORT%" ^| findstr "LISTENING"') do set "SRV_PID=%%p"
+if not defined SRV_PID (
+    echo [ERROR] Failed to detect server PID.
+    pause
+    exit /b 1
+)
+echo %SRV_PID%> "%PIDFILE%"
 
 :ready
 call :open_window
