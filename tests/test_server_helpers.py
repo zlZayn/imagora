@@ -56,6 +56,21 @@ def test_safe_ref_path_rejects_outside():
     assert safe_ref_path(os.path.join("..", "..", "evil.png")) is None
 
 
+def test_safe_ref_path_rejects_cross_drive_without_raising():
+    """不同盘符的路径必须直接拒绝，不能把 commonpath 的 ValueError 泄漏到路由层。"""
+    from server import safe_ref_path
+
+    assert safe_ref_path(r"Z:\foreign\image.png") is None
+
+
+def test_display_path_cross_drive_hides_drive_letter():
+    """跨盘展示不泄漏原始绝对路径，并保持可读的正斜杠格式。"""
+    result = display_path(r"Z:\foreign\image.png")
+    assert not result.startswith("Z:")
+    assert result.startswith("../../")
+    assert result.endswith("foreign/image.png")
+
+
 def test_upload_ref_returns_metadata_and_persists():
     """上传参考图 -> 返回 id/path/url/name/size/ext/mime，文件落盘 REF_DIR"""
     from server import REF_DIR, upload_ref

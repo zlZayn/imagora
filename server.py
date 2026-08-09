@@ -74,9 +74,24 @@ def safe_ref_path(path: str) -> str | None:
     """仅接受 REF_DIR 内的绝对路径（防路径穿越）；非法返回 None"""
     abs_path = os.path.abspath(path)
     ref_root = os.path.abspath(REF_DIR)
-    if os.path.commonpath([abs_path, ref_root]) != ref_root:
+    try:
+        inside_ref_dir = os.path.commonpath([abs_path, ref_root]) == ref_root
+    except ValueError:
+        # Windows 不同盘符没有公共路径，按越界路径处理。
+        return None
+    if not inside_ref_dir:
         return None
     return abs_path
+
+
+def relative_display_path(path: str, root: str | os.PathLike[str]) -> str:
+    """返回不含盘符的可读相对路径；Windows 跨盘时使用稳定的上跳形式。"""
+    try:
+        rel = os.path.relpath(path, root)
+    except ValueError:
+        _, tail = os.path.splitdrive(os.path.abspath(path))
+        rel = os.path.join("..", "..", tail.lstrip("\\/"))
+    return rel.replace("\\", "/")
 
 
 def cleanup_stale_refs(max_age_seconds: int = REF_MAX_AGE_SECONDS) -> None:
@@ -316,11 +331,7 @@ def size_cost(size: str) -> float:
 
 def display_path(path: str) -> str:
     """路径展示：相对工作根 + 统一正斜杠，便于阅读"""
-    try:
-        rel = os.path.relpath(path, WORK_ROOT)
-    except ValueError:
-        rel = path
-    return rel.replace("\\", "/")
+    return relative_display_path(path, WORK_ROOT)
 
 
 @app.post("/api/generate")
