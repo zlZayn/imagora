@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { generateImage, getConfig, openFolder, rememberOutputDir } from "./api";
+import { generateImage, getConfig, getHealthDetails, openFolder, rememberOutputDir } from "./api";
 import { accentForWindow } from "./accent";
 import type { AppConfig, RefItem, ResultItem } from "./types";
 import { errMessage } from "./format";
@@ -119,7 +119,7 @@ export default function App() {
   const [prompt, setPrompt] = useState("");
   const [refs, setRefs] = useState<RefItem[]>([]);
   const [size, setSize] = useState("");
-  const [quality, setQuality] = useState("low");
+  const [quality, setQuality] = useState("high");
   const [outputDir, setOutputDir] = useState("");
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -128,6 +128,7 @@ export default function App() {
   const outputDirTimerRef = useRef<number | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [results, setResults] = useState<ResultItem[]>([]);
+  const [healthIssues, setHealthIssues] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
 
   // 日志更新后自动滚动到底部，配合逐行淡入
@@ -178,6 +179,12 @@ export default function App() {
         }
       })
       .catch((err) => setLogs([`初始化失败：${errMessage(err)}`]));
+  }, []);
+
+  useEffect(() => {
+    getHealthDetails()
+      .then((health) => setHealthIssues(health.issues))
+      .catch((err) => setHealthIssues([`启动自检失败：${errMessage(err)}`]));
   }, []);
 
   // 尺寸 / 质量下拉选项（由后端配置派生）
@@ -281,9 +288,9 @@ export default function App() {
     >
       <TitleBar windowId={windowId} onNewWindow={handleNewWindow} mode={mode} onModeChange={switchMode} />
 
-      {config && !config.hasApiKey && (
-        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          未配置 API Key（AIWANWU_API_KEY），生图会失败。见 README「首次使用」。
+      {healthIssues.length > 0 && (
+        <div className="mb-3 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {healthIssues.map((issue) => <div key={issue}>{issue}</div>)}
         </div>
       )}
 

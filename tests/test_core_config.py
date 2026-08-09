@@ -34,3 +34,8 @@ def test_ratios_all_values_are_valid_size_format():
         for tier, size in tiers.items():
             assert size_pattern.match(size), f"{ratio}/{tier} 分辨率非法: {size}"
             assert tier in {"1K", "2K", "4K"}, f"档位非法: {tier}"
+
+
+def test_default_quality_is_high():
+    """所有未显式指定质量的入口统一使用 high。"""
+    assert config.DEFAULT_QUALITY == "high"

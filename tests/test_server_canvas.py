@@ -38,6 +38,7 @@ def canvas_env(tmp_path, monkeypatch):
     monkeypatch.setattr(canvas, "CANVAS_DIR", str(tmp_path / ".canvas"))
     monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
     monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
+    monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)
     return tmp_path
 
 
@@ -169,6 +170,19 @@ def test_workflow_load_wrong_version(canvas_env):
 def test_workflow_load_missing_file(canvas_env):
     with pytest.raises(Exception):
         canvas_workflow_load("ghost")
+
+
+def test_canvas_recovery_routes_roundtrip(canvas_env):
+    """恢复路由保存新快照，并能读取最近一份。"""
+    from server import canvas_recovery_latest, canvas_recovery_save
+
+    nodes = [{"id": "p1", "type": "prompt"}]
+    saved = canvas_recovery_save({"nodes": nodes, "edges": []})
+    latest = canvas_recovery_latest()
+
+    assert saved["ok"] is True
+    assert latest["nodes"] == nodes
+    assert latest["edges"] == []
 
 
 def test_generate_ref_paths_accepts_canvas_dir(canvas_env, monkeypatch):

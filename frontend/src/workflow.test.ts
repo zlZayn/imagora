@@ -1,0 +1,284 @@
+import { describe, expect, it } from "vitest";
+
+import type { WorkflowEdge, WorkflowNode } from "./types";
+import { autoConnect, autoLayout, workflowToCanvas } from "./workflow";
+
+function promptNode(id: string, y = 0): WorkflowNode {
+  return {
+    id,
+    type: "prompt",
+    position: { x: 0, y },
+    data: {
+      prompt: id,
+      size: "1024x1024",
+      quality: "high",
+      outputDir: "output",
+      status: "idle",
+    },
+  } as WorkflowNode;
+}
+
+function imageNode(id: string, y = 0): WorkflowNode {
+  return {
+    id,
+    type: "image",
+    position: { x: 0, y },
+    data: {
+      registryId: id,
+      name: `${id}.png`,
+      url: `/api/image?path=${id}`,
+      size: 10,
+      ext: "png",
+      refCount: 0,
+      absPath: `C:\\output\\${id}.png`,
+    },
+  } as WorkflowNode;
+}
+
+function edge(source: string, target: string): WorkflowEdge {
+  return { id: `${source}->${target}`, source, target };
+}
+
+describe("workflow defaults", () => {
+  it("uses high for a legacy prompt without quality", () => {
+    const legacyPrompt = {
+      id: "p1",
+      type: "prompt",
+      position: { x: 0, y: 0 },
+      data: {
+        prompt: "product photo",
+        size: "1024x1024",
+        outputDir: "output",
+        status: "idle",
+      },
+    } as unknown as WorkflowNode;
+
+    const result = workflowToCanvas([legacyPrompt], [], []);
+    const prompt = result.nodes[0];
+
+    expect(prompt.type === "prompt" && prompt.data.quality).toBe("high");
+  });
+});
+
+describe("auto layout", () => {
+  it("lays out references, groups, prompts, and results in top-to-bottom bands", () => {
+    const reference = { ...imageNode("reference"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const resultImage = { ...imageNode("result"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { name: "group", imageCount: 1, totalSize: 10 },
+    } as WorkflowNode;
+    const firstPrompt = promptNode("p1");
+    const secondPrompt = promptNode("p2", 100);
+    const nodes = [reference, group, firstPrompt, secondPrompt, resultImage];
+    const edges = [
+      edge("reference", "group"),
+      edge("group", "p1"),
+      edge("group", "p2"),
+      edge("p1", "result"),
+    ];
+
+    const arranged = autoLayout(nodes, edges);
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    expect(byId.get("reference")!.position.y).toBeLessThan(byId.get("group")!.position.y);
+    expect(byId.get("group")!.position.y).toBeLessThan(byId.get("p1")!.position.y);
+    expect(byId.get("p1")!.position.y).toBeLessThan(byId.get("result")!.position.y);
+    expect(byId.get("p1")!.position.y).toBe(byId.get("p2")!.position.y);
+    expect(byId.get("p1")!.position.x).toBeLessThan(byId.get("p2")!.position.x);
+  });
+
+  it("uses measured node heights so tall images do not overlap the next group", () => {
+    const tallImage = {
+      ...imageNode("tall", 0),
+      measured: { width: 145, height: 274 },
+    } as unknown as WorkflowNode;
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 0, y: 1 },
+      measured: { width: 244, height: 121 },
+      data: { name: "group", imageCount: 1, totalSize: 10 },
+    } as unknown as WorkflowNode;
+
+    const result = autoLayout([tallImage, group], [edge("tall", "group")]);
+    const imagePosition = result.find((node) => node.id === "tall")!.position;
+    const groupPosition = result.find((node) => node.id === "group")!.position;
+
+    expect(groupPosition.y).toBeGreaterThanOrEqual(imagePosition.y + 274 + 16);
+  });
+
+  it("does not trust a temporary image measurement smaller than its stable card", () => {
+    const loadingImage = {
+      ...imageNode("loading", 0),
+      measured: { width: 144, height: 80 },
+    } as unknown as WorkflowNode;
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 0, y: 1 },
+      data: { name: "group", imageCount: 1, totalSize: 10 },
+    } as WorkflowNode;
+
+    const result = autoLayout([loadingImage, group], [edge("loading", "group")]);
+    const imagePosition = result.find((node) => node.id === "loading")!.position;
+    const groupPosition = result.find((node) => node.id === "group")!.position;
+
+    expect(groupPosition.y).toBeGreaterThanOrEqual(imagePosition.y + 220 + 16);
+  });
+
+  it("places wide orphan groups above prompts without vertical overlap", () => {
+    const wideGroup = {
+      id: "wide-group",
+      type: "group",
+      position: { x: 0, y: 0 },
+      measured: { width: 300, height: 121 },
+      data: { name: "group", imageCount: 0, totalSize: 0 },
+    } as unknown as WorkflowNode;
+    const prompt = promptNode("prompt");
+
+    const result = autoLayout([wideGroup, prompt], []);
+    const groupPosition = result.find((node) => node.id === "wide-group")!.position;
+    const promptPosition = result.find((node) => node.id === "prompt")!.position;
+
+    expect(promptPosition.y).toBeGreaterThanOrEqual(groupPosition.y + 121 + 60);
+  });
+
+  it("places a shared reference above a horizontal row of prompts", () => {
+    const nodes = [imageNode("shared"), promptNode("p1"), promptNode("p2")];
+    const edges = [edge("shared", "p1"), edge("shared", "p2")];
+
+    const result = autoLayout(nodes, edges);
+    const sharedY = result.find((node) => node.id === "shared")!.position.y;
+    const first = result.find((node) => node.id === "p1")!;
+    const second = result.find((node) => node.id === "p2")!;
+    const firstY = first.position.y;
+    const secondY = second.position.y;
+
+    expect(sharedY).toBeLessThan(firstY);
+    expect(firstY).toBe(secondY);
+    expect(first.position.x).toBeLessThan(second.position.x);
+  });
+
+  it("places orphan images in the top band above prompts", () => {
+    const nodes = [
+      imageNode("orphan-1", 10),
+      imageNode("orphan-2", 20),
+      imageNode("orphan-3", 30),
+      imageNode("orphan-4", 40),
+      promptNode("p1"),
+    ];
+
+    const result = autoLayout(nodes, []);
+    const promptY = result.find((node) => node.id === "p1")!.position.y;
+
+    for (const node of result.filter((item) => item.type === "image")) {
+      expect(node.position.y).toBeLessThan(promptY);
+    }
+    expect(promptY).toBeGreaterThanOrEqual(40 + 180 + 60);
+  });
+});
+
+describe("auto connect", () => {
+  it("uses vertical position to distinguish references from generated results", () => {
+    const topImage = { ...imageNode("top-image"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const prompt = { ...promptNode("prompt"), position: { x: 0, y: 400 } } as WorkflowNode;
+    const bottomImage = { ...imageNode("bottom-image"), position: { x: 0, y: 900 } } as WorkflowNode;
+
+    expect(autoConnect([topImage, prompt, bottomImage], [])).toEqual([
+      edge("top-image", "prompt"),
+      edge("prompt", "bottom-image"),
+    ]);
+  });
+
+  it("keeps a result image connected from its prompt even when a lower group is closer", () => {
+    const prompt = { ...promptNode("prompt"), position: { x: 0, y: 300 } } as WorkflowNode;
+    const resultImage = { ...imageNode("result"), position: { x: 0, y: 700 } } as WorkflowNode;
+    const lowerGroup = {
+      id: "lower-group",
+      type: "group",
+      position: { x: 0, y: 720 },
+      data: { name: "group", imageCount: 0, totalSize: 0 },
+    } as WorkflowNode;
+
+    expect(autoConnect([prompt, resultImage, lowerGroup], [])).toEqual([
+      edge("prompt", "result"),
+      edge("lower-group", "prompt"),
+    ]);
+  });
+
+  it("connects orphan images to a group even when there is no prompt node", () => {
+    const image = { ...imageNode("image"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 200, y: 0 },
+      data: { name: "group", imageCount: 0, totalSize: 0 },
+    } as WorkflowNode;
+
+    expect(autoConnect([image, group], [])).toEqual([edge("image", "group")]);
+  });
+
+  it("connects orphan images by top/bottom position and groups to the nearest prompt", () => {
+    const top = { ...imageNode("top"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const bottom = { ...imageNode("bottom"), position: { x: 700, y: 900 } } as WorkflowNode;
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 100, y: 600 },
+      data: { name: "group", imageCount: 0, totalSize: 0 },
+    } as WorkflowNode;
+    const prompt = { ...promptNode("prompt"), position: { x: 350, y: 300 } } as WorkflowNode;
+
+    expect(autoConnect([top, bottom, group, prompt], [])).toEqual([
+      edge("top", "prompt"),
+      edge("prompt", "bottom"),
+      edge("group", "prompt"),
+    ]);
+  });
+
+  it("keeps existing edges and does not reconnect nodes that already participate", () => {
+    const left = { ...imageNode("left"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const prompt = { ...promptNode("prompt"), position: { x: 350, y: 0 } } as WorkflowNode;
+    const existing = edge("left", "prompt");
+
+    expect(autoConnect([left, prompt], [existing])).toEqual([existing]);
+  });
+
+  it("completes a group that already has images but is not connected to a prompt", () => {
+    const image = { ...imageNode("image"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 200, y: 0 },
+      data: { name: "group", imageCount: 1, totalSize: 10 },
+    } as WorkflowNode;
+    const prompt = { ...promptNode("prompt"), position: { x: 500, y: 0 } } as WorkflowNode;
+    const existing = edge("image", "group");
+
+    expect(autoConnect([image, group, prompt], [existing])).toEqual([
+      existing,
+      edge("group", "prompt"),
+    ]);
+  });
+
+  it("connects newly added prompt cards to an already used populated group", () => {
+    const image = { ...imageNode("image"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 200, y: 0 },
+      data: { name: "group", imageCount: 1, totalSize: 10 },
+    } as WorkflowNode;
+    const firstPrompt = { ...promptNode("p1"), position: { x: 500, y: 0 } } as WorkflowNode;
+    const newPrompt = { ...promptNode("p2"), position: { x: 500, y: 500 } } as WorkflowNode;
+    const existing = [edge("image", "group"), edge("group", "p1")];
+
+    expect(autoConnect([image, group, firstPrompt, newPrompt], existing)).toEqual([
+      ...existing,
+      edge("group", "p2"),
+    ]);
+  });
+});

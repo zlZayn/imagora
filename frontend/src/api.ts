@@ -24,6 +24,14 @@ export function getConfig(win?: number): Promise<AppConfig> {
   return requestJson<AppConfig>(`/api/config${query}`);
 }
 
+export function getHealthDetails(): Promise<{
+  ok: boolean;
+  checks: { apiKey: boolean; frontendBuilt: boolean; outputWritable: boolean };
+  issues: string[];
+}> {
+  return requestJson("/api/health/details");
+}
+
 /** 弹出系统文件夹选择器，返回选中的路径（取消则返回原路径） */
 export async function selectFolder(current: string): Promise<{ path: string }> {
   return requestJson<{ path: string }>("/api/select-folder", {
@@ -146,4 +154,70 @@ export async function workflowLoad(
   name: string,
 ): Promise<{ name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[]; missing: string[] }> {
   return requestJson("/api/canvas/workflow/load?name=" + encodeURIComponent(name));
+}
+
+export interface RecoverySnapshotResponse {
+  ok: boolean;
+  empty?: boolean;
+  name?: string;
+  savedAt?: string;
+  nodes?: WorkflowNode[];
+  edges?: WorkflowEdge[];
+  missing?: string[];
+}
+
+/** 创建新的系统恢复快照；服务端保证不会覆盖手动命名工作流。 */
+export async function recoverySave(params: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}): Promise<{ ok: true; path: string; name: string; savedAt: string }> {
+  return requestJson("/api/canvas/recovery/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
+/** 读取最近一份可用系统恢复快照。 */
+export async function recoveryLatest(): Promise<RecoverySnapshotResponse> {
+  return requestJson("/api/canvas/recovery/latest");
+}
+
+export interface GenerationHistoryItem {
+  time?: string;
+  mode?: string;
+  refs?: number;
+  prompt?: string;
+  size?: string;
+  quality?: string;
+  status?: string;
+  cost?: number;
+  seconds?: number;
+  output?: string;
+  exists: boolean;
+  path: string;
+  url: string;
+}
+
+export async function generationHistory(params: {
+  limit?: number;
+  query?: string;
+  status?: string;
+} = {}): Promise<{ items: GenerationHistoryItem[] }> {
+  const query = new URLSearchParams();
+  query.set("limit", String(params.limit ?? 200));
+  if (params.query) query.set("query", params.query);
+  if (params.status) query.set("status", params.status);
+  return requestJson(`/api/history?${query.toString()}`);
+}
+
+export async function historyCanvasImport(path: string): Promise<{
+  imported: CanvasImageEntry[];
+  skipped: { path: string; reason: string }[];
+}> {
+  return requestJson("/api/history/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
 }

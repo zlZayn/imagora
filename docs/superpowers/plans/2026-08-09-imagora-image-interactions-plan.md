@@ -4,7 +4,7 @@
 
 **Goal:** Add double-click image preview, a right-side image action rail, correctly aligned zoom-stable handles, and theme-colored temporary connections.
 
-**Architecture:** Keep the existing `ZoomModal` callback flow. Test image-node behavior through React rendering, and keep handle sizing in CSS using the existing `--canvas-zoom` variable so viewport movement does not recreate node renderers.
+**Architecture:** Keep the existing `ZoomModal` callback flow. Test image-node behavior through React rendering, and keep handle geometry fixed in canvas coordinates so React Flow does not retain stale measurements after zooming.
 
 **Tech Stack:** React 19, TypeScript, React Flow 12, Tailwind CSS 4, Vitest, Testing Library, lucide-react.
 
@@ -116,7 +116,7 @@ Expected: 2 tests pass.
 
 - [ ] **Step 1: Write the failing CSS regression tests**
 
-Read `index.css` with `readFileSync(new URL("./index.css", import.meta.url), "utf8")`. Assert it contains `width: calc(32px / var(--canvas-zoom, 1))` and `height: calc(12px / var(--canvas-zoom, 1))`, the top/bottom handle rules do not contain `scale(`, and `.react-flow__connection-path` uses `stroke: var(--color-brand)` rather than `#ef4444`.
+Read `index.css` with `readFileSync(new URL("./index.css", import.meta.url), "utf8")`. Assert it contains fixed `width: 32px` and `height: 12px`, the top/bottom handle rules do not contain `scale(`, and `.react-flow__connection-path` uses `stroke: var(--color-brand)` rather than `#ef4444`.
 
 ```ts
 import { readFileSync } from "node:fs";
@@ -125,9 +125,9 @@ import { describe, expect, it } from "vitest";
 const css = readFileSync(new URL("./index.css", import.meta.url), "utf8");
 
 describe("canvas connection styles", () => {
-  it("keeps handles centered while compensating dimensions for zoom", () => {
-    expect(css).toContain("width: calc(32px / var(--canvas-zoom, 1))");
-    expect(css).toContain("height: calc(12px / var(--canvas-zoom, 1))");
+  it("keeps stable handle geometry across zoom levels", () => {
+    expect(css).toContain("width: 32px");
+    expect(css).toContain("height: 12px");
     expect(css).not.toMatch(/react-flow__handle-(?:top|bottom)[\\s\\S]{0,160}scale\\(/);
   });
 
@@ -146,12 +146,12 @@ Expected: FAIL on handle sizing and fixed red connection color.
 
 - [ ] **Step 3: Implement the CSS fix**
 
-Set handle width and height with the zoom-adjusted `calc()` expressions. Restore top/bottom `translate(-50%, 50%)` and `translate(-50%, -50%)` without inverse scale, remove the duplicated stale handle comment, and replace `#ef4444` with `var(--color-brand)`.
+Set fixed handle width and height. Restore top/bottom `translate(-50%, 50%)` and `translate(-50%, -50%)` without inverse scale, remove the duplicated stale handle comment, and replace `#ef4444` with `var(--color-brand)`.
 
 ```css
 .react-flow__handle {
-  width: calc(32px / var(--canvas-zoom, 1)) !important;
-  height: calc(12px / var(--canvas-zoom, 1)) !important;
+  width: 32px !important;
+  height: 12px !important;
 }
 .react-flow__handle-bottom {
   transform: translate(-50%, 50%) !important;
@@ -189,7 +189,7 @@ Expected: TypeScript and Vite build exit successfully.
 
 - [ ] **Step 3: Verify the running page**
 
-Verify that double-click opens the correct preview, all three controls sit to the image's right, and edge endpoints match handle centers within one screen pixel at fitted zoom, 100%, and 200%. Verify the temporary path stroke equals the current window brand color, then close the preview and remove any test-only canvas changes.
+Verify that double-click opens the correct preview, all three controls sit to the image's right, and edge endpoints meet handle outer edges within one screen pixel at fitted zoom, 100%, and 200%. Verify the temporary path stroke equals the current window brand color, then close the preview and remove any test-only canvas changes.
 
 - [ ] **Step 4: Check edited files**
 

@@ -172,28 +172,20 @@ body {
   outline-offset: 1px;
 }
 
-/* 连接点（Handle）：竖直长条形，默认隐藏，仅悬浮节点时半透明显示（不挡视野）；
-   绝对大小——scale 抵消画布缩放（--canvas-zoom 由 CanvasPage onMove 实时写入），
-   任意缩放级别视觉大小恒定。
-   注意：不能加 translate(-50%,-50%)！React Flow v12 handle 定位不用 translate，
-   加了会把连接点视觉偏移半个身位导致连接线错位。!important 用于压过 React Flow 自带样式。 */
-/* 连接点（Handle）：竖直长条形，默认隐藏，仅悬浮节点时半透明显示（不挡视野）；
-   绝对大小——scale 抵消画布缩放（--canvas-zoom 由 CanvasPage onMove 实时写入），
-   任意缩放级别视觉大小恒定。
-   注意：不能用 translate(-50%,-50%)（React Flow v12 handle 不用 translate 定位，
-   会偏移半个身位导致连接线错位）；但 Position.Right 的 handle 默认贴节点内边缘，
-   需右移半宽使其半露节点外，线端点（handle 中心）正好落在节点边缘，视觉连续。 */
+/* 连接点使用固定画布尺寸，避免缩放后 React Flow 的边缘坐标过期。 */
 .react-flow__handle {
+  width: 32px !important;
+  height: 12px !important;
   opacity: 0;
   border-radius: 4px !important;
   transition: opacity 0.15s ease;
   z-index: 40 !important;
 }
-.react-flow__handle-right {
-  transform: translateX(7px) scale(calc(1 / var(--canvas-zoom, 1))) !important;
+.react-flow__handle-bottom {
+  transform: translate(-50%, 50%) !important;
 }
-.react-flow__handle-left {
-  transform: scale(calc(1 / var(--canvas-zoom, 1))) !important;
+.react-flow__handle-top {
+  transform: translate(-50%, -50%) !important;
 }
 .react-flow__node:hover .react-flow__handle,
 .react-flow__handle.connectingfrom {
@@ -206,8 +198,8 @@ body {
   outline-offset: 2px;
 }
 
-/* 拖拽连线时的临时连接线：粗 + 红，一眼看清正在连 */
+/* 拖拽连线时的临时连接线跟随当前窗口主题色。 */
 .react-flow__connection .react-flow__connection-path {
-  stroke: #ef4444 !important;
+  stroke: var(--color-brand) !important;
   stroke-width: 3 !important;
 }

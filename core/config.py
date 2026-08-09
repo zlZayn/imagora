@@ -62,6 +62,6 @@ RATIOS = {
 
 # ---------- 默认参数 ----------
 DEFAULT_MODEL = "gpt-image-2"
-DEFAULT_QUALITY = "low"
+DEFAULT_QUALITY = "high"
 DEFAULT_SIZE = "1024x1024"
 DEFAULT_TIER = "2K"

@@ -18,6 +18,8 @@ def canvas_env(tmp_path, monkeypatch):
     monkeypatch.setattr(canvas, "DEFAULT_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(canvas, "CANVAS_DIR", str(tmp_path / ".canvas"))
     monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
+    monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
+    monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)
     return tmp_path
 
 
@@ -155,3 +157,34 @@ def test_safe_ref_path_allowlist(canvas_env):
     assert canvas.safe_ref_path_allowlist(str(ref_file), [canv_root]) is None  # 白名单外拒绝
     assert canvas.safe_ref_path_allowlist(str(canvas_env / ".." / "escape.png"), [ref_root]) is None  # 穿越拒绝
     assert canvas.safe_ref_path_allowlist(str(canvas_env / "nope.png"), [ref_root]) is None  # 不存在也按路径校验
+
+
+def test_recovery_snapshots_never_overwrite_named_workflow(canvas_env):
+    """自动恢复每次创建新快照，手动命名存档内容保持不变。"""
+    assert canvas.workflow_save("manual", [{"id": "manual"}], [])["ok"] is True
+    manual = canvas_env / "workflows" / "manual.json"
+    before = manual.read_bytes()
+
+    first = canvas.recovery_save([{"id": "a"}], [])
+    second = canvas.recovery_save([{"id": "b"}], [])
+
+    assert first["path"] != second["path"]
+    assert Path(first["path"]).is_file()
+    assert Path(second["path"]).is_file()
+    assert manual.read_bytes() == before
+
+
+def test_recovery_snapshots_rotate_and_latest_skips_corrupt(canvas_env, monkeypatch):
+    """恢复目录只保留上限数量，最新文件损坏时回退到最近可读快照。"""
+    monkeypatch.setattr(canvas, "RECOVERY_LIMIT", 2, raising=False)
+    first = canvas.recovery_save([{"id": "first"}], [])
+    canvas.recovery_save([{"id": "second"}], [])
+    latest = canvas.recovery_save([{"id": "third"}], [])
+
+    snapshots = list((canvas_env / "workflows" / ".recovery").glob("recovery_*.json"))
+    assert len(snapshots) == 2
+    assert not Path(first["path"]).exists()
+
+    Path(latest["path"]).write_text("{broken", encoding="utf-8")
+    recovered = canvas.recovery_latest()
+    assert recovered["nodes"] == [{"id": "second"}]

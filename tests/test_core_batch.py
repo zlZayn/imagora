@@ -105,3 +105,26 @@ def test_run_batch_dry_run_with_module_filter(tmp_path):
         encoding="utf-8",
     )
     assert run_batch_generation(cfg_file, module_filter="9", dry_run=True) == []
+
+
+def test_run_batch_uses_high_as_default_quality(tmp_path, monkeypatch):
+    """批量入口和日志都必须使用统一的 high 默认质量。"""
+    cfg_file = tmp_path / "batch_prompts.json"
+    cfg_file.write_text(
+        json.dumps({
+            "out_dir": "output",
+            "size": "1024x1024",
+            "base_images": {},
+            "jobs": [{"id": "1a", "module": "1_m", "name": "x", "image": None, "prompt": "p"}],
+        }),
+        encoding="utf-8",
+    )
+    generated = []
+    logged = []
+    monkeypatch.setattr("core.batch.generate_image", lambda **kwargs: generated.append(kwargs))
+    monkeypatch.setattr("core.batch.log_generation", lambda **kwargs: logged.append(kwargs))
+    monkeypatch.setattr("core.batch.time.sleep", lambda _seconds: None)
+
+    assert run_batch_generation(cfg_file) == []
+    assert generated[0]["quality"] == "high"
+    assert logged[0]["quality"] == "high"
