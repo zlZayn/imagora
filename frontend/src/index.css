@@ -217,3 +217,16 @@ body {
   stroke: var(--color-brand) !important;
   stroke-width: 3 !important;
 }
+
+/* ============ 画布节点入场/退场动画 ============ */
+/* 动画作用于内层 .node-pop（节点组件根 div），不动外层 .react-flow__node
+   （外层是 React Flow 定位用的 transform，动它会把节点甩飞）。 */
+.react-flow__node.node-enter .node-pop {
+  animation: enter-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.react-flow__node.node-enter.enter-delay-1 .node-pop { animation-delay: 70ms; }
+.react-flow__node.node-enter.enter-delay-2 .node-pop { animation-delay: 140ms; }
+.react-flow__node.node-enter.enter-delay-3 .node-pop { animation-delay: 210ms; }
+.react-flow__node.node-exiting .node-pop {
+  animation: fade-out 0.2s ease-in both;
+}
