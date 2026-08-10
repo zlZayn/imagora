@@ -53,6 +53,7 @@ import {
   computeCounts,
   snapshotIncomingAbsPaths,
   updatePromptNode,
+  withEnterAnim,
   workflowToCanvas,
 } from "../workflow";
 import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
@@ -324,7 +325,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     try {
       const { images } = await canvasUpload(Array.from(files));
       recordHistory();
-      setNodes((nds) => [...nds, ...canvasEntriesToNodes(images, nds)]);
+      setNodes((nds) => [...nds, ...canvasEntriesToNodes(images, nds).map((n, i) => withEnterAnim(n, i))]);
       pushLog(`已上传 ${images.length} 张图片到画布`);
     } catch (err) {
       pushLog(`上传失败：${errMessage(err)}`);
@@ -468,41 +469,63 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   /** 默认质量：优先 high（用户要求） */
   const defaultQuality = config.qualities.includes("high") ? "high" : config.qualities[0] ?? "low";
 
-  /** 工具栏按钮：新建提示词卡片 */
+  /** 新建节点定位：画布视口中心 + 错开偏移（实例未就绪回退固定坐标） */
+  const getCreatePosition = useCallback((count: number): { x: number; y: number } => {
+    const rf = rfInstanceRef.current;
+    const el = canvasRef.current;
+    if (!rf || !el) return { x: 160, y: 100 };
+    const rect = el.getBoundingClientRect();
+    const center = rf.screenToFlowPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    });
+    return {
+      x: center.x + (count % 6) * 30,
+      y: center.y + (count % 4) * 30,
+    };
+  }, []);
+
+  /** 工具栏按钮：新建提示词卡片（视口中心定位 + 入场动画） */
   const handleCreatePrompt = useCallback(() => {
     recordHistory();
-    setNodes((nds) => [
-      ...nds,
-      {
-        id: `prompt-${Date.now()}`,
-        type: "prompt" as const,
-        position: { x: 160 + (nds.length % 6) * 26, y: 100 + (nds.length % 4) * 26 },
-        data: {
-          prompt: "",
-          size: config.sizes[0]?.value ?? "1024x1024",
-          quality: defaultQuality,
-          outputDir: config.defaultOutputDir,
-          status: "idle" as const,
-        },
-      },
-    ]);
+    setNodes((nds) => {
+      const pos = getCreatePosition(nds.length);
+      return [
+        ...nds,
+        withEnterAnim({
+          id: `prompt-${Date.now()}`,
+          type: "prompt" as const,
+          position: pos,
+          data: {
+            prompt: "",
+            size: config.sizes[0]?.value ?? "1024x1024",
+            quality: defaultQuality,
+            outputDir: config.defaultOutputDir,
+            status: "idle" as const,
+          },
+        }, nds.length),
+      ];
+    });
     pushLog("已新建提示词卡片");
-  }, [config, defaultQuality, recordHistory, setNodes, pushLog]);
+  }, [config, defaultQuality, getCreatePosition, recordHistory, setNodes, pushLog]);
 
-  /** 新建图片组节点（聚合多图后连到提示词统一管理） */
+  /** 新建图片组节点（聚合多图后连到提示词统一管理；视口中心定位 + 入场动画） */
   const handleCreateGroup = useCallback(() => {
     recordHistory();
-    setNodes((nds) => [
-      ...nds,
-      {
-        id: `group-${Date.now()}`,
-        type: "group" as const,
-        position: { x: 280 + (nds.length % 6) * 30, y: 260 + (nds.length % 4) * 30 },
-        data: { name: "图片组", imageCount: 0, totalSize: 0 },
-      },
-    ]);
+    setNodes((nds) => {
+      const pos = getCreatePosition(nds.length);
+      return [
+        ...nds,
+        withEnterAnim({
+          id: `group-${Date.now()}`,
+          type: "group" as const,
+          position: pos,
+          data: { name: "图片组", imageCount: 0, totalSize: 0 },
+        }, nds.length),
+      ];
+    });
     pushLog("已新建图片组，把图片连进来即可");
-  }, [recordHistory, setNodes, pushLog]);
+  }, [getCreatePosition, recordHistory, setNodes, pushLog]);
 
   /** 批量删除：移除所有选中节点及其连线（文件保留） */
   const handleDeleteSelected = useCallback(() => {
@@ -602,7 +625,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
               );
               const created = fresh
                 .filter((entry) => !exIds.has(entry.id))
-                .map((entry, i) => buildImageNode(entry, { x: baseX, y: baseY + i * 130 }));
+                .map((entry, i) => withEnterAnim(buildImageNode(entry, { x: baseX, y: baseY + i * 130 }), i));
               return [...nds, ...created];
             });
             // 结果图自动连线：提示词节点 -> 结果图片（产出边，右边出线）
@@ -722,7 +745,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         return;
       }
       recordHistory();
-      setNodes((nds) => [...nds, ...canvasEntriesToNodes(imported, nds)]);
+      setNodes((nds) => [...nds, ...canvasEntriesToNodes(imported, nds).map((n, i) => withEnterAnim(n, i))]);
       setShowHistory(false);
       pushLog(`已从生成历史导入 ${imported.length} 张图片`);
     } catch (err) {
