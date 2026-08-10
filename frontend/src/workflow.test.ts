@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoLayout, extractAnimClasses, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoConnect, autoLayout, extractAnimClasses, layoutSelection, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -178,6 +178,36 @@ describe("auto layout", () => {
       expect(node.position.y).toBeLessThan(promptY);
     }
     expect(promptY).toBeGreaterThanOrEqual(40 + 180 + 60);
+  });
+});
+
+describe("layout selection", () => {
+  it("re-arranges only selected nodes, leaving unselected positions untouched", () => {
+    const reference = { ...imageNode("reference"), position: { x: 10, y: 20 } } as WorkflowNode;
+    const orphan = { ...imageNode("orphan"), position: { x: 500, y: 500 } } as WorkflowNode;
+    const prompt = { ...promptNode("p1", 0), position: { x: 400, y: 300 } } as WorkflowNode;
+    const result = { ...imageNode("result"), position: { x: 410, y: 900 } } as WorkflowNode;
+    const nodes = [reference, orphan, prompt, result];
+    const edges = [edge("reference", "p1"), edge("p1", "result")];
+
+    // 只选中 reference + prompt + result（orphan 不参与）
+    const arranged = layoutSelection(nodes, edges, new Set(["reference", "p1", "result"]));
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    // 未选中节点坐标完全不变
+    expect(byId.get("orphan")!.position).toEqual({ x: 500, y: 500 });
+    // 选中节点重排：参考图在提示词上方，提示词在结果上方（保持三段式相对关系）
+    expect(byId.get("reference")!.position.y).toBeLessThan(byId.get("p1")!.position.y);
+    expect(byId.get("p1")!.position.y).toBeLessThan(byId.get("result")!.position.y);
+    // 平移起点是选中包围盒左上角：布局不从画布 (60,40) 起，而从选中块内开始
+    expect(byId.get("reference")!.position.x).toBeGreaterThanOrEqual(10);
+  });
+
+  it("returns nodes unchanged when nothing is selected", () => {
+    const nodes = [{ ...promptNode("p1"), position: { x: 100, y: 100 } } as WorkflowNode];
+    const result = layoutSelection(nodes, [], new Set());
+    expect(result).toBe(nodes);
+    expect(result[0].position).toEqual({ x: 100, y: 100 });
   });
 });
 

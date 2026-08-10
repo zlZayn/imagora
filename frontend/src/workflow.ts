@@ -301,10 +301,12 @@ const LAYOUT = {
 
 /** 全局三段式布局：
  *  参考图和图片组在上方，提示词横向排列在中间，生成结果在下方。
+ *  origin 可选：把整套布局平移到该坐标（局部整理选中节点时用，选中块原地重排不跳位）。
  *  返回带新 position 的节点数组（边不变）。 */
 export function autoLayout(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
+  origin?: { x: number; y: number },
 ): WorkflowNode[] {
   if (!nodes.length) return nodes;
   const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -451,8 +453,29 @@ export function autoLayout(
 
   return nodes.map((node) => {
     const pos = positions.get(node.id);
-    return pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)
-      ? { ...node, position: pos }
-      : node;
+    if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+      return origin
+        ? { ...node, position: { x: pos.x + origin.x, y: pos.y + origin.y } }
+        : { ...node, position: pos };
+    }
+    return node;
   });
+}
+
+/** 局部整理：只重排选中的节点，其余节点保持原位。
+ *  以选中节点包围盒左上角为原点跑三段式布局（origin 平移），
+ *  未选中节点原样返回。边不变。 */
+export function layoutSelection(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  selectedIds: Set<string>,
+): WorkflowNode[] {
+  if (!selectedIds.size) return nodes;
+  const selected = nodes.filter((node) => selectedIds.has(node.id));
+  if (!selected.length) return nodes;
+  const minX = Math.min(...selected.map((node) => node.position.x));
+  const minY = Math.min(...selected.map((node) => node.position.y));
+  const arranged = autoLayout(selected, edges, { x: minX, y: minY });
+  const positioned = new Map(arranged.map((node) => [node.id, node]));
+  return nodes.map((node) => positioned.get(node.id) ?? node);
 }

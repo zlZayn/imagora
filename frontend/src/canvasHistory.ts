@@ -27,14 +27,14 @@ export function createCanvasHistory(limit = 50) {
       future.unshift(copyState(current));
       return copyState(previous);
     },
-    redo(current: CanvasHistoryState): CanvasHistoryState | null {
+    restore(current: CanvasHistoryState): CanvasHistoryState | null {
       const next = future.shift();
       if (!next) return null;
       past.push(copyState(current));
       return copyState(next);
     },
     canUndo: () => past.length > 0,
-    canRedo: () => future.length > 0,
+    canRestore: () => future.length > 0,
     clear() {
       past.length = 0;
       future.length = 0;

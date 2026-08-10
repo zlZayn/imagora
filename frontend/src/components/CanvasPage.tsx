@@ -52,6 +52,7 @@ import {
   canvasEntriesToNodes,
   computeCounts,
   extractAnimClasses,
+  layoutSelection,
   snapshotIncomingAbsPaths,
   stripAnimClasses,
   updatePromptNode,
@@ -157,7 +158,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const pendingReplaceRef = useRef<string | null>(null);
 
-  /** 待真正移除的节点 id -> 定时器（退场动画播完后再删；撤销/重做/卸载需清理） */
+  /** 待真正移除的节点 id -> 定时器（退场动画播完后再删；撤销/恢复/卸载需清理） */
   const pendingRemovalRef = useRef<Map<string, number>>(new Map());
 
   const sizeOptions = useMemo(
@@ -352,7 +353,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!nodes.length) {
       pushLog("画布为空，无需保存");
       return;
@@ -365,7 +366,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     } catch (err) {
       pushLog(`保存准备失败：${errMessage(err)}`);
     }
-  };
+  }, [nodes.length, pushLog]);
 
   /** 确认保存：同名覆盖需确认 */
   const confirmSave = async () => {
@@ -485,7 +486,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         ),
       );
       // 200ms 后真正移除；二次校验：节点仍标记 node-exiting 才删
-      // （撤销/重做恢复的节点 className 无 node-exiting，不误删）
+      // （撤销/恢复后的节点 className 无 node-exiting，不误删）
       const timer = window.setTimeout(() => {
         ids.forEach((id) => pendingRemovalRef.current.delete(id));
         const dead = new Set(
@@ -762,16 +763,22 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog("全部运行完成");
   }, [generationQueue, pushLog]);
 
-  /** 自动整理：手写几何布局所有节点（参考图→提示词→结果图左中右排列），整理后自适应居中 */
+  /** 自动整理：有选中节点时只整理选中的（局部三段式，其余原位）；否则全局三段式布局。整理后自适应居中 */
   const handleAutoLayout = useCallback(() => {
     const current = nodesRef.current;
     if (!current.length) {
       pushLog("画布为空，无需整理");
       return;
     }
+    const selected = selectedIdsRef.current;
     recordHistory();
-    setNodes(autoLayout(current, edgesRef.current));
-    pushLog(`已整理 ${current.length} 个节点`);
+    if (selected.size > 0) {
+      setNodes(layoutSelection(current, edgesRef.current, selected));
+      pushLog(`已整理 ${selected.size} 个选中节点`);
+    } else {
+      setNodes(autoLayout(current, edgesRef.current));
+      pushLog(`已整理 ${current.length} 个节点`);
+    }
     // 等 React Flow 连续完成状态提交和节点测量后再读取新坐标。
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -819,15 +826,15 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog("已撤销画布操作");
   }, [pushLog, refreshHistoryControls, setEdges, setNodes]);
 
-  const handleRedo = useCallback(() => {
+  const handleRestore = useCallback(() => {
     pendingRemovalRef.current.forEach((timer) => window.clearTimeout(timer));
     pendingRemovalRef.current.clear();
-    const next = historyRef.current.redo({ nodes: nodesRef.current, edges: edgesRef.current });
+    const next = historyRef.current.restore({ nodes: nodesRef.current, edges: edgesRef.current });
     if (!next) return;
     setNodes(next.nodes);
     setEdges(next.edges);
     refreshHistoryControls();
-    pushLog("已重做画布操作");
+    pushLog("已恢复画布操作");
   }, [pushLog, refreshHistoryControls, setEdges, setNodes]);
 
   const handleCancelTask = useCallback((id: string) => {
@@ -838,6 +845,45 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     const count = generationQueue.retryFailed();
     pushLog(count ? `已重新排队 ${count} 个失败任务` : "没有可重试的失败任务");
   }, [generationQueue, pushLog]);
+
+  /* ---------------- 画布快捷键：Ctrl+Z 撤销 / Ctrl+Y 恢复 / Ctrl+S 保存 / Delete 删除选中 ----------------
+   * 跳过输入框聚焦（提示词/保存名等文本框内按键走浏览器原生行为）；
+   * Delete 走退场动画删除（与按钮一致），React Flow 默认 Backspace 裸删已禁用（deleteKeyCode={null}）。 */
+  useEffect(() => {
+    const isEditable = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return target.closest("input, textarea, select, [contenteditable]") !== null;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isEditable(event.target)) return;
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handleRestore();
+        } else {
+          handleUndo();
+        }
+        return;
+      }
+      if (mod && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        handleRestore();
+        return;
+      }
+      if (mod && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void handleSave();
+        return;
+      }
+      if (event.key === "Delete" && selectedIdsRef.current.size > 0) {
+        event.preventDefault();
+        handleDeleteSelected();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleDeleteSelected, handleRestore, handleSave, handleUndo]);
 
   /* ---------------- 渲染 ---------------- */
   const nodeTypes = useMemo(
@@ -916,7 +962,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           <ToolbarButton onClick={() => void handleLoad()}>加载工作流</ToolbarButton>
           <ToolbarButton onClick={() => setShowHistory(true)}>生成历史</ToolbarButton>
           <ToolbarButton onClick={handleUndo} disabled={!historyRef.current.canUndo()}>撤销</ToolbarButton>
-          <ToolbarButton onClick={handleRedo} disabled={!historyRef.current.canRedo()}>恢复</ToolbarButton>
+          <ToolbarButton onClick={handleRestore} disabled={!historyRef.current.canRestore()}>恢复</ToolbarButton>
           <ToolbarButton onClick={handleAutoLayout}>自动整理</ToolbarButton>
           <ToolbarButton onClick={handleAutoConnect}>自动连线</ToolbarButton>
           <ToolbarButton onClick={() => void handleRunAll()} disabled={runningAll}>
@@ -926,7 +972,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       </div>
       {/* 操作帮助：单行小字，画布/节点/连线三类交互用分隔符紧凑展示 */}
       <div className="flex flex-wrap items-center gap-x-1 text-[10px] leading-tight text-neutral-400">
-        <span className="font-medium text-neutral-500">画布</span>Shift+拖拽框选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除
+        <span className="font-medium text-neutral-500">画布</span>Shift+拖拽框选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · Ctrl+Z 撤销 / Ctrl+Y 恢复 · Delete 删除选中
         <span className="text-neutral-300">｜</span>
         <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 双击图片放大
         <span className="text-neutral-300">｜</span>
@@ -970,6 +1016,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           minZoom={0.2}
           maxZoom={2}
           defaultEdgeOptions={{ animated: true }}
+          deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
