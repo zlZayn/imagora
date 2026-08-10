@@ -7,6 +7,7 @@
 import json
 import os
 import sys
+import time
 from io import BytesIO
 from pathlib import Path
 
@@ -170,6 +171,19 @@ def test_workflow_load_missing_file(canvas_env):
         canvas_workflow_load("ghost")
 
 
+def wait_terminal(task_id, timeout=5):
+    """轮询生成任务到终态（/api/generate 已是提交式，结果通过任务快照取）"""
+    from server import task_manager
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        snap = task_manager.snapshot(task_id)
+        if snap and snap["status"] in ("done", "failed", "cancelled"):
+            return snap
+        time.sleep(0.01)
+    raise AssertionError(f"task {task_id} did not reach terminal state in time")
+
+
 def test_canvas_recovery_routes_roundtrip(canvas_env):
     """恢复路由保存新快照，并能读取最近一份。"""
     from server import canvas_recovery_latest, canvas_recovery_save
@@ -198,7 +212,7 @@ def test_generate_ref_paths_accepts_canvas_dir(canvas_env, monkeypatch):
     # 防止测试副作用污染真实 output/.last_output_dir（generate 成功后默认会写入）
     monkeypatch.setattr("server.save_last_output_dir", lambda p: None)
 
-    result = generate(
+    submitted = generate(
         prompt="测试",
         size="1024x1024",
         quality="low",
@@ -207,5 +221,8 @@ def test_generate_ref_paths_accepts_canvas_dir(canvas_env, monkeypatch):
         images=[],  # 直接调用时 File(default=[]) 的默认值是 File 对象，必须显式传空列表
         win=1,
     )
-    assert result["results"][0]["status"] == "ok"
-    assert "参考图 1 张" in result["messages"][0]
+    assert submitted["taskId"]
+    snap = wait_terminal(submitted["taskId"])
+    assert snap["status"] == "done"
+    assert snap["results"][0]["status"] == "ok"
+    assert "参考图 1 张" in snap["messages"][0]

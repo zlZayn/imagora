@@ -56,6 +56,7 @@ from core.config import (
 )
 from core.history import read_generation_history
 from core.logging import log_generation
+from core.tasks import MAX_CONCURRENCY, GenerationTask, TaskManager
 
 # 多开窗口：服务端原子分配递增编号（GIL 保证并发安全）
 _WIN_LOCK = threading.Lock()
@@ -461,98 +462,60 @@ def display_path(path: str) -> str:
     return relative_display_path(path, WORK_ROOT)
 
 
-@app.post("/api/generate")
-def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
-             quality: str = Form(DEFAULT_QUALITY), output_dir: str = Form(""),
-             images: list[UploadFile] = File(default=[]),
-             ref_paths: str = Form(""),
-             win: int = Form(0)):
-    """文生图 / 图生图。图生图二选一：ref_paths（JSON 字符串数组，引用已上传参考图，优先）
-    或 images（未上传的本地兜底，落临时文件）；都不传即文生图。
+def run_generation(task: GenerationTask) -> None:
+    """在全局任务池的线程中执行一次生成，把结果写回任务。
 
-    每个结果带尺寸/费用/文件大小/后缀；响应含本次成功张数的总费用。
-    文件名带全局序号：多窗口同秒并发生成互不覆盖。
-    同步 def：走 FastAPI 线程池，生成期间不阻塞事件循环，其他请求（开新窗口/加载页面）照常响应。
+    成功写 task.results / task.messages / task.total_cost；
+    失败写 task.error（TaskManager 据此置 failed）。临时兜底文件由 TaskManager 统一清理。
     """
-    out_dir = (output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/")
+    out_dir = (task.output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/")
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     started_at = time.time()
-    cost = size_cost(size)
-    results = []
-    messages = []
-
-    # ref_paths 解析（JSON 字符串数组）；非法直接返回错误，不进入生成
-    ref_list: list[str] = []
-    if ref_paths:
-        try:
-            ref_list = json.loads(ref_paths)
-        except json.JSONDecodeError:
-            results.append({"status": "error", "message": "参考图参数非法"})
-            messages.append("失败 · 参考图参数非法")
-            messages.append("本次成功 0 张 · 费用 0.00 元")
-            log_generation(
-                prompt=prompt, mode="img2img", refs=0, size=size, quality=quality,
-                status="error", output="", cost=0.0,
-                seconds=time.time() - started_at, win=win or None,
-            )
-            return {"results": results, "messages": messages, "totalCost": 0.0}
-
-    ref_bases: list[str] = []   # 已落盘参考图（持久缓存，不清理）
-    temp_bases: list[str] = []  # multipart 上传的临时文件（生成后清理）
+    cost = size_cost(task.size)
+    results: list[dict] = []
+    messages: list[str] = []
+    dest = ""
+    ok = False
     try:
-        if ref_list:
-            # 复用已上传参考图：只接受 REF_DIR / CANVAS_DIR 内路径，防路径穿越
-            for p in ref_list:
-                safe = safe_ref_path_allowlist(p, [REF_DIR, canvas.CANVAS_DIR])
-                if not safe or not os.path.isfile(safe):
-                    raise ValueError(f"非法参考图路径: {p}")
-                ref_bases.append(safe)
+        if task.ref_bases:
+            # 复用已上传参考图（画布 / 参考图缓存），路径在提交时已校验
             seq = next(_SEQ)
             dest = os.path.join(out_dir, f"img2img_{stamp}_{seq:03d}.png")
-            messages.append(f"图生图 · 参考图 {len(ref_bases)} 张")
+            messages.append(f"图生图 · 参考图 {len(task.ref_bases)} 张")
             generate_image(
-                prompt=prompt, images=ref_bases, size=size,
-                quality=quality, output_format="png", output_path=dest,
+                prompt=task.prompt, images=task.ref_bases, size=task.size,
+                quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
-            messages.append(f"已保存 · {display_path(dest)}（{size}）")
-        elif images:
-            # 未上传的本地兜底：底图先落临时文件，结果写到输出目录
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            messages.append(f"已保存 · {display_path(dest)}（{task.size}）")
+        elif task.temp_bases:
+            # multipart 兜底：底图已在提交线程落临时文件（UploadFile 不可跨线程）
             seq = next(_SEQ)
             dest = os.path.join(out_dir, f"img2img_{stamp}_{seq:03d}.png")
-            messages.append(f"图生图 · 参考图 {len(images)} 张")
-            for image in images:
-                with tempfile.NamedTemporaryFile(
-                    suffix=Path(image.filename or "img").suffix or ".png", delete=False
-                ) as tmp:
-                    tmp.write(image.file.read())
-                    temp_bases.append(tmp.name)
+            messages.append(f"图生图 · 参考图 {len(task.temp_bases)} 张")
             generate_image(
-                prompt=prompt, images=temp_bases, size=size,
-                quality=quality, output_format="png", output_path=dest,
+                prompt=task.prompt, images=task.temp_bases, size=task.size,
+                quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
-            messages.append(f"已保存 · {display_path(dest)}（{size}）")
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            messages.append(f"已保存 · {display_path(dest)}（{task.size}）")
         else:
             seq = next(_SEQ)
             dest = os.path.join(out_dir, f"txt2img_{stamp}_{seq:03d}.png")
             messages.append("文生图")
             generate_image(
-                prompt=prompt, image_path=None, size=size,
-                quality=quality, output_format="png", output_path=dest,
+                prompt=task.prompt, image_path=None, size=task.size,
+                quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
-            messages.append(f"已保存 · {display_path(dest)}（{size}）")
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            messages.append(f"已保存 · {display_path(dest)}（{task.size}）")
+        ok = True
     except Exception as e:
-        results.append({"status": "error", "message": format_error(e)})
-        messages.append(f"失败 · {format_error(e)}")
-    finally:
-        for tmp in temp_bases:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+        msg = format_error(e)
+        task.error = msg
+        results.append({"status": "error", "message": msg})
+        messages.append(f"失败 · {msg}")
 
     total_cost = sum(r.get("cost", 0) for r in results if r.get("status") == "ok")
     ok_count = sum(1 for r in results if r.get("status") == "ok")
@@ -562,20 +525,82 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
     if ok_count > 0:
         save_last_output_dir(out_dir)
 
-    ok = results and results[0].get("status") == "ok"
     log_generation(
-        prompt=prompt,
-        mode="img2img" if (images or ref_list) else "txt2img",
-        refs=len(images) + len(ref_list),
-        size=size,
-        quality=quality,
+        prompt=task.prompt,
+        mode="img2img" if (task.temp_bases or task.ref_bases) else "txt2img",
+        refs=len(task.temp_bases) + len(task.ref_bases),
+        size=task.size,
+        quality=task.quality,
         status="ok" if ok else "error",
         output=dest if ok else "",
         cost=total_cost,
         seconds=time.time() - started_at,
-        win=win or None,
+        win=task.win or None,
     )
-    return {"results": results, "messages": messages, "totalCost": total_cost}
+    task.results = results
+    task.messages = messages
+    task.total_cost = total_cost
+
+
+# 全局生成任务池：执行池大小即全局并发上限，所有窗口 / 模式共享（详见 core/tasks.py）
+task_manager = TaskManager(concurrency=MAX_CONCURRENCY, run_task=run_generation)
+
+
+@app.post("/api/generate")
+def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
+             quality: str = Form(DEFAULT_QUALITY), output_dir: str = Form(""),
+             images: list[UploadFile] = File(default=[]),
+             ref_paths: str = Form(""),
+             win: int = Form(0)):
+    """提交生成任务（文生图 / 图生图），立即返回 taskId 与初始状态。
+
+    实际生成进入全局任务池排队执行（并发上限 10，经典表单与无限画布共用），
+    前端轮询 GET /api/tasks/{taskId} 获取状态与最终结果。
+    同步提交：仅在提交阶段做参数校验与文件落盘，不阻塞生成。
+    """
+    ref_bases: list[str] = []
+    if ref_paths:
+        try:
+            ref_list = json.loads(ref_paths)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="参考图参数非法")
+        # 只接受 REF_DIR / CANVAS_DIR 内路径，防路径穿越（校验失败不占执行槽）
+        for p in ref_list:
+            safe = safe_ref_path_allowlist(p, [REF_DIR, canvas.CANVAS_DIR])
+            if not safe or not os.path.isfile(safe):
+                raise HTTPException(status_code=400, detail=f"非法参考图路径: {p}")
+            ref_bases.append(safe)
+
+    # multipart 兜底文件：UploadFile 不能跨线程读取，必须在请求线程落临时文件
+    temp_bases: list[str] = []
+    for image in images:
+        with tempfile.NamedTemporaryFile(
+            suffix=Path(image.filename or "img").suffix or ".png", delete=False
+        ) as tmp:
+            tmp.write(image.file.read())
+            temp_bases.append(tmp.name)
+
+    task = GenerationTask(
+        prompt=prompt, size=size, quality=quality, output_dir=output_dir, win=win,
+        ref_bases=ref_bases, temp_bases=temp_bases,
+    )
+    task_id = task_manager.submit(task)
+    return {"taskId": task_id, "status": task.status}
+
+
+@app.get("/api/tasks/{task_id}")
+def task_status(task_id: str):
+    """查询生成任务状态（前端轮询）。终态保留 10 分钟，超时或不存在返回 404。"""
+    snap = task_manager.snapshot(task_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="任务不存在或已过期")
+    return snap
+
+
+@app.post("/api/tasks/{task_id}/cancel")
+def cancel_task(task_id: str):
+    """请求取消任务：排队中不再执行；生成中无法中断上游请求，跑完后丢弃结果。"""
+    return {"ok": task_manager.cancel(task_id)}
 
 
 @app.post("/api/open-folder")
