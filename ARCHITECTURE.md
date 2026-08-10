@@ -82,11 +82,13 @@ tools/
 **1. UI 生成（Web 界面）**
 ```
 UploadZone: 添加图片 → api.ts:uploadRef → POST /api/upload-ref → refs[{id,path,url,name,size,ext}]
-App.tsx:handleGenerate → api.ts:generateImage（ref_paths 引用已落盘参考图）
+App.tsx:handleGenerate / CanvasPage:runNodeInternal → api.ts:submitGenerate（ref_paths 引用已落盘参考图）
   → POST /api/generate（multipart: prompt + ref_paths + size + quality + output_dir + win(窗口号)）
-  → server.generate() → core.api.generate_image() → 上游 API
-  → 保存图片到输出目录 → 返回 { results[url,size,cost,fileSize,ext], messages, totalCost }
-  → Gallery 显示（GET /api/image?path= 读图，标注分辨率/格式/大小/费用）+ 日志区显示费用/用时
+  → server.generate() 校验 + multipart 临时文件落盘 → core.tasks:TaskManager.submit 登记任务 → 立即返回 { taskId, status }
+  → 前端 useGenerationTask 轮询 GET /api/tasks/{taskId}（2s；竞态防护 + elapsed 本地计时；终态停止）
+  → 服务端线程池（MAX_CONCURRENCY=10）执行 core.api.generate_image() → 上游 API → 保存图片到输出目录
+  → done 快照 { results[url,size,cost,fileSize,ext], messages, totalCost } 驱动界面
+  → 经典表单 Gallery 显示（GET /api/image?path= 读图）+ 日志费用/用时；画布按 nodeId→taskId 映射驱动节点状态灯 + 结果回流
 ```
 
 **2. 批量生成（命令行）**
@@ -125,7 +127,9 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | POST | `/api/upload-ref` | multipart：images(多张同名，每张独立存储) | { refs[ id, path, url, name, size, ext, mime ] }（参考图落盘 `output/.refs/`，url 即 `/api/image?path=` 可直接渲染） |
 | POST | `/api/delete-ref` | { path } | { ok }（删除已落盘的参考图，尽力而为，文件不存在也算 ok） |
 | POST | `/api/output-dir` | { path } | { ok }（记住输出路径：用户一改前端即上报，重启后 config 默认返回） |
-| POST | `/api/generate` | multipart：prompt、size、quality、output_dir、win，图片二选一：`images`(多张同名，未上传的本地兜底) 或 `ref_paths`(JSON 字符串数组，引用已上传参考图，优先) | { results[status,message,url?,size,cost,fileSize?,ext?], messages[], totalCost } |
+| POST | `/api/generate` | multipart：prompt、size、quality、output_dir、win，图片二选一：`images`(多张同名，未上传的本地兜底) 或 `ref_paths`(JSON 字符串数组，引用已上传参考图，优先) | { taskId, status }（异步任务管线：提交即返回，轮询 tasks 接口取结果） |
+| GET | `/api/tasks/{task_id}` | 无 | { taskId, status, startedAt?, results?, messages?, totalCost?, error?, cancelRequested? }（状态机 queued → running → done/failed，任意状态可取消 → cancelled；终态保留 10 分钟，超时/不存在 404） |
+| POST | `/api/tasks/{task_id}/cancel` | 无 | { ok }（排队中立即取消；运行中等待当前张完成后丢弃结果） |
 | GET | `/api/image` | ?path= | 图片文件（FileResponse） |
 | POST | `/api/canvas/upload` | multipart：images(多张) | { images[ id, relPath, absPath, name, size, ext, createdAt ] }（复制进 `output/.canvas/` 并登记，同内容去重） |
 | POST | `/api/canvas/import` | { paths: [目录或文件绝对路径] } | { imported[entry], skipped[{path,reason}] }（目录递归收集图片，路径必须落在 output 根内） |
@@ -142,15 +146,16 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 `/api/upload-ref` 返回的 `url` 复用 `/api/image`，前端可直接 `<img>` 加载；`/api/generate` 的 `ref_paths` 接受 `output/.refs/` 与 `output/.canvas/` 两个目录内的路径（`safe_ref_path_allowlist` 逐根 commonpath 校验，跨盘 root 单独捕获不误伤，防路径穿越），与 `images` 互斥、`ref_paths` 优先——图生图不二次上传大图。
 
-前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerateResponse` / `ResultItem`），与后端返回结构一一对应。
+前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerationTaskSnapshot` / `GenerateParams` / `ResultItem`），与后端返回结构一一对应。
 
-## 数据流（一次图生图）
+## 数据流（一次图生图，异步任务管线）
 
 1. 参考图**添加即上传**：前端收文件 → `POST /api/upload-ref` 落盘 `output/.refs/` → 返回 `{ id, path, url, name, size, ext, mime }`，缩略图直接 `<img src=url>`
-2. 生成时前端传 `ref_paths`（JSON 数组引用已落盘文件）→ server 校验路径在 `output/.refs/` 或 `output/.canvas/` 内 → 结果路径算好
-3. `generate_image` 读全部参考图 → POST edits 接口（多图一次请求）→ 解码 `b64_json` 写入结果文件
-4. 生成 `url=/api/image?path=` 回显，附带 `fileSize`（`os.path.getsize`）与 `ext`（`Path.suffix`）供画廊标注
-5. 前端画廊 `<img src="/api/image?path=...">` 加载；缩略图下标注 `分辨率 · 格式 · 文件大小 · 费用`；日志区显示 `已保存 · 相对路径（尺寸）`
+2. 生成时前端传 `ref_paths`（JSON 数组引用已落盘文件）→ server 校验路径在 `output/.refs/` 或 `output/.canvas/` 内 → 构造 `GenerationTask`（multipart 兜底文件在请求线程先落临时文件，跨线程安全）
+3. `TaskManager.submit` 登记任务并立即返回 `{ taskId, status }` → 线程池（并发 10）空闲即开始执行，前端 2s 轮询快照
+4. 执行线程内 `generate_image` 读全部参考图 → POST edits 接口（多图一次请求）→ 解码 `b64_json` 写入结果文件 → 写回 task.results/messages/total_cost
+5. 快照里生成 `url=/api/image?path=` 回显，附带 `fileSize`（`os.path.getsize`）与 `ext`（`Path.suffix`）供画廊标注；终态保留 10 分钟供轮询/展示，超时 404（前端兜底标失败）
+6. 前端画廊 `<img src="/api/image?path=...">` 加载；缩略图下标注 `分辨率 · 格式 · 文件大小 · 费用`；日志区显示 `已保存 · 相对路径（尺寸）`
 
 ## 路径与配置基准
 
@@ -206,12 +211,12 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **并发安全**：默认文件名带全局序号（秒级时间戳同秒必撞）；日志写 JSONL 用 `threading.Lock` 串行追加；tkinter 选择器与 explorer 置前用 `_UI_LOCK` 串行化（多窗口并发无运行矛盾）；窗口计数器用 `threading.Lock` 保护自增
 - **图片回显**：`GET /api/image?path=` 动态读文件（本地单机工具），生成时返回带 URL 的结果
 - **超时**：生成请求 300 秒（图生图 + 2K 可能 1-2 分钟）
-- **生成不阻塞事件循环**：`/api/generate` 用同步 `def`（FastAPI 自动放线程池），生成期间其他请求（开新窗口/加载页面/查看图片）照常响应；若写成 `async def` 且内部同步调 API，会卡死整个 uvicorn 事件循环——生成 1-2 分钟里所有请求全部挂起
+- **生成不阻塞事件循环**：`/api/generate` **提交即返回**（任务登记进 `core/tasks.py:TaskManager`，线程池 `MAX_CONCURRENCY=10` 并发执行；提交线程只做校验 + multipart 兜底文件落盘），生成期间其他请求（开新窗口/加载页面/查看图片）照常响应；前端 `useGenerationTask` 轮询 `/api/tasks/{id}` 取快照。状态机 `queued → running → done/failed`，任意状态可 `cancel` → `cancelled`（running 中无法中断上游请求，当前张完成后丢弃结果）；终态保留 10 分钟（TTL），超时 404 由前端兜底标失败
 - **端口**：默认 7860，`main.py ui --port` 可改
-- **画布工作流（无限画布）**：顶部「经典表单 / 无限画布」tab 切换（`?mode=canvas` 直达），React Flow v12（`@xyflow/react`）受控模式。**独立任务模型**：图片节点 + 提示词节点，连线=参考图输入（非执行顺序），提示词节点之间无依赖，「全部运行」= 并发 2 队列并行，无全局启动节点——每个提示词节点都是自己的启动节点。**图片三源归一**：本地上传 / 输出目录导入 / 生成结果回流，全部复制进 `output/.canvas/`（永不自动清理，区别于 `.refs` 24h 清理）并登记 `registry.json`（`{id, relPath, name, size, ext, createdAt}`，id=内容 sha1 前缀，同内容去重——画布上同一文件只一个节点，复用走多出边）。**连线硬约束**：图片节点仅 source 锚点、提示词节点仅 target 锚点，`isValidConnection` 拒绝其余连接；提示词节点顶部 target 仅允许一条入边（已有入边再连会被拒），多图请经「图片组」聚合后连入。**节点操作栏统一**：三类节点共用 `NodeActions` 组件——悬停时在节点右侧（`left-full`）竖排浮出图标按钮（图片：预览/替换/删除；图片组：删除；提示词：状态灯+删除），`ActionButton` 统一图标 + `nodrag` 防误拖，不遮挡节点内容。**hover 置顶**：`.react-flow__node:hover { z-index: 1001 }` 高于 selected/dragging（1000），确保右侧操作栏不被相邻卡片遮挡。**可视化核验**：悬停/选中提示词节点高亮入边（`.edge-highlight`）+ 关联图片描边（`.node-related`）+ 引用计数徽标，运行日志明示参考图张数。**运行快照**：点运行时 `snapshotIncomingAbsPaths` 锁定入边集合（纯函数），运行中改画布不打断已提交任务。**删除分层**：删节点仅断连线不删文件；删文件是图片节点显式操作（前端校验画布内无引用）。**工作流文件**：version 1 JSON（nodes[image 存 registryId+position / prompt 存 data+position] + edges），保存/加载走 `/api/canvas/workflow/*`，后端相对路径解析 + 文件存在性校验 + missing 列表（前端标红），默认 `output/workflows/`；`core/canvas.py` 纯逻辑（注册表线程锁 + 原子写）供 server 薄层调用。**画布日志**：右下角浮层轮播（`CanvasLog`），只露最新 5 条，新条目 `log-toast` 淡入上移，`pointer-events-none` 不挡画布操作，画布向下占满剩余空间。**经典模式**保持原行为不变（回归测试覆盖）
+- **画布工作流（无限画布）**：顶部「经典表单 / 无限画布」tab 切换（`?mode=canvas` 直达），React Flow v12（`@xyflow/react`）受控模式。**独立任务模型**：图片节点 + 提示词节点，连线=参考图输入（非执行顺序），提示词节点之间无依赖，「全部运行」= 全部提交到服务端并发队列并行（`core/tasks.py:TaskManager`，MAX_CONCURRENCY=10），无全局启动节点——每个提示词节点都是自己的启动节点。**图片三源归一**：本地上传 / 输出目录导入 / 生成结果回流，全部复制进 `output/.canvas/`（永不自动清理，区别于 `.refs` 24h 清理）并登记 `registry.json`（`{id, relPath, name, size, ext, createdAt}`，id=内容 sha1 前缀，同内容去重——画布上同一文件只一个节点，复用走多出边）。**连线硬约束**：图片节点仅 source 锚点、提示词节点仅 target 锚点，`isValidConnection` 拒绝其余连接；提示词节点顶部 target 仅允许一条入边（已有入边再连会被拒），多图请经「图片组」聚合后连入。**节点操作栏统一**：三类节点共用 `NodeActions` 组件——悬停时在节点右侧（`left-full`）竖排浮出图标按钮（图片：预览/替换/删除；图片组：删除；提示词：状态灯+删除），`ActionButton` 统一图标 + `nodrag` 防误拖，不遮挡节点内容。**hover 置顶**：`.react-flow__node:hover { z-index: 1001 }` 高于 selected/dragging（1000），确保右侧操作栏不被相邻卡片遮挡。**可视化核验**：悬停/选中提示词节点高亮入边（`.edge-highlight`）+ 关联图片描边（`.node-related`）+ 引用计数徽标，运行日志明示参考图张数。**运行快照**：点运行时 `snapshotIncomingAbsPaths` 锁定入边集合（纯函数），运行中改画布不打断已提交任务。**删除分层**：删节点仅断连线不删文件；删文件是图片节点显式操作（前端校验画布内无引用）。**工作流文件**：version 1 JSON（nodes[image 存 registryId+position / prompt 存 data+position] + edges），保存/加载走 `/api/canvas/workflow/*`，后端相对路径解析 + 文件存在性校验 + missing 列表（前端标红），默认 `output/workflows/`；`core/canvas.py` 纯逻辑（注册表线程锁 + 原子写）供 server 薄层调用。**画布日志**：右下角浮层轮播（`CanvasLog`），只露最新 5 条，新条目 `log-toast` 淡入上移，`pointer-events-none` 不挡画布操作，画布向下占满剩余空间。**经典模式**保持原行为不变（回归测试覆盖）
 - **提示词卡片**：节点最小宽 300px，提示词 textarea `rows=5` + `leading-relaxed`（可纵向拖拽缩放），兼顾多行编辑与紧凑
-- **生成状态机**：提示词节点状态 `idle → queued → running → done`（前端 `status` 字段）。状态指示用右侧操作栏顶部的状态灯（`StatusLight`，圆点配色）：就绪灰、排队琥珀、生成中品牌色 + `animate-pulse` 呼吸、完成绿、失败红；详情（秒数 / 张数 / 失败原因）走 `title` 悬停提示，避免文字徽标导致布局跳动。点「全部运行」时所有待运行节点**立即**置 `queued`（运行按钮禁用），由 worker 真正开始执行时转 `running`；`running` 由独立计时器每秒刷新 `elapsed`；完成记录 `resultCount`。状态变更通过 `setNodes` 更新对应节点 `data.status` / `data.elapsed` / `data.resultCount` / `data.message`
-- **防重复生成**：双层守卫——`queuedRef`（Set）+ `runningRef`（Set）两个 ref 记录在途节点 id。点单节点「运行」时先检查两个集合，命中则直接忽略；点「全部运行」时过滤掉已在集合中的节点。`finally` 兜底清理，删节点时也同步清理，避免状态残留导致按钮永久禁用
+- **生成状态机**：提示词节点状态 `idle → queued → running → done`（前端 `status` 字段）。状态指示用右侧操作栏顶部的状态灯（`StatusLight`，圆点配色）：就绪灰、排队琥珀、生成中品牌色 + `animate-pulse` 呼吸、完成绿、失败红；生成中秒数显示在运行按钮上（经典表单同款文案，共用 `format.ts:generatingLabel`，返回「生成中 Xs」），张数 / 失败原因走 `title` 悬停提示。点「全部运行」时所有待运行节点**立即**置 `queued`（运行按钮禁用），服务端线程池真正开始执行时转 `running`；`running` 由 `useGenerationTask` 轮询 + 本地计时每秒刷新 `elapsed`；完成记录 `resultCount`。状态变更通过 `setNodes` 更新对应节点 `data.status` / `data.elapsed` / `data.resultCount` / `data.message`
+- **防重复生成**：双层守卫——节点 `data.status`（queued/running）+ `nodeTaskRef`（nodeId→taskId 映射）。点单节点「运行」时先检查两者，命中则直接忽略；点「全部运行」时过滤掉已在映射中的节点。终态（done/failed/cancelled）订阅回调解除映射，删节点/加载工作流时同步清理，避免状态残留导致按钮永久禁用
 - **结果回流去重**：生成完成后结果图按 `registryId` 过滤——画布上已存在同 registryId 的节点则不再创建新节点（避免节点 id `img-<id>` 冲突导致 React Flow 警告）。回流只对新增节点建连线，连线 id `${promptId}->${resultId}` 自然不重复。回流前还检查目标提示词节点是否仍存在于 `nodesRef`，删节点后完成的结果不再回流（避免幽灵节点出现在默认坐标）
 - **自动整理布局**：`workflow.ts:autoLayout` 纯函数，全局三段式布局——参考图和图片组在上方（图片组放在其关联提示词范围的水平中心，组内成员围绕组节点聚拢；无关联图片按提示词中心对齐），提示词横向排列在中间（保留整理前的视觉顺序），生成结果在下方（以来源提示词为中心横向展开，跨提示词时水平避让）；未识别的孤立节点落到各列之后不重叠。布局参数集中在 `LAYOUT` 常量（refGap/resultGap/nodeGap/groupGap/leftMargin/topMargin），节点估算尺寸集中在 `NODE_SIZES`。整理后调 `rfInstance.fitView({ padding: 0.2, duration: 300 })` 自适应居中（60ms 延迟等 React 渲染新坐标）。**局部整理**：`layoutSelection(nodes, edges, selectedIds)` 复用同一三段式算法，以选中节点包围盒左上角为 origin（`autoLayout` 可选 origin 平移参数）只重排选中的节点，其余原位不动——工具栏「自动整理」在 Shift 框选后点击时走局部整理，否则全量整理。**无外部图布局库依赖**（曾用 dagre，因"同层节点堆一列"不符合需求已移除，改纯手写几何计算）
 - **画布快捷键与历史**：画布操作历史用 `canvasHistory.ts`（50 条上限的 past/future 栈，`record/undo/restore`，新分支清空 future，`canUndo/canRestore` 驱动按钮禁用态），删除/连线/新建/导入等操作前 `recordHistory` 快照。全局 keydown 监听画布快捷键：`Ctrl+Z` 撤销 / `Ctrl+Y` 恢复 / `Ctrl+S` 保存 / `Delete` 删除选中（走退场动画删除，与按钮一致）；`isEditable` 检查跳过 input/textarea/select/contentEditable 聚焦（文本输入内不拦截）；React Flow 默认 Backspace 裸删已通过 `deleteKeyCode={null}` 禁用，删除统一走动画+历史，不绕过
