@@ -17,7 +17,7 @@ output/
 
 # 规划/执行工件（Prometheus 计划、draft、boulder、ledger）
 .omo/
-.superpowers/
+docs/superpowers/
 
 # 代码索引（CodeGraph）与浏览器自动化（Playwright MCP）数据
 .codegraph/
