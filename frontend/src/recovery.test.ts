@@ -41,3 +41,31 @@ describe("recovery snapshots", () => {
     expect(second).toEqual(first);
   });
 });
+
+describe("recovery snapshot strips animation classes", () => {
+  it("strips node animation classes from prompt nodes", () => {
+    const source = { ...runningPrompt(1), className: "node-enter enter-delay-2" } as WorkflowNode;
+    const snapshot = buildRecoverySnapshot([source], []);
+    expect(snapshot.nodes[0].className).toBeUndefined();
+  });
+
+  it("strips animation classes from image nodes but keeps unrelated classes", () => {
+    const image = {
+      id: "img1",
+      type: "image",
+      position: { x: 0, y: 0 },
+      className: "node-related node-exiting",
+      data: {
+        registryId: "r1",
+        name: "a.png",
+        url: "/api/image?path=a",
+        size: 1,
+        ext: "png",
+        refCount: 0,
+        absPath: "C:\\output\\a.png",
+      },
+    } as WorkflowNode;
+    const snapshot = buildRecoverySnapshot([image], []);
+    expect(snapshot.nodes[0].className).toBe("node-related");
+  });
+});

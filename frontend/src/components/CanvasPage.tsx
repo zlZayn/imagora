@@ -53,6 +53,7 @@ import {
   computeCounts,
   extractAnimClasses,
   snapshotIncomingAbsPaths,
+  stripAnimClasses,
   updatePromptNode,
   withEnterAnim,
   workflowToCanvas,
@@ -377,7 +378,11 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       if (!window.confirm(`工作流「${name}」已存在，覆盖？`)) return;
     }
     try {
-      const { path } = await workflowSave({ name, nodes, edges });
+      const { path } = await workflowSave({
+        name,
+        nodes: nodes.map((node) => ({ ...node, className: stripAnimClasses(node.className) })),
+        edges,
+      });
       setShowSaveModal(false);
       pushLog(`工作流已保存：${path}`);
     } catch (err) {
