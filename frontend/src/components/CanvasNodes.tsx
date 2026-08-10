@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import type { CanvasGroupNodeData, CanvasImageNodeData, CanvasPromptNodeData } from "../types";
+import { generatingLabel } from "../format";
 import FolderPicker from "./FolderPicker";
 import Select from "./Select";
 
@@ -187,7 +188,7 @@ function StatusLight({ data }: { data: CanvasPromptNodeData }) {
     case "running":
       color = "bg-brand";
       pulse = "animate-pulse";
-      title = `生成中 · ${data.elapsed ?? 0}s`;
+      title = generatingLabel(data.elapsed ?? 0);
       break;
     case "done":
       color = "bg-green-500";
@@ -279,7 +280,7 @@ export function PromptNode({
           disabled={busy || !data.prompt.trim()}
           className={`btn-primary flex-1 !py-1 text-xs ${busy ? "btn-busy" : ""}`}
         >
-          {running ? "生成中..." : queued ? "排队中..." : "运行"}
+          {running ? generatingLabel(data.elapsed ?? 0) : queued ? "排队中..." : "运行"}
         </button>
         {data.message && (
           <span className="min-w-0 flex-1 truncate text-[10px] text-red-500" title={data.message}>

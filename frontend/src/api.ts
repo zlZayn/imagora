@@ -2,7 +2,8 @@ import type {
   AppConfig,
   CanvasImageEntry,
   GenerateParams,
-  GenerateResponse,
+  GenerationTaskStatus,
+  GenerationTaskSnapshot,
   RefItem,
   WorkflowEdge,
   WorkflowNode,
@@ -78,8 +79,11 @@ export async function rememberOutputDir(path: string): Promise<void> {
   });
 }
 
-/** 文生图 / 图生图（refPaths 优先复用已上传参考图，files 为未上传兜底） */
-export async function generateImage(params: GenerateParams): Promise<GenerateResponse> {
+/** 文生图 / 图生图（refPaths 优先复用已上传参考图，files 为未上传兜底）
+ *  提交后立即返回 {taskId, status}，后续用 fetchTask 轮询快照 */
+export async function submitGenerate(
+  params: GenerateParams,
+): Promise<{ taskId: string; status: GenerationTaskStatus }> {
   const formData = new FormData();
   formData.append("prompt", params.prompt);
   if (params.refPaths.length) {
@@ -94,7 +98,21 @@ export async function generateImage(params: GenerateParams): Promise<GenerateRes
   formData.append("quality", params.quality);
   formData.append("output_dir", params.outputDir);
   formData.append("win", String(params.win)); // 与后端 Form 参数名一致，日志按窗口溯源
-  return requestJson<GenerateResponse>("/api/generate", { method: "POST", body: formData });
+  return requestJson("/api/generate", { method: "POST", body: formData });
+}
+
+/* ---------------- 生成任务（异步任务管线：提交 / 轮询 / 取消） ---------------- */
+
+/** 轮询任务快照（排队 / 执行 / 完成 / 失败 / 取消） */
+export function fetchTask(taskId: string): Promise<GenerationTaskSnapshot> {
+  return requestJson<GenerationTaskSnapshot>(`/api/tasks/${encodeURIComponent(taskId)}`);
+}
+
+/** 请求取消任务（排队中立即取消；运行中等待当前张完成后丢弃结果） */
+export async function cancelTask(taskId: string): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/cancel`, {
+    method: "POST",
+  });
 }
 
 /* ---------------- 画布工作流（无限画布：图片节点 + 提示词节点） ---------------- */

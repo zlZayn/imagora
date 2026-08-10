@@ -48,11 +48,20 @@ export interface ResultItem {
   ext?: string;
 }
 
-/** 生成接口响应 */
-export interface GenerateResponse {
-  results: ResultItem[];
-  messages: string[];
-  totalCost: number;
+/** 生成任务状态（后端任务管线；经典表单与画布共用，见 core/tasks.py） */
+export type GenerationTaskStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+
+/** 生成任务快照（GET /api/tasks/{taskId} 轮询返回） */
+export interface GenerationTaskSnapshot {
+  taskId: string;
+  status: GenerationTaskStatus;
+  /** 开始执行时间（epoch ms），未开始为 null */
+  startedAt?: number | null;
+  results?: ResultItem[];
+  messages?: string[];
+  totalCost?: number;
+  error?: string | null;
+  cancelRequested?: boolean;
 }
 
 /** 生成请求参数 */

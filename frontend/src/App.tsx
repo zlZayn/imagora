@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { generateImage, getConfig, getHealthDetails, openFolder, rememberOutputDir } from "./api";
+import { getConfig, getHealthDetails, openFolder, rememberOutputDir } from "./api";
+import { useGenerationTask } from "./useGenerationTask";
 import { accentForWindow } from "./accent";
-import type { AppConfig, RefItem, ResultItem } from "./types";
-import { errMessage } from "./format";
+import type { AppConfig, GenerationTaskStatus, RefItem, ResultItem } from "./types";
+import { errMessage, generatingLabel } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
 import UploadZone from "./components/UploadZone";
 import FolderPicker from "./components/FolderPicker";
@@ -121,9 +122,12 @@ export default function App() {
   const [size, setSize] = useState("");
   const [quality, setQuality] = useState("high");
   const [outputDir, setOutputDir] = useState("");
-  const [busy, setBusy] = useState(false);
+  /** 生成任务：submit 返回 taskId，订阅回调按 activeTaskId 驱动状态 */
+  const generationTask = useGenerationTask();
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [taskStatus, setTaskStatus] = useState<GenerationTaskStatus | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef<number | null>(null);
+  const startedAtRef = useRef(0);
   /** 输出路径防抖上报定时器（用户改路径 300ms 后记住到服务端） */
   const outputDirTimerRef = useRef<number | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -197,23 +201,53 @@ export default function App() {
     [config],
   );
 
+  /** 订阅当前任务状态：queued/running 驱动按钮，终态落结果 / 日志 */
+  useEffect(() => {
+    return generationTask.subscribe((taskId, view) => {
+      if (taskId !== activeTaskId) return;
+      if (view.status === "queued") {
+        setTaskStatus("queued");
+        setElapsed(0);
+        setLogs((prev) => (prev[0] === "已提交，排队等待生成…" ? prev : ["已提交，排队等待生成…"]));
+      } else if (view.status === "running") {
+        setTaskStatus("running");
+        setElapsed(view.elapsed);
+        setLogs((prev) => (prev[0] === "生成中…" ? prev : ["生成中…"]));
+      } else if (view.status === "done") {
+        setTaskStatus("done");
+        setResults(view.results ?? []);
+        setLogs([
+          ...(view.messages ?? []),
+          `总用时 ${((Date.now() - startedAtRef.current) / 1000).toFixed(1)} 秒`,
+        ]);
+      } else if (view.status === "failed") {
+        setTaskStatus("failed");
+        setResults([]);
+        setLogs([`生成失败：${view.error ?? "未知错误"}`]);
+      } else if (view.status === "cancelled") {
+        setTaskStatus("cancelled");
+        setLogs(["生成已取消"]);
+      }
+    });
+  // 与 CanvasPage 同约定：只依赖稳定的 subscribe，避免每次任务状态刷新重建订阅
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generationTask.subscribe, activeTaskId]);
+
   const handleGenerate = async () => {
     if (!prompt.trim()) {
       setLogs(["请先输入提示词"]);
       return;
     }
-    const startedAt = Date.now();
-    setBusy(true);
+    startedAtRef.current = Date.now();
     setResults([]);
     setElapsed(0);
-    setLogs(["生成中…"]);
-    // 实时计时：每秒刷新已等待秒数
-    timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
+    setTaskStatus("queued");
+    setLogs(["已提交，排队等待生成…"]);
     try {
       // 已上传的走 ref_paths 复用服务端文件；未上传成功的本地兜底走 multipart
       const syncedRefs = refs.filter((r) => r.synced);
       const pendingFiles = refs.filter((r) => !r.synced).flatMap((r) => (r.file ? [r.file] : []));
-      const res = await generateImage({
+      const taskId = await generationTask.submit({
         prompt,
         refPaths: syncedRefs.map((r) => r.path),
         files: pendingFiles,
@@ -222,18 +256,15 @@ export default function App() {
         outputDir,
         win: windowId ?? 0,
       });
-      setResults(res.results);
-      setLogs([...res.messages, `总用时 ${((Date.now() - startedAt) / 1000).toFixed(1)} 秒`]);
+      setActiveTaskId(taskId);
     } catch (err) {
-      setLogs([`生成失败：${errMessage(err)}`]);
-    } finally {
-      if (timerRef.current) {
-        window.clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      setBusy(false);
+      setTaskStatus(null);
+      setLogs([`提交失败：${errMessage(err)}`]);
     }
   };
+
+  /** 生成中（排队或执行）时禁用表单操作 */
+  const busy = taskStatus === "queued" || taskStatus === "running";
 
   const handleOpenFolder = async () => {
     const res = await openFolder(outputDir);
@@ -366,7 +397,7 @@ export default function App() {
                 disabled={busy}
                 className={`btn-primary flex-1 ${busy ? "btn-busy" : ""}`}
               >
-                {busy ? `生成中 ${elapsed}s` : "生成图片"}
+                {busy ? (taskStatus === "queued" ? "排队中…" : generatingLabel(elapsed)) : "生成图片"}
               </button>
               <button
                 type="button"

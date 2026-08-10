@@ -1,4 +1,4 @@
-import type { GenerationTaskSnapshot } from "../generationQueue";
+import type { GenerationTaskSnapshot } from "../types";
 
 const STATUS_LABEL = {
   queued: "排队中",
@@ -40,11 +40,11 @@ export default function TaskCenter({
       </summary>
       <div className="mt-2 grid max-h-36 gap-1 overflow-auto border-t border-neutral-100 pt-2">
         {tasks.map((task) => (
-          <div key={task.id} className="flex min-h-7 items-center gap-3 px-1 text-neutral-500">
-            <span className="min-w-0 flex-1 truncate font-mono">{task.id}</span>
+          <div key={task.taskId} className="flex min-h-7 items-center gap-3 px-1 text-neutral-500">
+            <span className="min-w-0 flex-1 truncate font-mono">{task.taskId}</span>
             <span className={task.status === "failed" ? "text-red-600" : ""}>{STATUS_LABEL[task.status]}</span>
             {(task.status === "queued" || task.status === "running") && (
-              <button type="button" className="text-neutral-500 hover:text-red-600" onClick={() => onCancel(task.id)}>
+              <button type="button" className="text-neutral-500 hover:text-red-600" onClick={() => onCancel(task.taskId)}>
                 {task.status === "running" ? "忽略结果" : "取消"}
               </button>
             )}

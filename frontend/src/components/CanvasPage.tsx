@@ -24,7 +24,6 @@ import "@xyflow/react/dist/style.css";
 
 import {
   canvasUpload,
-  generateImage,
   historyCanvasImport,
   workflowList,
   workflowLoad,
@@ -32,12 +31,7 @@ import {
 } from "../api";
 import { createCanvasHistory } from "../canvasHistory";
 import { errMessage } from "../format";
-import {
-  createGenerationQueue,
-  type GenerationQueue,
-  type GenerationRunContext,
-  type GenerationTaskSnapshot,
-} from "../generationQueue";
+import { useGenerationTask, type GenerationTaskView } from "../useGenerationTask";
 import { useCanvasRecovery } from "../useCanvasRecovery";
 import type {
   AppConfig,
@@ -63,9 +57,6 @@ import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 import HistoryGallery from "./HistoryGallery";
 import TaskCenter from "./TaskCenter";
 import { WorkflowLoadModal, WorkflowSaveModal, ZoomModal } from "./WorkflowModals";
-
-/** 全部运行并发上限（单次生成 30-120s，防止打爆 API） */
-const RUN_CONCURRENCY = 2;
 
 /** 节点删除退场动画时长（与 .node-exiting 的 fade-out 0.2s 一致） */
 const FADE_DURATION = 200;
@@ -139,11 +130,15 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   /** 当前选中的节点数（Shift 框选多选后显示批量删除） */
   const [selectedCount, setSelectedCount] = useState(0);
   const selectedIdsRef = useRef<Set<string>>(new Set());
-  const queueRef = useRef<GenerationQueue | null>(null);
   const historyRef = useRef(createCanvasHistory());
   const [, setHistoryVersion] = useState(0);
-  const [queueTasks, setQueueTasks] = useState<GenerationTaskSnapshot[]>([]);
-  const runningAll = queueTasks.some((task) => task.status === "queued" || task.status === "running");
+  /** 生成任务：统一提交-轮询（服务端任务管线，经典表单与画布共用） */
+  const generationTask = useGenerationTask();
+  /** 提示词节点 → taskId（提交成功时登记，终态订阅回调解除；防重复提交 + 删除节点时取消定位） */
+  const nodeTaskRef = useRef(new Map<string, string>());
+  /** taskId → 提示词节点（订阅回调按此定位节点驱动状态） */
+  const taskNodeRef = useRef(new Map<string, string>());
+  const runningAll = generationTask.tasks.some((task) => task.status === "queued" || task.status === "running");
   /** 放大预览：当前预览的图片绝对路径（null 关闭）与文件名 */
   const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [zoomName, setZoomName] = useState("");
@@ -182,11 +177,10 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   }, [refreshHistoryControls]);
 
   const cancelAllTasks = useCallback(() => {
-    const queue = queueRef.current;
-    queue?.getSnapshot()
+    generationTask.tasks
       .filter((task) => task.status === "queued" || task.status === "running")
-      .forEach((task) => queue.cancel(task.id));
-  }, []);
+      .forEach((task) => void generationTask.cancel(task.taskId));
+  }, [generationTask]);
 
   const restoreCanvas = useCallback(
     (restoredNodes: WorkflowNode[], restoredEdges: WorkflowEdge[]) => {
@@ -409,6 +403,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const loadByName = async (name: string) => {
     try {
       cancelAllTasks();
+      // 工作流整体替换：旧任务映射一并清空（旧节点 id 可能与新工作流撞号）
+      nodeTaskRef.current.clear();
+      taskNodeRef.current.clear();
       const wf = await workflowLoad(name);
       const { nodes: loadedNodes, edges: loadedEdges } = workflowToCanvas(wf.nodes, wf.edges, wf.missing);
       historyRef.current.clear();
@@ -503,15 +500,22 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     [setEdges, setNodes],
   );
 
-  /** 删除节点：播退场动画后移除节点与其所有连线（不删文件，删除文件是显式操作） */
+  /** 删除节点：播退场动画后移除节点与其所有连线（不删文件，删除文件是显式操作）；有进行中的任务则一并取消 */
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
       recordHistory();
-      queueRef.current?.cancel(nodeId);
+      // 按 nodeTaskRef 定位取消，避免删除后结果回流冒出图片节点
+      // （提交中占位为 ""，此时映射已登记但无真实 taskId，跳过取消、仅清映射）
+      const taskId = nodeTaskRef.current.get(nodeId);
+      if (taskId !== undefined) {
+        nodeTaskRef.current.delete(nodeId);
+        taskNodeRef.current.delete(taskId);
+        if (taskId) void generationTask.cancel(taskId);
+      }
       removeNodesWithFade(new Set([nodeId]));
       pushLog("已删除节点（文件保留）");
     },
-    [pushLog, recordHistory, removeNodesWithFade],
+    [generationTask, pushLog, recordHistory, removeNodesWithFade],
   );
 
   /* ---------------- 图片双击动作：放大预览 ---------------- */
@@ -595,33 +599,92 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog(`已删除 ${ids.size} 个选中节点（文件保留）`);
   }, [pushLog, recordHistory, removeNodesWithFade]);
 
-  /* ---------------- 运行编排：单节点（入边快照）+ 结果回流 + 全部运行（并发 2） ---------------- */
+  /* ---------------- 运行编排：单节点提交（入边快照）+ 结果回流 + 全部运行（服务端并发队列） ---------------- */
+  /** 结果回流：done 快照 → 结果图复制进画布注册表并建节点（放提示词节点右下方）+ 自动连线，返回回流张数 */
+  const reflowResults = useCallback(
+    async (nodeId: string, task: GenerationTaskView): Promise<number> => {
+      const successfulResults = (task.results ?? []).filter((r) => r.status === "ok" && r.url);
+      const resultPaths = successfulResults
+        .map((r) => new URLSearchParams(r.url!.split("?")[1] ?? "").get("path") ?? "")
+        .filter(Boolean);
+      if (!resultPaths.length) return 0;
+      try {
+        const importedBatches = await Promise.all(resultPaths.map((path) => historyCanvasImport(path)));
+        const imported = importedBatches.flatMap((batch) => batch.imported);
+        if (!imported.length) {
+          pushLog(`节点 ${nodeId}：生成成功，但结果导入画布失败`);
+          return 0;
+        }
+        // 节点已被删除则不回流（避免删了节点还冒出结果图）
+        const promptNode = nodesRef.current.find((n) => n.id === nodeId);
+        if (!promptNode) {
+          pushLog(`节点 ${nodeId}：节点已删除，结果未回流`);
+          return 0;
+        }
+        // 按 registryId 去重：画布上已存在的同图不再建节点（防节点 id 重复）
+        const existingIds = new Set(
+          nodesRef.current.filter((n) => n.type === "image").map((n) => n.data.registryId),
+        );
+        const fresh = imported.filter((entry) => !existingIds.has(entry.id));
+        const baseX = (promptNode.position.x ?? 40) + 340;
+        const baseY = (promptNode.position.y ?? 40) + 20;
+        setNodes((nds) => {
+          // 回调内用最新 nds 二次校验（防 setNodes 之间其他改动导致重复）
+          const pn = nds.find((n) => n.id === nodeId);
+          if (!pn) return nds;
+          const exIds = new Set(
+            nds.filter((n) => n.type === "image").map((n) => n.data.registryId),
+          );
+          const created = fresh
+            .filter((entry) => !exIds.has(entry.id))
+            .map((entry, i) => withEnterAnim(buildImageNode(entry, { x: baseX, y: baseY + i * 130 }), i));
+          return [...nds, ...created];
+        });
+        // 结果图自动连线：提示词节点 -> 结果图片（产出边，右边出线）
+        setEdges((eds) => {
+          const existing = new Set(eds.map((edge) => `${edge.source}->${edge.target}`));
+          const created = imported
+            .map((entry) => ({
+              id: `${nodeId}->img-${entry.id}`,
+              source: nodeId,
+              target: `img-${entry.id}`,
+            }))
+            .filter((edge) => !existing.has(`${edge.source}->${edge.target}`));
+          return [...eds, ...created];
+        });
+        pushLog(`节点 ${nodeId}：生成 ${imported.length} 张并已回流画布（自动连线）`);
+        return imported.length;
+      } catch (err) {
+        pushLog(`节点 ${nodeId}：结果回流失败：${errMessage(err)}`);
+        return 0;
+      }
+    },
+    [pushLog, setEdges, setNodes],
+  );
+
+  /** 提交单个提示词节点：锁定入边参考图快照 → 服务端异步生成（后续状态由订阅回调驱动） */
   const runNodeInternal = useCallback(
-    async (nodeId: string, context: GenerationRunContext) => {
-      const nodes = nodesRef.current;
-      const edges = edgesRef.current;
-      const node = nodes.find((n) => n.id === nodeId);
+    async (nodeId: string) => {
+      const node = nodesRef.current.find((n) => n.id === nodeId);
       if (!node || node.type !== "prompt") return;
       const data = node.data;
       if (!data.prompt.trim()) {
-        const message = "请先输入提示词";
-        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "failed", message }));
-        pushLog(`节点 ${nodeId}：${message}`);
-        throw new Error(message);
+        pushLog(`节点 ${nodeId}：请先输入提示词`);
+        return;
       }
+      // 双层守卫：节点状态 + 任务映射，防快速重复点击重复提交
+      if (data.status === "queued" || data.status === "running") return;
+      if (nodeTaskRef.current.has(nodeId)) return;
+      // 同步登记占位：submit 是异步的，映射若在 await 之后才登记，快速连点会在
+      // submit 完成前双双通过守卫重复提交（旧 generationQueue 是同步登记，此处保持同等语义）。
+      // 成功后再覆盖为真实 taskId，失败时清除占位。
+      nodeTaskRef.current.set(nodeId, "");
       // 运行快照：锁定入边参考图集合，运行期间画布编辑不影响本次
-      const snapshot = snapshotIncomingAbsPaths(nodes, edges, nodeId);
-      const startedAt = Date.now();
-      setNodes((nds) => updatePromptNode(nds, nodeId, { status: "running", elapsed: 0 }));
-      const timer = window.setInterval(() => {
-        setNodes((nds) => {
-          const now = Math.floor((Date.now() - startedAt) / 1000);
-          return updatePromptNode(nds, nodeId, { elapsed: now });
-        });
-      }, 1000);
-      pushLog(`节点 ${nodeId} 开始生成，参考图：[${snapshot.length} 张]`);
+      const snapshot = snapshotIncomingAbsPaths(nodesRef.current, edgesRef.current, nodeId);
+      setNodes((nds) => updatePromptNode(nds, nodeId, { status: "queued", elapsed: 0, message: undefined }));
+      pushLog(`节点 ${nodeId} 已提交，参考图：[${snapshot.length} 张]`);
       try {
-        const res = await generateImage({
+        const taskId = await generationTask.submit({
           prompt: data.prompt,
           refPaths: snapshot,
           files: [],
@@ -630,138 +693,88 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           outputDir: data.outputDir,
           win: 0,
         });
-        if (context.isCancelled()) {
-          pushLog(`节点 ${nodeId}：任务已取消，结果未回流`);
-          return;
-        }
-        const successfulResults = res.results.filter((result) => result.status === "ok" && result.url);
-        if (!successfulResults.length) {
-          const reason = res.results
-            .filter((result) => result.status === "error")
-            .map((result) => result.message)
-            .filter(Boolean)
-            .join("；") || "服务端没有返回可用结果";
-          throw new Error(reason);
-        }
-        // 结果回流：结果图复制进画布注册表并建节点（放在提示词节点右下方）
-        const resultPaths = successfulResults
-          .map((r) => new URLSearchParams(r.url!.split("?")[1] ?? "").get("path") ?? "")
-          .filter(Boolean);
-        if (!resultPaths.length) throw new Error("生成结果缺少可导入的文件路径");
-        let resultCount = 0;
-        if (resultPaths.length) {
-          const importedBatches = await Promise.all(
-            resultPaths.map((path) => historyCanvasImport(path)),
-          );
-          const imported = importedBatches.flatMap((batch) => batch.imported);
-          if (!imported.length) throw new Error("生成成功，但结果导入画布失败");
-          if (context.isCancelled()) {
-            pushLog(`节点 ${nodeId}：任务已取消，结果未回流`);
-            return;
-          }
-          // 节点已被删除则不回流（避免删了节点还冒出结果图）
-          const promptNode = nodesRef.current.find((n) => n.id === nodeId);
-          if (!promptNode) {
-            pushLog(`节点 ${nodeId}：节点已删除，结果未回流`);
-          } else {
-            // 按 registryId 去重：画布上已存在的同图不再建节点（防节点 id 重复）
-            const existingIds = new Set(
-              nodesRef.current.filter((n) => n.type === "image").map((n) => n.data.registryId),
-            );
-            const fresh = imported.filter((e) => !existingIds.has(e.id));
-            resultCount = imported.length;
-            const baseX = (promptNode.position.x ?? 40) + 340;
-            const baseY = (promptNode.position.y ?? 40) + 20;
-            setNodes((nds) => {
-              // 回调内用最新 nds 二次校验（防 setNodes 之间其他改动导致重复）
-              const pn = nds.find((n) => n.id === nodeId);
-              if (!pn) return nds;
-              const exIds = new Set(
-                nds.filter((n) => n.type === "image").map((n) => n.data.registryId),
-              );
-              const created = fresh
-                .filter((entry) => !exIds.has(entry.id))
-                .map((entry, i) => withEnterAnim(buildImageNode(entry, { x: baseX, y: baseY + i * 130 }), i));
-              return [...nds, ...created];
-            });
-            // 结果图自动连线：提示词节点 -> 结果图片（产出边，右边出线）
-            setEdges((eds) => {
-              const existing = new Set(eds.map((edge) => `${edge.source}->${edge.target}`));
-              const created = imported
-                .map((entry) => ({
-                  id: `${nodeId}->img-${entry.id}`,
-                  source: nodeId,
-                  target: `img-${entry.id}`,
-                }))
-                .filter((edge) => !existing.has(`${edge.source}->${edge.target}`));
-              return [...eds, ...created];
-            });
-            pushLog(`节点 ${nodeId}：生成 ${resultCount} 张并已回流画布（自动连线）`);
-          }
-        }
-        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "done", resultCount, message: undefined }));
+        nodeTaskRef.current.set(nodeId, taskId);
+        taskNodeRef.current.set(taskId, nodeId);
       } catch (err) {
+        nodeTaskRef.current.delete(nodeId);
         setNodes((nds) => updatePromptNode(nds, nodeId, { status: "failed", message: errMessage(err) }));
-        pushLog(`节点 ${nodeId} 失败：${errMessage(err)}`);
-        throw err;
-      } finally {
-        window.clearInterval(timer);
+        pushLog(`节点 ${nodeId} 提交失败：${errMessage(err)}`);
       }
     },
-    [setNodes, setEdges, pushLog],
+    [generationTask, pushLog, setNodes],
   );
 
-  const generationQueue = useMemo(
-    () => createGenerationQueue({ concurrency: RUN_CONCURRENCY, run: runNodeInternal }),
-    [runNodeInternal],
-  );
-  queueRef.current = generationQueue;
+  /** 等待画布无活动任务（任务映射清空即全部终态），供「全部运行」收尾 */
+  const waitCanvasIdle = useCallback(async () => {
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (nodeTaskRef.current.size === 0) resolve();
+        else window.setTimeout(check, 500);
+      };
+      check();
+    });
+  }, []);
 
-  useEffect(() => generationQueue.subscribe((tasks) => {
-    setQueueTasks(tasks);
-    const queuedIds = new Set(tasks.filter((task) => task.status === "queued").map((task) => task.id));
-    const cancelledIds = new Set(tasks.filter((task) => task.status === "cancelled").map((task) => task.id));
-    setNodes((nds) => nds.map((node) => {
-      if (node.type !== "prompt") return node;
-      if (queuedIds.has(node.id)) {
-        return { ...node, data: { ...node.data, status: "queued", message: undefined } };
+  /* ---------------- 任务订阅：taskId → 节点映射，状态驱动 + 终态回流/失败/取消 ---------------- */
+  useEffect(() => {
+    return generationTask.subscribe((taskId, view) => {
+      const nodeId = taskNodeRef.current.get(taskId);
+      if (!nodeId) return;
+      if (view.status === "queued") {
+        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "queued", elapsed: 0, message: undefined }));
+      } else if (view.status === "running") {
+        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "running", elapsed: view.elapsed }));
+      } else if (view.status === "done") {
+        // 终态：解除映射（只处理一次），状态先落 done，回流完成后补张数
+        nodeTaskRef.current.delete(nodeId);
+        taskNodeRef.current.delete(taskId);
+        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "done", message: undefined }));
+        void reflowResults(nodeId, view).then((count) => {
+          if (count > 0) setNodes((nds) => updatePromptNode(nds, nodeId, { resultCount: count }));
+        });
+      } else if (view.status === "failed") {
+        nodeTaskRef.current.delete(nodeId);
+        taskNodeRef.current.delete(taskId);
+        setNodes((nds) =>
+          updatePromptNode(nds, nodeId, { status: "failed", elapsed: undefined, message: view.error ?? "生成失败" }),
+        );
+        pushLog(`节点 ${nodeId} 失败：${view.error ?? "未知错误"}`);
+      } else if (view.status === "cancelled") {
+        nodeTaskRef.current.delete(nodeId);
+        taskNodeRef.current.delete(taskId);
+        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "idle", elapsed: undefined, message: undefined }));
+        pushLog(`节点 ${nodeId}：任务已取消`);
       }
-      if (cancelledIds.has(node.id)) {
-        return { ...node, data: { ...node.data, status: "idle", elapsed: undefined, message: undefined } };
-      }
-      return node;
-    }));
-  }), [generationQueue, setNodes]);
+    });
+  // generationTask 对象随 tasks 更新每次重建，但 subscribe 引用稳定；依赖只取 subscribe，
+  // 避免每次任务状态刷新都重建订阅（重建不会丢事件，但没必要）。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generationTask.subscribe, pushLog, reflowResults, setNodes]);
 
   const handleRun = useCallback(
     (nodeId: string) => {
-      const node = nodesRef.current.find((item) => item.id === nodeId);
-      if (!node || node.type !== "prompt") return;
-      if (!node.data.prompt.trim()) {
-        pushLog(`节点 ${nodeId}：请先输入提示词`);
-        return;
-      }
-      generationQueue.enqueue(nodeId);
+      void runNodeInternal(nodeId);
     },
-    [generationQueue, pushLog],
+    [runNodeInternal],
   );
 
   const handleRunAll = useCallback(async () => {
     const all = nodesRef.current.filter((n) => n.type === "prompt");
     const runnable = all
       .filter((n) => n.data.prompt.trim())
-      .map((n) => n.id);
-    const enqueued = runnable.filter((id) => generationQueue.enqueue(id));
-    if (!enqueued.length) {
+      .filter((n) => !nodeTaskRef.current.has(n.id));
+    if (!runnable.length) {
       pushLog(
-        all.length ? "没有待运行的提示词节点（已排除空提示词 / 已调度）" : "画布上没有提示词节点",
+        all.length ? "没有待运行的提示词节点（已排除空提示词 / 运行中）" : "画布上没有提示词节点",
       );
       return;
     }
-    pushLog(`已排队 ${enqueued.length} 个节点，并发 ${Math.min(RUN_CONCURRENCY, enqueued.length)}`);
-    await generationQueue.onIdle();
+    pushLog(`已提交 ${runnable.length} 个节点（服务端并发队列）`);
+    // 先等所有提交完成登记（避免 waitCanvasIdle 把未登记阶段误判为空），再等全部终态
+    await Promise.all(runnable.map((n) => runNodeInternal(n.id)));
+    await waitCanvasIdle();
     pushLog("全部运行完成");
-  }, [generationQueue, pushLog]);
+  }, [pushLog, runNodeInternal, waitCanvasIdle]);
 
   /** 自动整理：有选中节点时只整理选中的（局部三段式，其余原位）；否则全局三段式布局。整理后自适应居中 */
   const handleAutoLayout = useCallback(() => {
@@ -837,14 +850,21 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog("已恢复画布操作");
   }, [pushLog, refreshHistoryControls, setEdges, setNodes]);
 
-  const handleCancelTask = useCallback((id: string) => {
-    if (generationQueue.cancel(id)) pushLog(`任务 ${id} 已取消`);
-  }, [generationQueue, pushLog]);
+  const handleCancelTask = useCallback((taskId: string) => {
+    void generationTask.cancel(taskId);
+    pushLog(`任务 ${taskId} 取消请求已发送`);
+  }, [generationTask, pushLog]);
 
+  /** 重试失败：把状态 failed 的提示词节点重新提交（复用 runNodeInternal 的双层守卫） */
   const handleRetryFailed = useCallback(() => {
-    const count = generationQueue.retryFailed();
-    pushLog(count ? `已重新排队 ${count} 个失败任务` : "没有可重试的失败任务");
-  }, [generationQueue, pushLog]);
+    const failed = nodesRef.current.filter((n) => n.type === "prompt" && n.data.status === "failed");
+    if (!failed.length) {
+      pushLog("没有可重试的失败任务");
+      return;
+    }
+    failed.forEach((n) => void runNodeInternal(n.id));
+    pushLog(`已重新提交 ${failed.length} 个失败节点`);
+  }, [pushLog, runNodeInternal]);
 
   /* ---------------- 画布快捷键：Ctrl+Z 撤销 / Ctrl+Y 恢复 / Ctrl+S 保存 / Delete 删除选中 ----------------
    * 跳过输入框聚焦（提示词/保存名等文本框内按键走浏览器原生行为）；
@@ -979,7 +999,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         <span className="font-medium text-neutral-500">连线</span>图片→提示词/图片组 · 图片组→提示词 · 提示词→图片；提示词顶部仅一条入边，多图用图片组聚合
       </div>
 
-      <TaskCenter tasks={queueTasks} onCancel={handleCancelTask} onRetryFailed={handleRetryFailed} />
+      <TaskCenter tasks={generationTask.tasks} onCancel={handleCancelTask} onRetryFailed={handleRetryFailed} />
 
       {/* 画布 */}
       <div className="panel-card relative min-h-0 flex-1 overflow-hidden">
