@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """core/batch.py 单元测试
 
 覆盖: 配置读取、底图路径解析、模块过滤、dry_run 预览（不调 API）。
@@ -7,9 +6,12 @@
 import json
 from pathlib import Path
 
-import pytest
-
-from core.batch import filter_jobs_by_module, load_batch_config, resolve_base_image_paths, run_batch_generation
+from core.batch import (
+    filter_jobs_by_module,
+    load_batch_config,
+    resolve_base_image_paths,
+    run_batch_generation,
+)
 
 
 def make_jobs():

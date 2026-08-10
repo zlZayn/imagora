@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
 """core/canvas.py 单元测试：注册表读写/去重/导入校验/删除/列表/白名单（tmp 目录注入，零网络零计费）"""
-import json
 import os
 import sys
 from pathlib import Path

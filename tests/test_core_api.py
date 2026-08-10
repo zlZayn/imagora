@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """core/api.py 纯函数单元测试
 
 覆盖: resolve_size_with_ratio、build_default_output_path。
@@ -11,7 +10,6 @@ from pathlib import Path
 import pytest
 
 from core.api import build_default_output_path, format_error, resolve_size_with_ratio
-
 
 # ---------- format_error ----------
 
@@ -86,7 +84,6 @@ def test_output_path_unique_under_concurrency():
     """并发调用 -> 文件名全部唯一（多窗口同秒不覆盖）"""
     import threading
 
-    from core.api import _SEQ
 
     n = 50
     names = []

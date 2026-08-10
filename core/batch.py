@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """批量生图编排 —— 读项目目录下的 batch_prompts.json 逐张调用
 
 路径基准 = 配置文件所在目录（assets/、output/ 均相对配置）。
@@ -11,7 +10,13 @@ import os
 import time
 from pathlib import Path
 
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 
 from core.api import format_error, generate_image

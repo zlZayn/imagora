@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """FastAPI 后端 —— API 路由 + 托管前端构建产物
 
 启动: uv run python -m main ui（http://127.0.0.1:7860）
@@ -32,7 +31,6 @@ import itertools
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -47,7 +45,15 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from core import canvas
 from core.api import format_error, generate_image
 from core.canvas import safe_ref_path_allowlist
-from core.config import DEFAULT_OUTPUT_DIR, DEFAULT_QUALITY, DEFAULT_SIZE, WORK_ROOT, get_api_key
+from core.config import (
+    DEFAULT_OUTPUT_DIR,
+    DEFAULT_QUALITY,
+    DEFAULT_SIZE,
+    QUALITY_OPTIONS,
+    SIZE_OPTIONS,
+    WORK_ROOT,
+    get_api_key,
+)
 from core.history import read_generation_history
 from core.logging import log_generation
 
@@ -152,17 +158,7 @@ BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
 
-# 尺寸选项：分辨率 / 显示标签 / 单张费用（元）
-SIZE_OPTIONS = [
-    {"value": "1024x1024", "label": "1024x1024 (1:1 1K)", "cost": 0.05},
-    {"value": "1024x1536", "label": "1024x1536 (2:3 竖版)", "cost": 0.10},
-    {"value": "1536x1024", "label": "1536x1024 (3:2 横版)", "cost": 0.10},
-    {"value": "1152x2048", "label": "1152x2048 (9:16 竖版长图)", "cost": 0.10},
-    {"value": "2048x1152", "label": "2048x1152 (16:9 横版)", "cost": 0.10},
-    {"value": "1024x1792", "label": "1024x1792 (竖版长图)", "cost": 0.10},
-    {"value": "1792x1024", "label": "1792x1024 (横版长图)", "cost": 0.10},
-]
-QUALITY_OPTIONS = ["low", "medium", "high"]
+# 尺寸/质量选项来自配置中心（core/config.py），/api/config 原样下发前端
 
 app = FastAPI(title="Imagora")
 app.add_middleware(NoCacheMiddleware)
@@ -604,7 +600,6 @@ def open_folder(body: dict):
 
 def _activate_explorer_window(title_part: str) -> bool:
     """把标题包含 title_part 的资源管理器窗口恢复并置前（绕过前台锁定）"""
-    import ctypes
     from ctypes import wintypes
 
     user32 = ctypes.windll.user32

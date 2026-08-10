@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """生图 API —— 请求封装与生成逻辑
 
 核心函数:
@@ -8,6 +7,7 @@
   build_default_output_path() 默认输出路径（当前目录下 output/）
 """
 import base64
+import contextlib
 import itertools
 import os
 import time
@@ -90,18 +90,15 @@ def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
 
     image_paths = images if images else ([image_path] if image_path else [])
     if image_paths:
-        # 图生图：一张或多张参考图，一次请求提交
+        # 图生图：一张或多张参考图，一次请求提交（ExitStack 保证任一打开失败时已开的也关闭）
         url = f"{BASE_URL}/v1/images/edits"
-        opened = [open(p, "rb") for p in image_paths]
-        try:
+        with contextlib.ExitStack() as stack:
+            opened = [stack.enter_context(open(p, "rb")) for p in image_paths]
             files = [
                 ("image", (os.path.basename(p), f, "application/octet-stream"))
                 for p, f in zip(image_paths, opened)
             ]
             response = requests.post(url, headers=headers, files=files, data=payload, timeout=300)
-        finally:
-            for f in opened:
-                f.close()
     else:
         # 文生图
         url = f"{BASE_URL}/v1/images/generations"

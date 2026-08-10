@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """终端输出工具 —— 基于 rich 的统一控制台
 
 CLI（main / batch / api）共用输出入口：彩色区分成功/失败/信息/次要，

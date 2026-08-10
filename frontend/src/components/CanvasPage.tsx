@@ -629,7 +629,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         window.clearInterval(timer);
       }
     },
-    [setNodes, pushLog],
+    [setNodes, setEdges, pushLog],
   );
 
   const generationQueue = useMemo(

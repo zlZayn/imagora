@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """server.py canvas 路由单元测试（不启动服务、不调 API）
 
 覆盖: 画布上传/导入/列表/删除、工作流保存/加载（往返/缺失/版本）、
@@ -13,19 +12,18 @@ from pathlib import Path
 
 import pytest
 from fastapi import UploadFile
-from fastapi.responses import JSONResponse
 from starlette.datastructures import Headers
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from server import (
-    canvas_upload,
-    canvas_import,
-    canvas_images,
     canvas_image_delete,
-    canvas_workflow_save,
+    canvas_images,
+    canvas_import,
+    canvas_upload,
     canvas_workflow_list,
     canvas_workflow_load,
+    canvas_workflow_save,
 )
 
 
@@ -187,7 +185,7 @@ def test_canvas_recovery_routes_roundtrip(canvas_env):
 
 def test_generate_ref_paths_accepts_canvas_dir(canvas_env, monkeypatch):
     """/api/generate 的 ref_paths 放行 canvas 目录内路径（画布参考图可复用）"""
-    from server import canvas, generate
+    from server import generate
 
     # 登记一个真实画布文件
     img = canvas_upload(images=[_make_upload("ref.png", b"canvas-ref-content")])["images"][0]

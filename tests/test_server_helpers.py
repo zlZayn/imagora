@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """server.py 纯函数单元测试
 
 覆盖: 尺寸费用查询、路径展示（相对工作根 + 正斜杠）、参考图服务端化（路径校验/上传/删除）。
@@ -12,7 +11,6 @@ from fastapi import UploadFile
 from starlette.datastructures import Headers
 
 from core.config import WORK_ROOT
-
 from server import display_path, size_cost
 
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Imagora 统一入口
 
 用法（在 tools 目录运行）:
@@ -16,8 +15,8 @@ from pathlib import Path
 
 from core import api
 from core.batch import run_batch_generation
-from core.console import console, print_error, print_info, print_success
 from core.config import DEFAULT_MODEL, DEFAULT_QUALITY, DEFAULT_TIER
+from core.console import console, print_error, print_info, print_success
 
 _reconfigure = getattr(sys.stdout, "reconfigure", None)
 if _reconfigure is not None:
@@ -101,7 +100,7 @@ def find_port_pid(port: int) -> int | None:
     import subprocess
 
     try:
-        out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True).stdout
+        out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, check=False).stdout
         for line in out.splitlines():
             if f":{port}" in line and "LISTENING" in line.upper():
                 parts = line.split()
@@ -174,7 +173,7 @@ def handle_menu_command(args):
     if pid is not None:
         import subprocess
 
-        subprocess.run(["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True)
+        subprocess.run(["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True, check=False)
         print_success(f"服务已停止（PID {pid}）")
     else:
         print_info("服务未在运行，无需停止")

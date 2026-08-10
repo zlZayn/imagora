@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """core/config.py 单元测试
 
 覆盖: get_api_key（环境变量 / 缺失报错）、RATIOS 表结构合法性。

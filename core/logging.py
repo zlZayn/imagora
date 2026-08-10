@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """生成日志 —— 每次生图记录到 logs/generation.jsonl（个人日志，git 忽略）
 
 统一由 server（界面）、batch（批量）、main（CLI）调用，避免日志逻辑散落。

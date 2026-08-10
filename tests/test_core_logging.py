@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """core/logging.py 单元测试
 
 覆盖: log_generation 写入 JSONL、字段完整性、路径相对化。不依赖网络。
@@ -104,7 +103,7 @@ def test_log_generation_concurrent_writes_not_interleaved(monkeypatch, tmp_path)
     threads = [
         threading.Thread(
             target=log_module.log_generation,
-            kwargs=dict(prompt=f"p{i}", mode="img2img", refs=1, size="1024x1024", quality="low", status="ok"),
+            kwargs={"prompt": f"p{i}", "mode": "img2img", "refs": 1, "size": "1024x1024", "quality": "low", "status": "ok"},
         )
         for i in range(n)
     ]
