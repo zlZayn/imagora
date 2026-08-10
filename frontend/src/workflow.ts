@@ -8,6 +8,31 @@ import type {
 /** 批量导入图片节点时的错开间距（避免互相重叠） */
 const IMAGE_STEP = 260;
 
+/* ---------------- 运行期动画类：节点 className 上的视觉标记，不持久化 ---------------- */
+
+/** 动画类正则：node-enter / node-exiting / enter-delay-1..3 */
+const ANIM_CLASS_RE = /^(?:node-enter|node-exiting|enter-delay-[1-3])$/;
+
+/** 剥离 className 中的全部动画类（加载工作流时清理运行时标记） */
+export function stripAnimClasses(className?: string): string | undefined {
+  if (!className) return undefined;
+  const cleaned = className.split(/\s+/).filter((c) => c && !ANIM_CLASS_RE.test(c));
+  return cleaned.length ? cleaned.join(" ") : undefined;
+}
+
+/** 只提取 className 中的动画类（高亮类合并时保留动画标记） */
+export function extractAnimClasses(className?: string): string {
+  if (!className) return "";
+  return className.split(/\s+/).filter((c) => c && ANIM_CLASS_RE.test(c)).join(" ");
+}
+
+/** 给节点 className 追加交错入场动画类（按 index 循环 enter-delay-1..3，不覆盖已有类） */
+export function withEnterAnim(node: WorkflowNode, index: number): WorkflowNode {
+  const anim = `node-enter enter-delay-${(index % 3) + 1}`;
+  const cls = [node.className, anim].filter(Boolean).join(" ");
+  return { ...node, className: cls };
+}
+
 /** 生成图片节点可渲染 URL（与 RefItem.url 同约定） */
 function imageUrl(absPath: string): string {
   return `/api/image?path=${encodeURIComponent(absPath)}`;
@@ -67,17 +92,18 @@ export function workflowToCanvas(
   missing: string[],
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
   const missingSet = new Set(missing);
-  const marked = nodes.map((node): WorkflowNode => {
-    if (node.type === "image" && missingSet.has(node.data.registryId)) {
-      return { ...node, data: { ...node.data, missing: true } };
+  const marked = nodes.map((node) => {
+    const base = { ...node, className: stripAnimClasses(node.className) };
+    if (base.type === "image" && missingSet.has(base.data.registryId)) {
+      return { ...base, data: { ...base.data, missing: true } };
     }
-    if (node.type === "prompt") {
+    if (base.type === "prompt") {
       // 无损：保留位置/提示词/尺寸/质量/输出路径，仅清掉运行期状态
       return {
-        ...node,
+        ...base,
         data: {
-          ...node.data,
-          quality: node.data.quality ?? "high",
+          ...base.data,
+          quality: base.data.quality ?? "high",
           status: "idle" as const,
           elapsed: undefined,
           resultCount: undefined,
@@ -85,7 +111,7 @@ export function workflowToCanvas(
         },
       };
     }
-    return node;
+    return base;
   });
   return { nodes: marked, edges };
 }

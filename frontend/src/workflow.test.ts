@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoLayout, workflowToCanvas } from "./workflow";
+import { autoConnect, autoLayout, extractAnimClasses, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -280,5 +280,33 @@ describe("auto connect", () => {
       ...existing,
       edge("group", "p2"),
     ]);
+  });
+});
+
+describe("animation class helpers", () => {
+  it("strips runtime animation classes from node className on load", () => {
+    const node = { ...imageNode("a"), className: "node-enter enter-delay-2 node-related" } as WorkflowNode;
+    const result = workflowToCanvas([node], [], []);
+    expect(result.nodes[0].className).toBe("node-related");
+  });
+
+  it("removes the exit marker so a restored workflow never lingers in fade-out", () => {
+    const node = { ...imageNode("b"), className: "node-exiting" } as WorkflowNode;
+    const result = workflowToCanvas([node], [], []);
+    expect(result.nodes[0].className).toBeUndefined();
+  });
+
+  it("extracts only animation classes for highlight merging", () => {
+    expect(extractAnimClasses("node-enter enter-delay-1 node-related")).toBe("node-enter enter-delay-1");
+    expect(extractAnimClasses("node-related")).toBe("");
+    expect(extractAnimClasses(undefined)).toBe("");
+  });
+
+  it("adds staggered enter classes by index", () => {
+    const first = withEnterAnim(imageNode("a"), 0);
+    const second = withEnterAnim(imageNode("b"), 2);
+    expect(first.className).toContain("node-enter");
+    expect(first.className).toContain("enter-delay-1");
+    expect(second.className).toContain("enter-delay-3");
   });
 });
