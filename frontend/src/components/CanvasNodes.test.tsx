@@ -73,3 +73,10 @@ describe("ImageNode", () => {
     }
   });
 });
+
+describe("node-pop animation wrapper", () => {
+  it("adds the node-pop class to the image node card for inner animation", () => {
+    renderImageNode();
+    expect(document.querySelector(".node-pop")).toBeTruthy();
+  });
+});

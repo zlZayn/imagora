@@ -63,7 +63,7 @@ export function ImageNode({
 }: NodeProps<ImageFlowNode> & ImageNodeExtraProps) {
   return (
     <div
-      className={`panel-card group relative !p-2 ${data.missing ? "!border-red-400" : ""} ${
+      className={`panel-card group relative !p-2 node-pop ${data.missing ? "!border-red-400" : ""} ${
         selected ? "node-selected" : ""
       }`}
     >
@@ -126,7 +126,7 @@ export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowN
   const mb = data.totalSize > 0 ? (data.totalSize / (1024 * 1024)).toFixed(1) : "0.0";
   return (
     <div
-      className={`group relative w-56 rounded-lg bg-brand/5 !p-4 ${
+      className={`group relative w-56 rounded-lg bg-brand/5 !p-4 node-pop ${
         selected ? "ring-2 ring-brand" : ""
       }`}
     >
@@ -219,7 +219,7 @@ export function PromptNode({
   const queued = data.status === "queued";
   const busy = running || queued;
   return (
-    <div className={`panel-card group relative !min-w-[300px] !p-3 ${selected ? "node-selected" : ""}`}>
+    <div className={`panel-card group relative !min-w-[300px] !p-3 node-pop ${selected ? "node-selected" : ""}`}>
       {/* 顶部接收参考图，底部输出生成结果。 */}
       <Handle
         type="target"
