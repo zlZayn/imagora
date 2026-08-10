@@ -51,6 +51,7 @@ import {
   buildImageNode,
   canvasEntriesToNodes,
   computeCounts,
+  extractAnimClasses,
   snapshotIncomingAbsPaths,
   updatePromptNode,
   withEnterAnim,
@@ -63,6 +64,9 @@ import { WorkflowLoadModal, WorkflowSaveModal, ZoomModal } from "./WorkflowModal
 
 /** 全部运行并发上限（单次生成 30-120s，防止打爆 API） */
 const RUN_CONCURRENCY = 2;
+
+/** 节点删除退场动画时长（与 .node-exiting 的 fade-out 0.2s 一致） */
+const FADE_DURATION = 200;
 
 /** 工具栏统一样式按钮 */
 function ToolbarButton({
@@ -152,6 +156,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const pendingReplaceRef = useRef<string | null>(null);
 
+  /** 待真正移除的节点 id -> 定时器（退场动画播完后再删；撤销/重做/卸载需清理） */
+  const pendingRemovalRef = useRef<Map<string, number>>(new Map());
+
   const sizeOptions = useMemo(
     () => config.sizes.map((s) => ({ value: s.value, label: `${s.label}（${s.cost}元）` })),
     [config],
@@ -195,6 +202,15 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     onRestore: restoreCanvas,
     onLog: pushLog,
   });
+
+  /* 卸载时清理未到期的删除动画定时器，避免卸载后 setState 泄漏 */
+  useEffect(() => {
+    const pending = pendingRemovalRef.current;
+    return () => {
+      pending.forEach((timer) => window.clearTimeout(timer));
+      pending.clear();
+    };
+  }, []);
 
   /* ---------------- 连线：类型硬约束（图片 -> 提示词 | 图片组；图片组 -> 提示词；提示词 -> 图片[产出]） ----------------
    * 提示词节点顶部 target 仅允许一条入边：多图请经「图片组」聚合后连入。 */
@@ -294,7 +310,10 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         const next = nds.map((n) => {
           if (n.type !== "image") return n;
           const related = target !== null && currentEdges.some((e) => e.source === n.id && e.target === target);
-          const cls = related ? "node-related" : "";
+          // 保留动画类（node-enter/node-exiting/enter-delay-N），只切换高亮类
+          const cls = [extractAnimClasses(n.className), related ? "node-related" : ""]
+            .filter(Boolean)
+            .join(" ") || undefined;
           if (n.className !== cls) changed = true;
           return n.className === cls ? n : { ...n, className: cls };
         });
@@ -444,17 +463,49 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     [recordHistory, setNodes, pushLog],
   );
 
-  /** 删除节点：仅移除节点与其所有连线（不删文件，删除文件是显式操作） */
+  /* ---------------- 删除动画：标记 node-exiting → 200ms 后真正移除 ---------------- */
+  const removeNodesWithFade = useCallback(
+    (ids: Set<string>) => {
+      if (!ids.size) return;
+      // reduced-motion：不播动画，直接同步移除
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        setNodes((nds) => nds.filter((n) => !ids.has(n.id)));
+        setEdges((eds) => eds.filter((e) => !ids.has(e.source) && !ids.has(e.target)));
+        return;
+      }
+      // 标记退场动画（只对仍存在的节点）
+      setNodes((nds) =>
+        nds.map((n) =>
+          ids.has(n.id) ? { ...n, className: [n.className, "node-exiting"].filter(Boolean).join(" ") } : n,
+        ),
+      );
+      // 200ms 后真正移除；二次校验：节点仍标记 node-exiting 才删
+      // （撤销/重做恢复的节点 className 无 node-exiting，不误删）
+      const timer = window.setTimeout(() => {
+        ids.forEach((id) => pendingRemovalRef.current.delete(id));
+        const dead = new Set(
+          nodesRef.current
+            .filter((n) => ids.has(n.id) && n.className?.includes("node-exiting"))
+            .map((n) => n.id),
+        );
+        if (!dead.size) return;
+        setNodes((nds) => nds.filter((n) => !dead.has(n.id)));
+        setEdges((eds) => eds.filter((e) => !dead.has(e.source) && !dead.has(e.target)));
+      }, FADE_DURATION);
+      ids.forEach((id) => pendingRemovalRef.current.set(id, timer));
+    },
+    [setEdges, setNodes],
+  );
+
+  /** 删除节点：播退场动画后移除节点与其所有连线（不删文件，删除文件是显式操作） */
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
       recordHistory();
-      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
-      // 请求可能仍在服务端执行，但取消标记保证晚到结果不会回流已删除节点。
       queueRef.current?.cancel(nodeId);
+      removeNodesWithFade(new Set([nodeId]));
       pushLog("已删除节点（文件保留）");
     },
-    [recordHistory, setNodes, setEdges, pushLog],
+    [pushLog, recordHistory, removeNodesWithFade],
   );
 
   /* ---------------- 图片双击动作：放大预览 ---------------- */
@@ -527,17 +578,16 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog("已新建图片组，把图片连进来即可");
   }, [getCreatePosition, recordHistory, setNodes, pushLog]);
 
-  /** 批量删除：移除所有选中节点及其连线（文件保留） */
+  /** 批量删除：播退场动画后移除所有选中节点及其连线（文件保留） */
   const handleDeleteSelected = useCallback(() => {
     const ids = selectedIdsRef.current;
     if (!ids.size) return;
     recordHistory();
-    setNodes((nds) => nds.filter((n) => !ids.has(n.id)));
-    setEdges((eds) => eds.filter((e) => !ids.has(e.source) && !ids.has(e.target)));
+    removeNodesWithFade(ids);
     setSelectedCount(0);
     selectedIdsRef.current = new Set();
     pushLog(`已删除 ${ids.size} 个选中节点（文件保留）`);
-  }, [recordHistory, setNodes, setEdges, pushLog]);
+  }, [pushLog, recordHistory, removeNodesWithFade]);
 
   /* ---------------- 运行编排：单节点（入边快照）+ 结果回流 + 全部运行（并发 2） ---------------- */
   const runNodeInternal = useCallback(
@@ -754,6 +804,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   }, [pushLog, recordHistory, setNodes]);
 
   const handleUndo = useCallback(() => {
+    pendingRemovalRef.current.forEach((timer) => window.clearTimeout(timer));
+    pendingRemovalRef.current.clear();
     const previous = historyRef.current.undo({ nodes: nodesRef.current, edges: edgesRef.current });
     if (!previous) return;
     setNodes(previous.nodes);
@@ -763,6 +815,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   }, [pushLog, refreshHistoryControls, setEdges, setNodes]);
 
   const handleRedo = useCallback(() => {
+    pendingRemovalRef.current.forEach((timer) => window.clearTimeout(timer));
+    pendingRemovalRef.current.clear();
     const next = historyRef.current.redo({ nodes: nodesRef.current, edges: edgesRef.current });
     if (!next) return;
     setNodes(next.nodes);
