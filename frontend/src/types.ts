@@ -140,6 +140,8 @@ export interface WorkflowEdge {
   id: string;
   source: string;
   target: string;
+  /** 是否流动动画（渲染层由 defaultEdgeOptions 统一开启，数据层可选） */
+  animated?: boolean;
 }
 
 /** 工作流文件（version 1，保存/加载的 JSON 结构） */

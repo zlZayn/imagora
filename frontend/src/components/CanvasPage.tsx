@@ -964,6 +964,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           fitView
           minZoom={0.2}
           maxZoom={2}
+          defaultEdgeOptions={{ animated: true }}
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
