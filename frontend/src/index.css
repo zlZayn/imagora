@@ -13,9 +13,13 @@ body {
 
 /* ============ 公共组件类：表单 / 按钮 / 卡片 统一 ============ */
 @layer components {
-  /* 输入控件（textarea / input / select 通用基底） */
+  /* 输入控件（textarea / input / select 通用基底）。
+     transition 只作用于 border/box-shadow（focus/hover 变色），
+     不包含 width/height——否则 textarea 原生 resize 拖动时每帧被插值动画
+     「拖慢一拍」，表现为右下角拉伸卡顿/不跟手（经典表单与画布卡片同源）。 */
   .field-control {
-    @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none transition-all duration-200;
+    @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .field-control:hover {
     @apply border-neutral-400;
