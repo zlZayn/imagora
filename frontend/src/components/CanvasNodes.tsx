@@ -1,5 +1,11 @@
-import { type ReactNode } from "react";
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { memo, type ReactNode } from "react";
+import {
+  Handle,
+  NodeResizer,
+  Position,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
 import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import type { CanvasGroupNodeData, CanvasImageNodeData, CanvasPromptNodeData } from "../types";
 import { generatingLabel } from "../format";
@@ -204,7 +210,7 @@ function StatusLight({ data }: { data: CanvasPromptNodeData }) {
   );
 }
 
-export function PromptNode({
+export const PromptNode = memo(function PromptNode({
   id,
   data,
   selected,
@@ -218,7 +224,20 @@ export function PromptNode({
   const queued = data.status === "queued";
   const busy = running || queued;
   return (
-    <div className={`panel-card group relative !min-w-[300px] !p-3 node-pop ${selected ? "node-selected" : ""}`}>
+    <div
+      className={`panel-card group relative flex !min-w-[300px] !flex-col !p-3 node-pop ${
+        selected ? "node-selected" : ""
+      }`}
+    >
+      {/* 选中时显示四角/四边拉伸手柄（React Flow 原生 NodeResizer，
+          拖拽直接更新节点尺寸，比 textarea 原生 resize 触发 ResizeObserver 循环顺滑） */}
+      <NodeResizer
+        isVisible={selected}
+        minWidth={300}
+        minHeight={150}
+        color="#f5a524"
+        handleClassName="!h-3 !w-3 !rounded-sm !border-0"
+      />
       {/* 顶部接收参考图，底部输出生成结果。 */}
       <Handle
         type="target"
@@ -248,7 +267,7 @@ export function PromptNode({
         onChange={(e) => onUpdate(id, { prompt: e.target.value })}
         rows={5}
         placeholder="英文提示词，例如：a red apple on white background"
-        className="nodrag field-control resize-y text-xs leading-relaxed"
+        className="nodrag field-control min-h-24 flex-1 resize-none text-xs leading-relaxed"
       />
       <div className="nodrag mt-2 grid grid-cols-[7fr_3fr] gap-2">
         <div>
@@ -293,4 +312,4 @@ export function PromptNode({
       </div>
     </div>
   );
-}
+});

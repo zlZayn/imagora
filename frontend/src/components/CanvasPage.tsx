@@ -17,9 +17,7 @@ import {
   type Edge,
   type IsValidConnection,
   type Node,
-  type NodeChange,
   type NodeMouseHandler,
-  type OnNodesChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -126,31 +124,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   nodesRef.current = nodes;
   const edgesRef = useRef<Edge[]>(edges);
   edgesRef.current = edges;
-  /** 节流 onNodesChange：textarea 原生 resize 会让 React Flow 的 ResizeObserver 每帧发
-   *  dimensions 变更 → 每帧 setNodes 整节点重渲染 → 拖拽拉伸卡顿。
-   *  dimensions 合并到下一帧（rAF）一次性应用；拖拽中连续帧只保一个 pending rAF，
-   *  pending 期间的新 dims 合并进 ref，避免堆积与丢失；position/select 等即时生效。 */
-  const dimsRafRef = useRef<number | null>(null);
-  const dimsPendingRef = useRef<NodeChange<WorkflowNode>[]>([]);
-  const handleNodesChange: OnNodesChange<WorkflowNode> = useCallback(
-    (changes) => {
-      const dims = changes.filter((c) => c.type === "dimensions");
-      const rest = changes.filter((c) => c.type !== "dimensions");
-      if (rest.length) onNodesChange(rest);
-      if (dims.length) {
-        dimsPendingRef.current.push(...dims);
-        if (dimsRafRef.current === null) {
-          dimsRafRef.current = window.requestAnimationFrame(() => {
-            dimsRafRef.current = null;
-            const pending = dimsPendingRef.current;
-            dimsPendingRef.current = [];
-            onNodesChange(pending);
-          });
-        }
-      }
-    },
-    [onNodesChange],
-  );
   const [logs, setLogs] = useState<{ id: number; text: string }[]>([]);
   /** 日志自增 id：稳定 key 触发轮播入场动画（index 复用会原地改文字不触发） */
   const logIdRef = useRef(0);
@@ -244,8 +217,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     return () => {
       pending.forEach((timer) => window.clearTimeout(timer));
       pending.clear();
-      if (dimsRafRef.current !== null) window.cancelAnimationFrame(dimsRafRef.current);
-      dimsPendingRef.current = [];
     };
   }, []);
 
@@ -1114,7 +1085,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={handleNodesChange}
+          onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onEdgeDoubleClick={(_event, edge) => handleEdgeDoubleClick(edge)}
