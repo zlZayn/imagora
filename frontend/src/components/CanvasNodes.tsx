@@ -127,9 +127,7 @@ export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowN
   const mb = data.totalSize > 0 ? (data.totalSize / (1024 * 1024)).toFixed(1) : "0.0";
   return (
     <div
-      className={`group relative w-56 rounded-lg bg-brand/5 !p-4 node-pop ${
-        selected ? "ring-2 ring-brand" : ""
-      }`}
+      className={`group relative w-56 rounded-lg bg-brand/5 !p-4 node-pop ${selected ? "node-selected" : ""}`}
     >
       {/* 顶部接收图片，底部输出到提示词。 */}
       <Handle
