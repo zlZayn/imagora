@@ -15,9 +15,10 @@ logs/
 # 运行产物：输出图片 / 参考图缓存 / 上次路径记录
 output/
 
-# 规划/执行工件（Prometheus 计划、draft、boulder、ledger）
+# 规划/执行工件（Prometheus 计划、draft、boulder、ledger、SDD 账本）
 .omo/
 docs/superpowers/
+.superpowers/
 
 # 代码索引（CodeGraph）与浏览器自动化（Playwright MCP）数据
 .codegraph/
