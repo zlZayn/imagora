@@ -134,6 +134,14 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const [, setHistoryVersion] = useState(0);
   /** 生成任务：统一提交-轮询（服务端任务管线，经典表单与画布共用） */
   const generationTask = useGenerationTask();
+  // 解构稳定成员供回调依赖：generationTask 对象每次渲染重建（tasks 数组新建），
+  // 若回调依赖整个对象会导致 nodeTypes 重建 → React Flow 全节点重挂载 → 入场动画重播闪烁。
+  // 成员函数由 useCallback 缓存，引用恒定，可安全进入依赖数组。
+  const {
+    cancel: cancelGenerationTask,
+    submit: submitGenerationTask,
+    subscribe: subscribeGenerationTask,
+  } = generationTask;
   /** 提示词节点 → taskId（提交成功时登记，终态订阅回调解除；防重复提交 + 删除节点时取消定位） */
   const nodeTaskRef = useRef(new Map<string, string>());
   /** taskId → 提示词节点（订阅回调按此定位节点驱动状态） */
@@ -179,8 +187,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const cancelAllTasks = useCallback(() => {
     generationTask.tasks
       .filter((task) => task.status === "queued" || task.status === "running")
-      .forEach((task) => void generationTask.cancel(task.taskId));
-  }, [generationTask]);
+      .forEach((task) => void cancelGenerationTask(task.taskId));
+  }, [cancelGenerationTask, generationTask.tasks]);
 
   const restoreCanvas = useCallback(
     (restoredNodes: WorkflowNode[], restoredEdges: WorkflowEdge[]) => {
@@ -207,6 +215,33 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       pending.clear();
     };
   }, []);
+
+  /* ---------------- 入场动画收尾：动画播完即剥离 node-enter 类 ----------------
+   * 节点 className 上的 node-enter/enter-delay-N 是运行时一次性视觉标记，若残留，
+   * 任何一次节点重挂载（nodeTypes 变化、工作流加载等）都会重播入场动画 → 闪烁。
+   * 用事件委托监听画布容器内动画结束，按 data-id 定位节点并剥离动画类。 */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onAnimationEnd = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      const wrapper = target?.closest<HTMLElement>("[data-id]");
+      if (!wrapper) return;
+      const nodeId = wrapper.dataset.id;
+      if (!nodeId) return;
+      // 只在入场动画结束（而非退场 fade-out）时清理；退场动画由删除流程负责
+      if (event.type === "animationend" && (event as AnimationEvent).animationName === "enter-up") {
+        setNodes((nds) => {
+          const node = nds.find((n) => n.id === nodeId);
+          if (!node || !node.className?.includes("node-enter")) return nds;
+          const cleaned = stripAnimClasses(node.className);
+          return nds.map((n) => (n.id === nodeId ? { ...n, className: cleaned } : n));
+        });
+      }
+    };
+    canvas.addEventListener("animationend", onAnimationEnd);
+    return () => canvas.removeEventListener("animationend", onAnimationEnd);
+  }, [setNodes]);
 
   /* ---------------- 连线：类型硬约束（图片 -> 提示词 | 图片组；图片组 -> 提示词；提示词 -> 图片[产出]） ----------------
    * 提示词节点顶部 target 仅允许一条入边：多图请经「图片组」聚合后连入。 */
@@ -510,12 +545,12 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       if (taskId !== undefined) {
         nodeTaskRef.current.delete(nodeId);
         taskNodeRef.current.delete(taskId);
-        if (taskId) void generationTask.cancel(taskId);
+        if (taskId) void cancelGenerationTask(taskId);
       }
       removeNodesWithFade(new Set([nodeId]));
       pushLog("已删除节点（文件保留）");
     },
-    [generationTask, pushLog, recordHistory, removeNodesWithFade],
+    [cancelGenerationTask, pushLog, recordHistory, removeNodesWithFade],
   );
 
   /* ---------------- 图片双击动作：放大预览 ---------------- */
@@ -684,7 +719,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       setNodes((nds) => updatePromptNode(nds, nodeId, { status: "queued", elapsed: 0, message: undefined }));
       pushLog(`节点 ${nodeId} 已提交，参考图：[${snapshot.length} 张]`);
       try {
-        const taskId = await generationTask.submit({
+        const taskId = await submitGenerationTask({
           prompt: data.prompt,
           refPaths: snapshot,
           files: [],
@@ -701,7 +736,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         pushLog(`节点 ${nodeId} 提交失败：${errMessage(err)}`);
       }
     },
-    [generationTask, pushLog, setNodes],
+    [submitGenerationTask, pushLog, setNodes],
   );
 
   /** 等待画布无活动任务（任务映射清空即全部终态），供「全部运行」收尾 */
@@ -717,7 +752,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
 
   /* ---------------- 任务订阅：taskId → 节点映射，状态驱动 + 终态回流/失败/取消 ---------------- */
   useEffect(() => {
-    return generationTask.subscribe((taskId, view) => {
+    return subscribeGenerationTask((taskId, view) => {
       const nodeId = taskNodeRef.current.get(taskId);
       if (!nodeId) return;
       if (view.status === "queued") {
@@ -746,10 +781,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         pushLog(`节点 ${nodeId}：任务已取消`);
       }
     });
-  // generationTask 对象随 tasks 更新每次重建，但 subscribe 引用稳定；依赖只取 subscribe，
-  // 避免每次任务状态刷新都重建订阅（重建不会丢事件，但没必要）。
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generationTask.subscribe, pushLog, reflowResults, setNodes]);
+  // subscribe 引用稳定，依赖只取解构成员，避免每次任务状态刷新都重建订阅（重建不会丢事件，但没必要）。
+    }, [subscribeGenerationTask, pushLog, reflowResults, setNodes]);
 
   const handleRun = useCallback(
     (nodeId: string) => {
@@ -851,9 +884,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   }, [pushLog, refreshHistoryControls, setEdges, setNodes]);
 
   const handleCancelTask = useCallback((taskId: string) => {
-    void generationTask.cancel(taskId);
+    void cancelGenerationTask(taskId);
     pushLog(`任务 ${taskId} 取消请求已发送`);
-  }, [generationTask, pushLog]);
+  }, [cancelGenerationTask, pushLog]);
 
   /** 重试失败：把状态 failed 的提示词节点重新提交（复用 runNodeInternal 的双层守卫） */
   const handleRetryFailed = useCallback(() => {
