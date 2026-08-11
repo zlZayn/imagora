@@ -48,6 +48,7 @@ import {
   computeCounts,
   extractAnimClasses,
   layoutSelection,
+  nodeSize,
   stripAnimClasses,
   updatePromptNode,
   withEnterAnim,
@@ -129,9 +130,13 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const logIdRef = useRef(0);
   /** 高亮核验：悬停/选中的提示词节点（高亮其入边与关联图片） */
   const [highlightId, setHighlightId] = useState<string | null>(null);
-  /** 当前选中的节点数（Shift 框选多选后显示批量删除） */
+  /** 当前选中的节点数（右键拖拽框选多选后显示批量删除） */
   const [selectedCount, setSelectedCount] = useState(0);
   const selectedIdsRef = useRef<Set<string>>(new Set());
+  /** 右键拖拽框选：拖拽起点（flow 坐标，null=未拖拽）。
+   *   React Flow 默认 Shift+左键框选已通过 selectionKeyCode={null} 禁用，改为右键直接拖拽多选。 */
+  const boxSelectRef = useRef<{ startFlow: { x: number; y: number } } | null>(null);
+  const [boxRect, setBoxRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const historyRef = useRef(createCanvasHistory());
   const [, setHistoryVersion] = useState(0);
   /** 生成任务：统一提交-轮询（服务端任务管线，经典表单与画布共用） */
@@ -984,6 +989,105 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleDeleteSelected, handleRestore, handleSave, handleUndo, pushLog, setNodes]);
 
+  /* ---------------- 右键拖拽框选（替代 React Flow 默认 Shift+左键框选） ----------------
+   * React Flow 默认 selectionKeyCode='Shift' 已禁用（selectionKeyCode={null}）；
+   * 右键按下→拖拽→松开：起点与终点用 screenToFlowPosition 换算到画布坐标，
+   * 松开时按「节点完全包含于选框」（与 React Flow 默认 selectionMode=full 一致）落定选中，
+   * 直接写 selected 标记——与 Ctrl+A 全选同机制，React Flow 会同步 selection 并触发 onSelectionChange，
+   * 从而刷新 selectedCount / 高亮与工具栏「删除所选」。
+   * 画布内同时屏蔽浏览器右键菜单（文本框/输入框保留原生粘贴/复制菜单）。 */
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.button !== 2) return;
+      const rf = rfInstanceRef.current;
+      if (!rf) return;
+      // 文本框/输入框内右键仍走原生菜单，不启动框选
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable]")) return;
+      const startFlow = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      boxSelectRef.current = { startFlow };
+      setBoxRect({ x: startFlow.x, y: startFlow.y, width: 0, height: 0 });
+      // 屏蔽右键按下的原生行为（文本选中/拖拽虚影），只保留框选
+      event.preventDefault();
+    };
+
+    const onMouseMove = (event: MouseEvent) => {
+      const drag = boxSelectRef.current;
+      const rf = rfInstanceRef.current;
+      if (!drag || !rf) return;
+      const curFlow = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      setBoxRect({
+        x: Math.min(drag.startFlow.x, curFlow.x),
+        y: Math.min(drag.startFlow.y, curFlow.y),
+        width: Math.abs(curFlow.x - drag.startFlow.x),
+        height: Math.abs(curFlow.y - drag.startFlow.y),
+      });
+    };
+
+    const onMouseUp = (event: MouseEvent) => {
+      const drag = boxSelectRef.current;
+      const rf = rfInstanceRef.current;
+      if (!drag || !rf) return;
+      boxSelectRef.current = null;
+      const curFlow = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const rect = {
+        x: Math.min(drag.startFlow.x, curFlow.x),
+        y: Math.min(drag.startFlow.y, curFlow.y),
+        width: Math.abs(curFlow.x - drag.startFlow.x),
+        height: Math.abs(curFlow.y - drag.startFlow.y),
+      };
+      setBoxRect(null);
+      // 几乎没有拖动（视为右键单击）：不改动当前选中
+      if (rect.width < 2 && rect.height < 2) return;
+      setNodes((nds) => {
+        let changed = false;
+        const next = nds.map((n) => {
+          const size = nodeSize(n);
+          const inside =
+            n.position.x >= rect.x &&
+            n.position.y >= rect.y &&
+            n.position.x + size.width <= rect.x + rect.width &&
+            n.position.y + size.height <= rect.y + rect.height;
+          if (inside === !!n.selected) return n;
+          changed = true;
+          return { ...n, selected: inside };
+        });
+        return changed ? next : nds;
+      });
+    };
+
+    const onContextMenu = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      // 文本框/输入框保留原生右键菜单（粘贴/复制）
+      if (target?.closest("input, textarea, [contenteditable]")) return;
+      event.preventDefault();
+    };
+
+    // 拖拽中途窗口失焦（Alt+Tab 等）时复位，避免残留拖拽状态
+    const onWindowBlur = () => {
+      if (boxSelectRef.current) {
+        boxSelectRef.current = null;
+        setBoxRect(null);
+      }
+    };
+
+    el.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    el.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("blur", onWindowBlur);
+    return () => {
+      el.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      el.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("blur", onWindowBlur);
+    };
+  }, [setNodes]);
+
   /* ---------------- 渲染 ---------------- */
   const nodeTypes = useMemo(
     () => ({
@@ -1072,7 +1176,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       </div>
       {/* 操作帮助：单行小字，画布/节点/连线三类交互用分隔符紧凑展示 */}
       <div className="flex flex-wrap items-center gap-x-1 text-[10px] leading-tight text-neutral-400">
-        <span className="font-medium text-neutral-500">画布</span>Shift+拖拽框选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · Ctrl+A 全选 · Ctrl+Z 撤销 / Ctrl+Y 恢复 · Delete 删除选中 · Ctrl+S 保存
+        <span className="font-medium text-neutral-500">画布</span>右键拖拽框选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · Ctrl+A 全选 · Ctrl+Z 撤销 / Ctrl+Y 恢复 · Delete 删除选中 · Ctrl+S 保存
         <span className="text-neutral-300">｜</span>
         <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 双击图片放大 · 拖动右下角拉伸
         <span className="text-neutral-300">｜</span>
@@ -1083,7 +1187,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
 
       {/* 画布 */}
       <div className="panel-card relative min-h-0 flex-1 overflow-hidden">
-        {/* 多选批量删除（Shift+框选后显示，沿用右上角小按钮风格） */}
+        {/* 多选批量删除（右键框选后显示，沿用右上角小按钮风格） */}
         {selectedCount >= 2 && (
           <button
             type="button"
@@ -1093,7 +1197,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             删除所选 ({selectedCount})
           </button>
         )}
-        <div ref={canvasRef} className="h-full w-full">
+        <div ref={canvasRef} className="relative h-full w-full">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1117,11 +1221,36 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           maxZoom={2}
           defaultEdgeOptions={{ animated: true }}
           deleteKeyCode={null}
+          selectionKeyCode={null}
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
           <Controls />
         </ReactFlow>
+        {/* 右键拖拽框选的选框（画布坐标转屏幕坐标定位，pointer-events-none 不挡交互） */}
+        {boxRect &&
+          (() => {
+            const rf = rfInstanceRef.current;
+            const el = canvasRef.current;
+            if (!rf || !el) return null;
+            const p1 = rf.flowToScreenPosition({ x: boxRect.x, y: boxRect.y });
+            const p2 = rf.flowToScreenPosition({
+              x: boxRect.x + boxRect.width,
+              y: boxRect.y + boxRect.height,
+            });
+            const rect = el.getBoundingClientRect();
+            return (
+              <div
+                className="pointer-events-none absolute z-[1002] rounded-sm border border-brand/80 bg-brand/10"
+                style={{
+                  left: p1.x - rect.left,
+                  top: p1.y - rect.top,
+                  width: p2.x - p1.x,
+                  height: p2.y - p1.y,
+                }}
+              />
+            );
+          })()}
         </div>
         <CanvasLog logs={logs} />
       </div>

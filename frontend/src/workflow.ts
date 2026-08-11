@@ -277,7 +277,7 @@ const NODE_SIZES: Record<WorkflowNode["type"], { width: number; height: number }
   group: { width: 224, height: 120 },
 };
 
-function nodeSize(node: WorkflowNode): { width: number; height: number } {
+export function nodeSize(node: WorkflowNode): { width: number; height: number } {
   const measured = (node as WorkflowNode & {
     measured?: { width?: number; height?: number };
   }).measured;
