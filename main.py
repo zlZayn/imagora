@@ -96,19 +96,34 @@ def find_port_pid(port: int) -> int | None:
     """探测监听指定端口的进程 PID（服务状态的唯一真相源）。
 
     netstat 动态探测：不依赖临时 PID 文件，多开脚本 / 谁先谁后都不会失效。
+    兼容双栈监听：IPv4/IPv6 可能各占一行且 PID 相同，取第一个即可。
+    """
+    pids = find_port_pids(port)
+    return pids[0] if pids else None
+
+
+def find_port_pids(port: int) -> list[int]:
+    """探测监听指定端口的全部进程 PID（去重）。
+
+    与 find_port_pid 的区别：Q 退出要「一次关闭全部」——同一端口可能因
+    双栈监听（IPv4 + IPv6 两行）、多层包装（uv → python）、或历史残留
+    出现多个不同 PID，逐个 taskkill /t 才能确保端口彻底释放。
     """
     import subprocess
 
+    pids: list[int] = []
     try:
         out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, check=False).stdout
         for line in out.splitlines():
             if f":{port}" in line and "LISTENING" in line.upper():
                 parts = line.split()
                 if parts:
-                    return int(parts[-1])
+                    pid = int(parts[-1])
+                    if pid not in pids:
+                        pids.append(pid)
     except (OSError, ValueError):
         pass
-    return None
+    return pids
 
 
 def handle_menu_command(args):
@@ -169,12 +184,15 @@ def handle_menu_command(args):
             print_error(f"开新窗口失败: {e}")
             time.sleep(2)
 
-    pid = find_port_pid(args.port)
-    if pid is not None:
+    # Q 退出：一次关闭全部 —— 找出端口上所有监听进程（双栈 / 多层 / 残留），
+    # 逐个 taskkill /t 杀整个进程树，确保端口彻底释放、窗口全部失效。
+    pids = find_port_pids(args.port)
+    if pids:
         import subprocess
 
-        subprocess.run(["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True, check=False)
-        print_success(f"服务已停止（PID {pid}）")
+        for pid in pids:
+            subprocess.run(["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True, check=False)
+        print_success(f"服务已全部停止（PID {', '.join(str(p) for p in pids)}）")
     else:
         print_info("服务未在运行，无需停止")
 
