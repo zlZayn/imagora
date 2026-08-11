@@ -1,9 +1,10 @@
 @import "tailwindcss";
 
-/* 品牌主色：草本绿（与产品视觉统一） */
+/* 品牌色默认值（兜底）：运行时 App.tsx 按窗口编号动态覆盖 --color-brand，
+   此处仅为 JS 加载前的默认，用中性 slate 避免误导为固定主题色 */
 @theme {
-  --color-brand: #3d7a5c;
-  --color-brand-dark: #2f5f48;
+  --color-brand: #475569;
+  --color-brand-dark: #334155;
 }
 
 body {

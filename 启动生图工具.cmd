@@ -12,7 +12,7 @@ set "BUILDSTATE=%TEMP%\aig_buildstate_%PORT%.txt"
 REM ---- ANSI 彩色（24-bit 真彩色：成功绿 / 失败红 / 警告琥珀 / 信息蓝 / 次要灰；标签统一英文 [OK]/[ERROR]/[INFO]/[WARN]）----
 set "ESC="
 for /f %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
-set "C_OK=%ESC%[38;2;61;122;92m"
+set "C_OK=%ESC%[38;2;22;163;74m"
 set "C_ERR=%ESC%[38;2;220;38;38m"
 set "C_INFO=%ESC%[38;2;37;99;235m"
 set "C_WARN=%ESC%[38;2;217;119;6m"
