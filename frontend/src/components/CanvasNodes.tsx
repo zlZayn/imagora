@@ -239,7 +239,12 @@ export function PromptNode({
           <Trash2 aria-hidden="true" size={14} />
         </ActionButton>
       </NodeActions>
-      <div className="mb-2 text-xs font-semibold text-brand-dark">提示词生成</div>
+      <div
+        className="mb-2 truncate text-xs font-semibold text-brand-dark"
+        title={data.title ?? "提示词生成"}
+      >
+        {data.title ?? "提示词生成"}
+      </div>
       <textarea
         value={data.prompt}
         onChange={(e) => onUpdate(id, { prompt: e.target.value })}
