@@ -130,11 +130,12 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const logIdRef = useRef(0);
   /** 高亮核验：悬停/选中的提示词节点（高亮其入边与关联图片） */
   const [highlightId, setHighlightId] = useState<string | null>(null);
-  /** 当前选中的节点数（右键拖拽框选多选后显示批量删除） */
+  /** 当前选中的节点数（右键拖拽框选 / Ctrl+点击加选多选后显示批量删除） */
   const [selectedCount, setSelectedCount] = useState(0);
   const selectedIdsRef = useRef<Set<string>>(new Set());
   /** 右键拖拽框选：拖拽起点（flow 坐标，null=未拖拽）。
-   *   React Flow 默认 Shift+左键框选已通过 selectionKeyCode={null} 禁用，改为右键直接拖拽多选。 */
+   *   React Flow 默认 Shift+左键框选已通过 selectionKeyCode={null} 禁用，改为右键直接拖拽多选；
+   *   Ctrl(Windows)/Cmd(Mac)+点击加选走 React Flow 原生 multiSelectionKeyCode（见组件 props）。 */
   const boxSelectRef = useRef<{ startFlow: { x: number; y: number } } | null>(null);
   const [boxRect, setBoxRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const historyRef = useRef(createCanvasHistory());
@@ -1176,7 +1177,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       </div>
       {/* 操作帮助：单行小字，画布/节点/连线三类交互用分隔符紧凑展示 */}
       <div className="flex flex-wrap items-center gap-x-1 text-[10px] leading-tight text-neutral-400">
-        <span className="font-medium text-neutral-500">画布</span>右键拖拽框选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · Ctrl+A 全选 · Ctrl+Z 撤销 / Ctrl+Y 恢复 · Delete 删除选中 · Ctrl+S 保存
+        <span className="font-medium text-neutral-500">画布</span>右键拖拽框选 · Ctrl+点击加选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · Ctrl+A 全选 · Ctrl+Z 撤销 / Ctrl+Y 恢复 · Delete 删除选中 · Ctrl+S 保存
         <span className="text-neutral-300">｜</span>
         <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 双击图片放大 · 拖动右下角拉伸
         <span className="text-neutral-300">｜</span>
@@ -1222,6 +1223,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           defaultEdgeOptions={{ animated: true }}
           deleteKeyCode={null}
           selectionKeyCode={null}
+          // 显式启用 Ctrl(Windows)/Cmd(Mac)+点击多选：React Flow 默认 multiSelectionKeyCode='Meta'
+          // 只匹配 Mac 的 Cmd，Windows 的 Ctrl 不生效，需传数组同时覆盖两种修饰键
+          multiSelectionKeyCode={["Meta", "Control"]}
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
