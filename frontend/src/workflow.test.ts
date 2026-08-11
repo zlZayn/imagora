@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoLayout, extractAnimClasses, layoutSelection, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoConnect, autoLayout, collectIncomingImages, extractAnimClasses, layoutSelection, snapshotIncomingAbsPaths, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -334,6 +334,58 @@ describe("auto connect", () => {
       ...existing,
       edge("group", "p2"),
     ]);
+  });
+});
+
+describe("incoming reference images", () => {
+  it("collects direct and group-expanded images for a prompt", () => {
+    const image = imageNode("img1");
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { name: "group", imageCount: 2, totalSize: 20 },
+    } as WorkflowNode;
+    const groupImage = imageNode("img2");
+    const prompt = promptNode("p1");
+
+    const images = collectIncomingImages(
+      [image, group, groupImage, prompt],
+      [edge("img1", "group"), edge("img2", "group"), edge("group", "p1")],
+      "p1",
+    );
+
+    expect(images.map((n) => n.id).sort()).toEqual(["img1", "img2"]);
+  });
+
+  it("dedupes on cycles (image reachable via two paths is collected once)", () => {
+    const image = imageNode("img1");
+    const prompt = promptNode("p1");
+
+    const images = collectIncomingImages(
+      [image, prompt],
+      [edge("img1", "p1"), edge("p1", "img1")],
+      "p1",
+    );
+
+    expect(images.map((n) => n.id)).toEqual(["img1"]);
+  });
+
+  it("snapshot skips images without absPath (missing) instead of pushing undefined", () => {
+    const present = imageNode("ok");
+    const missing = {
+      ...imageNode("gone"),
+      data: { ...imageNode("gone").data, absPath: undefined },
+    } as WorkflowNode;
+    const prompt = promptNode("p1");
+
+    const paths = snapshotIncomingAbsPaths(
+      [present, missing, prompt],
+      [edge("ok", "p1"), edge("gone", "p1")],
+      "p1",
+    );
+
+    expect(paths).toEqual([`C:\\output\\ok.png`]);
   });
 });
 

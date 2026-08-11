@@ -1,4 +1,5 @@
 """core/canvas.py 单元测试：注册表读写/去重/导入校验/删除/列表/白名单（tmp 目录注入，零网络零计费）"""
+import json
 import os
 import sys
 from pathlib import Path
@@ -47,10 +48,12 @@ def test_register_and_load(canvas_env):
     assert entry["size"] == len(content)
     assert entry["relPath"] == f".canvas/canv_{entry['id']}.png"
     assert (canvas_env / ".canvas" / f"canv_{entry['id']}.png").exists()
-    # registry 落盘可读回（落盘条目不含 absPath，返回条目附带）
+    # registry 落盘可读回（落盘条目不含 absPath/url，返回条目附带两者）
     entries = canvas.load_registry()
     stored = entries[entry["id"]]
-    assert {k: v for k, v in entry.items() if k != "absPath"} == stored
+    assert {k: v for k, v in entry.items() if k not in ("absPath", "url")} == stored
+    assert entry["url"].startswith("/api/image?path=")
+    assert entry["absPath"] == str(canvas_env / ".canvas" / f"canv_{entry['id']}.png")
 
 
 def test_register_dedup_same_content(canvas_env):
@@ -155,6 +158,99 @@ def test_safe_ref_path_allowlist(canvas_env):
     assert canvas.safe_ref_path_allowlist(str(ref_file), [canv_root]) is None  # 白名单外拒绝
     assert canvas.safe_ref_path_allowlist(str(canvas_env / ".." / "escape.png"), [ref_root]) is None  # 穿越拒绝
     assert canvas.safe_ref_path_allowlist(str(canvas_env / "nope.png"), [ref_root]) is None  # 不存在也按路径校验
+
+
+def test_workflow_save_strips_derived_image_paths(canvas_env):
+    """工作流落盘时图片节点只存 registryId + 元数据，剥离派生路径 url/absPath（不修改入参）"""
+    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"wf-strip")), "a.png"))
+    node = {
+        "id": f"img-{entry['id']}",
+        "type": "image",
+        "position": {"x": 1, "y": 2},
+        "data": {
+            "registryId": entry["id"],
+            "name": "a.png",
+            "url": "/api/image?path=OLD",
+            "size": entry["size"],
+            "ext": "png",
+            "refCount": 1,
+            "absPath": "C:\\old\\path.png",
+        },
+    }
+    result = canvas.workflow_save("剥离", [node], [])
+    assert result["ok"] is True
+    stored = json.loads(Path(result["path"]).read_text(encoding="utf-8"))["nodes"][0]
+    assert stored["data"]["registryId"] == entry["id"]
+    assert stored["data"]["name"] == "a.png"
+    assert stored["data"]["size"] == entry["size"]
+    assert "url" not in stored["data"]
+    assert "absPath" not in stored["data"]
+    # 入参不被修改（归一化是副本）
+    assert node["data"]["url"] == "/api/image?path=OLD"
+    assert node["data"]["absPath"] == "C:\\old\\path.png"
+
+
+def test_workflow_load_resolves_paths_from_registry(canvas_env):
+    """旧格式存档（含过期绝对路径）加载时按 registryId 实时重建 url/absPath，自愈"""
+    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"wf-resolve")), "a.png"))
+    old_node = {
+        "id": f"img-{entry['id']}",
+        "type": "image",
+        "position": {"x": 1, "y": 2},
+        "data": {
+            "registryId": entry["id"],
+            "name": "a.png",
+            "url": "/api/image?path=STALE",
+            "size": entry["size"],
+            "ext": "png",
+            "refCount": 0,
+            "absPath": "C:\\gone\\tools\\output\\.canvas\\x.png",
+        },
+    }
+    wf_dir = canvas_env / "workflows"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    (wf_dir / "旧档.json").write_text(
+        json.dumps({"version": 1, "name": "旧档", "nodes": [old_node], "edges": []}),
+        encoding="utf-8",
+    )
+    result = canvas.workflow_load("旧档")
+    assert result["ok"] is True
+    assert result["missing"] == []
+    data = result["nodes"][0]["data"]
+    assert data["url"] != "/api/image?path=STALE"
+    assert data["absPath"] != old_node["data"]["absPath"]
+    assert data["absPath"] == str(canvas_env / ".canvas" / f"canv_{entry['id']}.png")
+    assert os.path.isfile(data["absPath"])
+
+
+def test_recovery_save_normalizes_image_nodes(canvas_env):
+    """恢复快照与手动工作流同规则：图片节点不落派生路径"""
+    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"rec-strip")), "a.png"))
+    node = {
+        "id": f"img-{entry['id']}",
+        "type": "image",
+        "position": {"x": 0, "y": 0},
+        "data": {
+            "registryId": entry["id"],
+            "name": "a.png",
+            "url": "/api/image?path=X",
+            "size": entry["size"],
+            "ext": "png",
+            "refCount": 0,
+            "absPath": "C:\\x.png",
+        },
+    }
+    saved = canvas.recovery_save([node], [])
+    stored = json.loads(Path(saved["path"]).read_text(encoding="utf-8"))["nodes"][0]["data"]
+    assert stored["registryId"] == entry["id"]
+    assert "url" not in stored
+    assert "absPath" not in stored
+    # 加载恢复快照时重新解析出正确路径
+    latest = canvas.recovery_latest()
+    data = latest["nodes"][0]["data"]
+    assert data["absPath"] == str(canvas_env / ".canvas" / f"canv_{entry['id']}.png")
+    assert data["url"].startswith("/api/image?path=")
+    assert latest["missing"] == []
 
 
 def test_recovery_snapshots_never_overwrite_named_workflow(canvas_env):

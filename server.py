@@ -35,7 +35,6 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from urllib.parse import quote
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -264,7 +263,7 @@ def generation_history(limit: int = 200, query: str = "", status: str = ""):
             **record,
             "exists": exists,
             "path": abs_path if exists else "",
-            "url": image_url(abs_path) if exists else "",
+            "url": canvas.image_url(abs_path) if exists else "",
         })
     return {"items": items}
 
@@ -306,7 +305,7 @@ def upload_ref(images: list[UploadFile] = File(default=[])):
         refs.append({
             "id": name,
             "path": dest,
-            "url": image_url(dest),
+            "url": canvas.image_url(dest),
             "name": image.filename or name,
             "size": len(data),
             "ext": ext.lstrip("."),
@@ -380,7 +379,10 @@ def canvas_image_delete(body: dict):
 
 @app.post("/api/canvas/workflow/save")
 def canvas_workflow_save(body: dict):
-    """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json，仅需名字）"""
+    """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json，仅需名字）
+
+    图片节点落盘前归一化：只存 registryId + 元数据，不存派生路径 url/absPath
+    （加载时按 registry 实时解析，项目目录改名后旧存档依然可恢复）。"""
     result = canvas.workflow_save(
         str(body.get("name", "")),
         body.get("nodes", []),
@@ -399,7 +401,8 @@ def canvas_workflow_list():
 
 @app.get("/api/canvas/workflow/load")
 def canvas_workflow_load(name: str):
-    """加载工作流 JSON（固定目录按名加载）：相对路径解析 + 文件存在性校验，缺失 registryId 进 missing"""
+    """加载工作流 JSON（固定目录按名加载）：按 registryId 实时解析图片节点路径
+    （不信任存档中的旧绝对路径，项目目录改名后自愈）；缺失 registryId 进 missing"""
     result = canvas.workflow_load(name)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "加载失败"))
@@ -413,7 +416,7 @@ def canvas_workflow_load(name: str):
 
 @app.post("/api/canvas/recovery/save")
 def canvas_recovery_save(body: dict):
-    """创建一份独立恢复快照，不覆盖手动命名工作流。"""
+    """创建一份独立恢复快照，不覆盖手动命名工作流（图片节点同样归一化落盘）。"""
     result = canvas.recovery_save(body.get("nodes", []), body.get("edges", []))
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "自动保存失败"))
@@ -487,7 +490,7 @@ def run_generation(task: GenerationTask) -> None:
                 prompt=task.prompt, images=task.ref_bases, size=task.size,
                 quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
             messages.append(f"已保存 · {display_path(dest)}（{task.size}）")
         elif task.temp_bases:
             # multipart 兜底：底图已在提交线程落临时文件（UploadFile 不可跨线程）
@@ -498,7 +501,7 @@ def run_generation(task: GenerationTask) -> None:
                 prompt=task.prompt, images=task.temp_bases, size=task.size,
                 quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
             messages.append(f"已保存 · {display_path(dest)}（{task.size}）")
         else:
             seq = next(_SEQ)
@@ -508,7 +511,7 @@ def run_generation(task: GenerationTask) -> None:
                 prompt=task.prompt, image_path=None, size=task.size,
                 quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
             messages.append(f"已保存 · {display_path(dest)}（{task.size}）")
         ok = True
     except Exception as e:
@@ -656,8 +659,8 @@ def _activate_explorer_window(title_part: str) -> bool:
 
 
 def image_url(path: str) -> str:
-    """生成可访问图片文件的相对 URL"""
-    return f"/api/image?path={quote(path)}"
+    """生成可访问图片文件的相对 URL（单一实现收敛在 core/canvas.py）"""
+    return canvas.image_url(path)
 
 
 @app.get("/api/image")

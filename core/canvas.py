@@ -8,8 +8,13 @@
   register_file()              复制图片进画布并登记（同内容去重）
   import_images()              输出目录导入（目录递归 / 单文件，路径穿越校验）
   delete_image()               删除画布图片（注册表 + 文件）
-  list_images()                画布图片全量（附绝对路径，供生成时引用）
+  list_images()                画布图片全量（附 absPath/url，供生成与显示引用）
   safe_ref_path_allowlist()    路径白名单校验（.refs / .canvas 双根）
+  image_url()                  图片可访问 URL 的单一构建入口
+
+工作流存储原则：派生路径不落盘。图片节点只持久化 registryId + 元数据
+（name/size/ext），url/absPath 一律由加载时按 registryId 从注册表实时解析
+（registry 用相对路径，随项目目录改名/移动仍有效）。
 """
 import hashlib
 import json
@@ -18,6 +23,7 @@ import re
 import threading
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 from core.config import DEFAULT_OUTPUT_DIR
 
@@ -64,11 +70,19 @@ def _entry_from_src(img_id: str, src_abs: str, original_name: str, dest_name: st
     }
 
 
+def image_url(path: str) -> str:
+    """构建图片可访问 URL（/api/image?path= 编码绝对路径）——全项目唯一入口
+
+    server.py 的 /api/image 端点、画布节点 url 都走这里，改约定只改一处。
+    """
+    return f"/api/image?path={quote(path)}"
+
+
 def register_file(src_abs: str, original_name: str = "") -> dict | None:
     """复制图片进画布并登记；同内容（同 sha1）返回已有 entry（去重：一个文件一个节点）。
 
     源文件不存在返回 None；目标文件名为 canv_<sha1[:12]>.<ext>。
-    返回条目附 absPath（registry 落盘不存 absPath，它由 relPath 可推导）。
+    返回条目附 absPath 与 url（registry 落盘不存两者，均由 relPath 可推导）。
     """
     if not os.path.isfile(src_abs):
         return None
@@ -77,19 +91,19 @@ def register_file(src_abs: str, original_name: str = "") -> dict | None:
     img_id = hashlib.sha1(content).hexdigest()[:12]
     ext = Path(src_abs).suffix.lower().lstrip(".") or "png"
     dest_name = f"canv_{img_id}.{ext}"
-    dest_abs = os.path.join(CANVAS_DIR, dest_name)
+    dest_abs = os.path.normpath(os.path.join(CANVAS_DIR, dest_name))
     with _REGISTRY_LOCK:
         entries = load_registry()
         if img_id in entries:
             entry = entries[img_id]
-            return {**entry, "absPath": os.path.normpath(dest_abs)}
+            return {**entry, "absPath": dest_abs, "url": image_url(dest_abs)}
         os.makedirs(CANVAS_DIR, exist_ok=True)
         with open(dest_abs, "wb") as f:
             f.write(content)
         entry = _entry_from_src(img_id, src_abs, original_name, dest_name)
         entries[img_id] = entry
         save_registry(entries)
-        return {**entry, "absPath": os.path.normpath(dest_abs)}
+        return {**entry, "absPath": dest_abs, "url": image_url(dest_abs)}
 
 
 def _collect_image_files(path: str) -> list[str]:
@@ -157,15 +171,17 @@ def delete_image(img_id: str) -> bool:
 
 
 def list_images() -> list[dict]:
-    """画布图片全量列表，每条附 absPath（生成时 ref_paths 引用）"""
+    """画布图片全量列表，每条附 absPath 与 url（生成时 ref_paths 引用 / 显示）"""
     with _REGISTRY_LOCK:
         entries = load_registry()
         images = []
         for entry in entries.values():
             item = dict(entry)
-            item["absPath"] = os.path.normpath(
+            abs_path = os.path.normpath(
                 os.path.join(DEFAULT_OUTPUT_DIR, entry["relPath"])
             )
+            item["absPath"] = abs_path
+            item["url"] = image_url(abs_path)
             images.append(item)
         return images
 
@@ -222,7 +238,14 @@ def _atomic_write_json(path: str, payload: dict) -> None:
             pass
 
 
-def _missing_image_ids(nodes: list) -> list[str]:
+def _resolve_image_nodes(nodes: list) -> list[str]:
+    """加载工作流时按 registryId 统一解析图片节点（单一事实来源）。
+
+    就地更新每个图片节点 data：registry 命中且文件存在 → 重新推导当前真实
+    absPath 与 url（registry 用相对路径，项目目录改名后仍有效，旧快照自愈）；
+    否则该 registryId 进 missing（节点保持无 url/absPath，前端占位标红）。
+    返回 missing 列表。
+    """
     entries = load_registry()
     missing: list[str] = []
     for node in nodes:
@@ -239,12 +262,38 @@ def _missing_image_ids(nodes: list) -> list[str]:
         )
         if not abs_path or not os.path.isfile(abs_path):
             missing.append(reg_id)
+            continue
+        data_part["absPath"] = abs_path
+        data_part["url"] = image_url(abs_path)
     return missing
+
+
+def _normalize_workflow_nodes(nodes: list) -> list:
+    """落盘前归一化：图片节点只保留 registryId + 元数据，剥离派生路径（url/absPath）。
+
+    返回新列表（不修改入参）：非图片节点原样引用，图片节点复制 data 后剔除
+    url/absPath——保证磁盘工作流是规范数据，加载时由 _resolve_image_nodes 重建。
+    """
+    normalized: list = []
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("type") != "image":
+            normalized.append(node)
+            continue
+        data_part = node.get("data")
+        if not isinstance(data_part, dict):
+            normalized.append(node)
+            continue
+        clean = {k: v for k, v in data_part.items() if k not in ("url", "absPath")}
+        normalized.append({**node, "data": clean})
+    return normalized
 
 
 def workflow_save(name: str, nodes: list, edges: list) -> dict:
     """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json）
 
+    图片节点落盘前归一化（_normalize_workflow_nodes）：只存 registryId + 元数据，
+    不存派生路径 url/absPath——加载时由 _resolve_image_nodes 实时重建，
+    项目目录改名/移动后旧存档依然可恢复。
     返回 {"ok": True, "path"} 或 {"ok": False, "error"}。
     """
     filename = sanitize_workflow_name(name)
@@ -256,7 +305,7 @@ def workflow_save(name: str, nodes: list, edges: list) -> dict:
         payload = {
             "version": 1,
             "name": filename,
-            "nodes": nodes,
+            "nodes": _normalize_workflow_nodes(nodes),
             "edges": edges,
         }
         with open(abs_path, "w", encoding="utf-8") as f:
@@ -289,10 +338,11 @@ def workflow_list() -> list[dict]:
 
 
 def workflow_load(name: str) -> dict:
-    """加载工作流 JSON：校验 version、收集图片节点缺失项。
+    """加载工作流 JSON：校验 version、按 registryId 实时解析图片节点路径。
 
-    图片节点按 registryId 查注册表 → relPath 解析绝对路径 → isfile 校验；
-    缺失的 registryId 收集进 missing（节点保留原样，由前端标红）。
+    图片节点经 _resolve_image_nodes 统一解析（registry → relPath → absPath/url，
+    不信任存档里的旧绝对路径）；registry 缺失或文件不存在的 registryId 进 missing
+    （节点保持无路径，前端占位标红）。
     返回 {"ok": True, "name", "nodes", "edges", "missing"} 或 {"ok": False, "error"}。
     """
     filename = sanitize_workflow_name(name)
@@ -315,7 +365,7 @@ def workflow_load(name: str) -> dict:
         "name": str(data.get("name", "")),
         "nodes": nodes,
         "edges": edges,
-        "missing": _missing_image_ids(nodes),
+        "missing": _resolve_image_nodes(nodes),
     }
 
 
@@ -339,7 +389,10 @@ def _prune_recovery_snapshots(limit: int = RECOVERY_LIMIT) -> None:
 
 
 def recovery_save(nodes: list, edges: list) -> dict:
-    """创建独立恢复快照并轮转；永不写入手动工作流文件。"""
+    """创建独立恢复快照并轮转；永不写入手动工作流文件。
+
+    与 workflow_save 同规则：图片节点归一化落盘（不存派生路径），加载时重建。
+    """
     if not isinstance(nodes, list) or not isinstance(edges, list):
         return {"ok": False, "error": "恢复快照结构非法"}
     saved_at = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -349,7 +402,7 @@ def recovery_save(nodes: list, edges: list) -> dict:
         "version": 1,
         "name": name,
         "savedAt": saved_at,
-        "nodes": nodes,
+        "nodes": _normalize_workflow_nodes(nodes),
         "edges": edges,
     }
     try:
@@ -363,7 +416,10 @@ def recovery_save(nodes: list, edges: list) -> dict:
 
 
 def recovery_latest() -> dict:
-    """读取最近一份可用恢复快照；损坏文件自动跳过。"""
+    """读取最近一份可用恢复快照；损坏文件自动跳过。
+
+    图片节点同样经 _resolve_image_nodes 实时解析（同 workflow_load 规则）。
+    """
     for path in _recovery_paths():
         try:
             with open(path, encoding="utf-8") as f:
@@ -382,6 +438,6 @@ def recovery_latest() -> dict:
             "savedAt": str(data.get("savedAt", "")),
             "nodes": nodes,
             "edges": edges,
-            "missing": _missing_image_ids(nodes),
+            "missing": _resolve_image_nodes(nodes),
         }
     return {"ok": False, "empty": True}

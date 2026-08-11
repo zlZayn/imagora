@@ -33,12 +33,7 @@ export function withEnterAnim(node: WorkflowNode, index: number): WorkflowNode {
   return { ...node, className: cls };
 }
 
-/** 生成图片节点可渲染 URL（与 RefItem.url 同约定） */
-function imageUrl(absPath: string): string {
-  return `/api/image?path=${encodeURIComponent(absPath)}`;
-}
-
-/** 从注册表条目构建单个画布图片节点 */
+/** 从注册表条目构建单个画布图片节点（url 由后端统一提供，与 node.data.url 同约定） */
 export function buildImageNode(
   entry: CanvasImageEntry,
   position: { x: number; y: number },
@@ -50,7 +45,7 @@ export function buildImageNode(
     data: {
       registryId: entry.id,
       name: entry.name,
-      url: imageUrl(entry.absPath),
+      url: entry.url,
       size: entry.size,
       ext: entry.ext,
       refCount: 0,
@@ -164,15 +159,15 @@ export function computeCounts(
   return { refCounts, groupCounts, groupSizes };
 }
 
-/** 提示词节点的入边图片绝对路径快照（纯函数：运行前锁定参考图集合，画布后续编辑不影响本次运行）。
- *  支持图片组：入边若是 group 节点，递归展开其入边图片（visited 防环）。 */
-export function snapshotIncomingAbsPaths(
+/** 收集提示词节点入边的图片节点（纯函数：图片组递归展开，visited 防环）。
+ *  运行前锁定参考图集合，画布后续编辑不影响本次运行。 */
+export function collectIncomingImages(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   promptNodeId: string,
-): string[] {
+): WorkflowNode[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const paths: string[] = [];
+  const images: WorkflowNode[] = [];
   const visited = new Set<string>([promptNodeId]);
   const stack: string[] = edges
     .filter((e) => e.target === promptNodeId)
@@ -184,13 +179,25 @@ export function snapshotIncomingAbsPaths(
     const node = byId.get(sid);
     if (!node) continue;
     if (node.type === "image") {
-      paths.push(node.data.absPath);
+      images.push(node);
     } else if (node.type === "group") {
       // 分组：递归收集其入边（image 或嵌套 group）
       edges.filter((e) => e.target === sid).forEach((e) => stack.push(e.source));
     }
   }
-  return paths;
+  return images;
+}
+
+/** 提示词节点的入边图片绝对路径快照（纯函数：运行前锁定参考图集合，画布后续编辑不影响本次运行）。
+ *  缺失（无 absPath）的图片自动跳过——是否缺失由 collectIncomingImages 另行判定。 */
+export function snapshotIncomingAbsPaths(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  promptNodeId: string,
+): string[] {
+  return collectIncomingImages(nodes, edges, promptNodeId)
+    .map((n) => (n.type === "image" ? n.data.absPath : undefined))
+    .filter((p): p is string => Boolean(p));
 }
 
 /** 自动补齐明显的连线：只处理孤立节点，已有连线保持不动。 */

@@ -104,7 +104,13 @@ export function ImageNode({
           onZoom(id);
         }}
       >
-        <img src={data.url} alt={data.name} className="block h-full w-full object-contain" draggable={false} />
+        {data.url ? (
+          <img src={data.url} alt={data.name} className="block h-full w-full object-contain" draggable={false} />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center p-2 text-center text-[11px] text-red-500">
+            图片缺失
+          </div>
+        )}
       </div>
       <div className="mt-1 max-w-[128px] truncate text-[11px] text-neutral-600" title={data.name}>
         {data.name}

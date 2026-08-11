@@ -44,10 +44,10 @@ import {
   autoLayout,
   buildImageNode,
   canvasEntriesToNodes,
+  collectIncomingImages,
   computeCounts,
   extractAnimClasses,
   layoutSelection,
-  snapshotIncomingAbsPaths,
   stripAnimClasses,
   updatePromptNode,
   withEnterAnim,
@@ -488,7 +488,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
                 ...n.data,
                 registryId: entry.id,
                 name: entry.name,
-                url: `/api/image?path=${encodeURIComponent(entry.absPath)}`,
+                url: entry.url,
                 size: entry.size,
                 ext: entry.ext,
                 absPath: entry.absPath,
@@ -560,7 +560,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   /* ---------------- 图片双击动作：放大预览 ---------------- */
   const handleZoom = useCallback((nodeId: string) => {
     const node = nodesRef.current.find((n) => n.id === nodeId);
-    if (node?.type === "image") {
+    // 缺失节点无 absPath，不弹预览（红框已提示）
+    if (node?.type === "image" && node.data.absPath) {
       setZoomImage(node.data.absPath);
       setZoomName(node.data.name);
     }
@@ -738,8 +739,19 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       // submit 完成前双双通过守卫重复提交（旧 generationQueue 是同步登记，此处保持同等语义）。
       // 成功后再覆盖为真实 taskId，失败时清除占位。
       nodeTaskRef.current.set(nodeId, "");
-      // 运行快照：锁定入边参考图集合，运行期间画布编辑不影响本次
-      const snapshot = snapshotIncomingAbsPaths(nodesRef.current, edgesRef.current, nodeId);
+      // 运行快照：锁定入边参考图集合，运行期间画布编辑不影响本次；
+      // 缺图守卫：参考图文件缺失（加载的工作流里 registry 条目丢失）时不静默跳过——
+      // 明确报错中止，避免不带参考图悄悄生成出错误结果。
+      const refImages = collectIncomingImages(nodesRef.current, edgesRef.current, nodeId);
+      const missingRefs = refImages.filter((n) => n.type === "image" && !n.data.absPath).length;
+      if (missingRefs > 0) {
+        nodeTaskRef.current.delete(nodeId);
+        pushLog(`节点 ${nodeId}：${missingRefs} 张参考图文件缺失，请先替换或删除后再运行`);
+        return;
+      }
+      const snapshot = refImages
+        .map((n) => (n.type === "image" ? n.data.absPath : undefined))
+        .filter((p): p is string => Boolean(p));
       setNodes((nds) => updatePromptNode(nds, nodeId, { status: "queued", elapsed: 0, message: undefined }));
       pushLog(`节点 ${nodeId} 已提交，参考图：[${snapshot.length} 张]`);
       try {

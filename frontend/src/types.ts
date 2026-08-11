@@ -78,29 +78,31 @@ export interface GenerateParams {
   win: number;
 }
 
-/** 画布图片注册表条目（/api/canvas/* 返回；registry entry + absPath 供生成引用） */
+/** 画布图片注册表条目（/api/canvas/* 返回；registry entry + absPath/url 供生成引用与显示） */
 export interface CanvasImageEntry {
   id: string;
   relPath: string;
   absPath: string;
+  url: string;
   name: string;
   size: number;
   ext: string;
   createdAt: string;
 }
 
-/** 画布图片节点数据（缩略图 + 引用计数 + 删除） */
+/** 画布图片节点数据（缩略图 + 引用计数 + 删除）
+ *  url/absPath 为派生字段：正常节点由后端加载时实时解析，缺失（missing）节点没有 */
 export interface CanvasImageNodeData {
   registryId: string;
   name: string;
-  url: string;
+  url?: string;
   size: number;
   ext: string;
   /** 被多少个提示词节点引用（由入边数推导） */
   refCount: number;
   /** 工作流加载时文件缺失（红框提示） */
   missing?: boolean;
-  absPath: string;
+  absPath?: string;
   [key: string]: unknown;
 }
 
