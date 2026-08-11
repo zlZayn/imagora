@@ -678,7 +678,7 @@ else:
         """前端未构建时的提示页（错误放 UI，不静默空白）"""
         return HTMLResponse(
             "<h3>前端未构建</h3>"
-            "<p>请先在 tools 目录执行：</p>"
+            "<p>请先在 Imagora 目录执行：</p>"
             "<pre>cd frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>"
             "<p>构建完成后刷新本页。详见 README「快速开始」。</p>",
             status_code=503,

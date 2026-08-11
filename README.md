@@ -20,8 +20,8 @@
 **方式 1：.env 文件**（推荐）
 
 ```powershell
-Copy-Item tools\.env.example tools\.env
-# 编辑 tools\.env，填入：AIWANWU_API_KEY=sk-你的Key
+Copy-Item Imagora\.env.example Imagora\.env
+# 编辑 Imagora\.env，填入：AIWANWU_API_KEY=sk-你的Key
 ```
 
 **方式 2：环境变量**（仅当前终端生效）
@@ -34,7 +34,7 @@ $env:AIWANWU_API_KEY = "sk-你的Key"
 
 ## 快速开始
 
-**一键启动（推荐）**：确保已安装 Python（含 `uv`）、Node.js，双击 `tools\启动生图工作台.cmd` 即可。脚本自动完成：
+**一键启动（推荐）**：确保已安装 Python（含 `uv`）、Node.js，双击 `Imagora\启动生图工作台.cmd` 即可。脚本自动完成：
 
 - 检查前端构建状态——未构建或源码更新会询问是否现场构建（自动 `npm install` + `npm run build`），无需手动执行
 - 探测端口——已有服务在跑则直接开窗、不重复启动；否则自动后台启动服务并等待就绪
@@ -43,14 +43,14 @@ $env:AIWANWU_API_KEY = "sk-你的Key"
 以下命令在脚本覆盖范围之外时才需要（换端口、开发模式、批量、单张、测试）：
 
 ```powershell
-cd tools
+cd Imagora
 uv run python -m main ui --port 8080         # 换端口启动
-cd tools/frontend; npm run dev               # 前端开发模式（热更新，需后端已启动）
+cd Imagora/frontend; npm run dev               # 前端开发模式（热更新，需后端已启动）
 uv run python -m main batch --config ..\薄荷脑皮肤抑菌乳膏\batch_prompts.json --dry-run   # 批量生图（预览不花钱，需先准备 batch_prompts.json）
 uv run python -m main gen "a red apple on white background" -o out.png   # 单张生图
 uv run pytest                                # 运行后端测试（零成本，不调 API）
 uv run ruff check .                          # 后端 lint
-cd tools/frontend; npm test; npm run lint    # 前端测试 + lint
+cd Imagora/frontend; npm test; npm run lint    # 前端测试 + lint
 ```
 
 > 批量配置 `batch_prompts.json` 需先在产品目录准备，格式见 `core/batch.py` 与 `ARCHITECTURE.md`。

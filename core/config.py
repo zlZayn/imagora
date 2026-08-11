@@ -3,7 +3,7 @@
 
 API Key 读取优先级:
   1. 环境变量 AIWANWU_API_KEY
-  2. tools/.env 文件（AIWANWU_API_KEY=sk-...，自动加载，不覆盖已存在的环境变量）
+  2. Imagora/.env 文件（AIWANWU_API_KEY=sk-...，自动加载，不覆盖已存在的环境变量）
 """
 import os
 from pathlib import Path
@@ -23,7 +23,7 @@ ENV_FILE_PATH = Path(__file__).resolve().parent.parent / ".env"
 
 
 def _load_env_file():
-    """读取 tools/.env（KEY=VALUE，# 注释），已存在的环境变量不覆盖"""
+    """读取 Imagora/.env（KEY=VALUE，# 注释），已存在的环境变量不覆盖"""
     if not ENV_FILE_PATH.exists():
         return
     for line in ENV_FILE_PATH.read_text(encoding="utf-8").splitlines():

@@ -53,7 +53,7 @@ FastAPI (server.py) ── 托管 frontend/dist 静态产物（单端口）
 ## 目录结构与模块依赖
 
 ```
-tools/
+Imagora/
 ├── main.py            # CLI 入口：ui / menu / batch / gen 子命令 ──┐
 ├── server.py          # FastAPI 后端：/api/* 路由 + 托管前端产物 ───┼─→ core/api.py ─→ core/config.py（唯一配置源）
 ├── 启动生图工作台.cmd   # 双击入口：构建检查 → 起服务 → 开窗 → 菜单     │         ├→ core/console.py（rich 终端输出）
@@ -240,7 +240,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 ## 关键决策
 
-- **API Key**：环境变量 `AIWANWU_API_KEY` 或 `tools/.env`（git 忽略），未配置抛清晰错误
+- **API Key**：环境变量 `AIWANWU_API_KEY` 或 `Imagora/.env`（git 忽略），未配置抛清晰错误
 - **尺寸档位**：界面选项（`core/config.py:SIZE_OPTIONS`，1K=0.05 / 2K 系列=0.10）由 `/api/config` 下发，前端不硬编码；命令行 `gen --tier 4K` 经 `core/config.py:RATIOS` 映射到 4K 分辨率（如 3840x2160），费用按 `size_cost` 档位结算。两张表同处配置中心（UI 直选分辨率 vs CLI 按比例+档位解析），改尺寸时需同步
 - **多张参考图**：实测上游 edits 接受多个 image 字段，一次请求全部作为参考（用途由提示词决定），不是逐张生成
 - **静态资源 no-cache**：本地迭代频繁，中间件统一加 `Cache-Control: no-cache`，前端更新即时生效

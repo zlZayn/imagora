@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Imagora 统一入口
 
-用法（在 tools 目录运行）:
+用法（在 Imagora 目录运行）:
   python -m main ui                                                    # 启动网页界面
   python -m main menu --port 7860                                      # 交互菜单（启动脚本用）
   python -m main batch --config 项目/batch_prompts.json                # 批量生图
