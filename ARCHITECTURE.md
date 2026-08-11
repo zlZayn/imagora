@@ -32,7 +32,7 @@ FastAPI (server.py) ── 托管 frontend/dist 静态产物（单端口）
 | `batch` | 批量生图 | `--config`、`--only`（只跑指定模块）、`--dry-run`（预览不花钱） |
 | `gen` | 单张生图 | `prompt`、`-i` 参考图、`-o` 输出、`--ratio/--size/--tier`、`--quality/--model/--n/--format` |
 
-### 启动脚本（`启动生图工具.cmd`）三段流程
+### 启动脚本（`启动生图工作台.cmd`）三段流程
 
 脚本是日常入口，内部职责清晰：
 
@@ -56,7 +56,7 @@ FastAPI (server.py) ── 托管 frontend/dist 静态产物（单端口）
 tools/
 ├── main.py            # CLI 入口：ui / menu / batch / gen 子命令 ──┐
 ├── server.py          # FastAPI 后端：/api/* 路由 + 托管前端产物 ───┼─→ core/api.py ─→ core/config.py（唯一配置源）
-├── 启动生图工具.cmd   # 双击入口：构建检查 → 起服务 → 开窗 → 菜单     │         ├→ core/console.py（rich 终端输出）
+├── 启动生图工作台.cmd   # 双击入口：构建检查 → 起服务 → 开窗 → 菜单     │         ├→ core/console.py（rich 终端输出）
 ├── core/              # 核心逻辑（见下）                              │         ├→ core/logging.py（统一生成日志）
 │   ├── config.py      # 配置中心：Key / BASE_URL / 尺寸+质量选项 / RATIOS / 默认参数│         ├→ core/history.py（生成历史读取）
 │   ├── api.py         # 生图请求封装：generate_image / 尺寸解析       │         ├→ core/tasks.py（异步任务管线 TaskManager）
@@ -128,7 +128,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 **4. 交互菜单（启动脚本）**
 ```
-启动生图工具.cmd → main.py:handle_menu_command
+启动生图工作台.cmd → main.py:handle_menu_command
   → find_port_pid（netstat 探测，服务状态的唯一真相源）
   → GET /api/status（读服务端窗口计数器，只读展示）
   → N: GET /api/window/next → webbrowser.open(/?win=N)

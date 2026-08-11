@@ -200,7 +200,7 @@ def stop_port_services(port: int) -> None:
 def handle_menu_command(args):
     """交互菜单（rich 渲染）：N 开新窗口 / Q 退出并停止服务。
 
-    由「启动生图工具.cmd」调用：服务后台启动后就进入本菜单。
+    由「启动生图工作台.cmd」调用：服务后台启动后就进入本菜单。
     - 服务状态实时探测：PID 用 netstat 找端口监听者，窗口数用 /api/status，
       不再依赖会被多开脚本互相覆盖的 PID 文件；
     - 关闭就关全部：无论按 Q 退出、Ctrl+C、还是直接点窗口右上角 X 关闭，
