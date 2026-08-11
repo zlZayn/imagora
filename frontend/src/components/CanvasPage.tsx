@@ -55,8 +55,10 @@ import {
 } from "../workflow";
 import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 import HistoryGallery from "./HistoryGallery";
+import { PromptImportModal } from "./PromptImportModal";
 import TaskCenter from "./TaskCenter";
 import { WorkflowLoadModal, WorkflowSaveModal, ZoomModal } from "./WorkflowModals";
+import { buildPromptNodes, type PromptCardSpec } from "../promptContract";
 
 /** 节点删除退场动画时长（与 .node-exiting 的 fade-out 0.2s 一致） */
 const FADE_DURATION = 200;
@@ -153,6 +155,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   /** 保存/加载工作流弹窗 */
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
+  /** 粘贴导入提示词卡片弹窗 */
+  const [showImportModal, setShowImportModal] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [workflows, setWorkflows] = useState<{ name: string; modified: string }[]>([]);
@@ -605,6 +609,26 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog("已新建提示词卡片");
   }, [config, defaultQuality, getCreatePosition, recordHistory, setNodes, pushLog]);
 
+  /** 契约导入建卡：解析出的合法卡片批量生成提示词节点（视口中心定位 + 入场动画） */
+  const handleImportCards = useCallback(
+    (cards: PromptCardSpec[]) => {
+      if (!cards.length) return;
+      recordHistory();
+      const origin = getCreatePosition(nodesRef.current.length);
+      setNodes((nds) => [
+        ...nds,
+        ...buildPromptNodes(
+          cards,
+          { sizes: config.sizes, defaultQuality, defaultOutputDir: config.defaultOutputDir },
+          origin,
+        ).map((node, i) => withEnterAnim(node, nds.length + i)),
+      ]);
+      setShowImportModal(false);
+      pushLog(`已从契约导入 ${cards.length} 张提示词卡片`);
+    },
+    [config, defaultQuality, getCreatePosition, pushLog, recordHistory, setNodes],
+  );
+
   /** 新建图片组节点（聚合多图后连到提示词统一管理；视口中心定位 + 入场动画） */
   const handleCreateGroup = useCallback(() => {
     recordHistory();
@@ -1008,6 +1032,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             }}
           />
           <ToolbarButton onClick={handleCreatePrompt}>新建提示词卡片</ToolbarButton>
+          <ToolbarButton onClick={() => setShowImportModal(true)}>粘贴导入</ToolbarButton>
           <ToolbarButton onClick={handleCreateGroup}>新建图片组</ToolbarButton>
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
@@ -1100,6 +1125,13 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           workflows={workflows}
           onLoad={(name) => void loadByName(name)}
           onClose={() => setShowLoadModal(false)}
+        />
+      )}
+      {showImportModal && (
+        <PromptImportModal
+          sizes={config.sizes}
+          onConfirm={handleImportCards}
+          onClose={() => setShowImportModal(false)}
         />
       )}
       {zoomImage && (
