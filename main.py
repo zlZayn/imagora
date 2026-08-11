@@ -126,14 +126,74 @@ def find_port_pids(port: int) -> list[int]:
     return pids
 
 
+def _process_ancestors(pid: int) -> list[int]:
+    """向上收集指定进程的完整祖先链（含自身），用于连根拔掉多层包装进程。
+
+    典型场景：uv run python -m main ui 会产生 uv → python(shim) → python(监听) 多层，
+    只杀监听层（taskkill /t 杀的是子进程树）会留下 uv/python 宿主残留。
+    这里沿 ParentProcessId 逐级回溯到根，返回 [自身, 父, 祖父, ...]。
+    逐级查询而非整表解析：避免 wmic 整表在不同 locale / 列宽下解析失真。
+    """
+    import subprocess
+
+    chain: list[int] = []
+    seen: set[int] = set()
+    cur = pid
+    while cur and cur not in seen:
+        seen.add(cur)
+        chain.append(cur)
+        try:
+            out = subprocess.run(
+                ["wmic", "process", "where", f"ProcessId={cur}", "get", "ParentProcessId"],
+                capture_output=True, text=True, check=False, timeout=5,
+            ).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            break
+        parent = 0
+        for line in out.splitlines():
+            stripped = line.strip()
+            if stripped.isdigit():
+                parent = int(stripped)
+                break
+        cur = parent
+    return chain
+
+
+def stop_port_services(port: int) -> None:
+    """停止监听指定端口的全部服务进程（一次关闭全部，连根拔）。
+
+    找出端口上所有监听进程，并从每个监听 PID 向上收集完整祖先链
+    （uv → python shim → python 监听），全部 taskkill /t——既杀监听层，
+    也杀掉它的 uv/python 宿主，避免「端口释放了但进程残留」。
+    """
+    import subprocess
+
+    pids = find_port_pids(port)
+    if not pids:
+        print_info("服务未在运行，无需停止")
+        return
+    # 收集所有监听 PID 的完整祖先链（去重），从根开始杀，保证整棵进程树覆灭
+    kill_set: list[int] = []
+    seen: set[int] = set()
+    for pid in pids:
+        for ancestor in _process_ancestors(pid):
+            if ancestor not in seen:
+                seen.add(ancestor)
+                kill_set.append(ancestor)
+    # 先杀最顶层祖先（uv），其 taskkill /t 会连带杀掉整棵子树
+    for pid in kill_set:
+        subprocess.run(["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True, check=False)
+    print_success(f"服务已全部停止（PID {', '.join(str(p) for p in pids)}）")
+
+
 def handle_menu_command(args):
     """交互菜单（rich 渲染）：N 开新窗口 / Q 退出并停止服务。
 
     由「启动生图工具.cmd」调用：服务后台启动后就进入本菜单。
     - 服务状态实时探测：PID 用 netstat 找端口监听者，窗口数用 /api/status，
       不再依赖会被多开脚本互相覆盖的 PID 文件；
-    - Q 退出：停掉端口上的唯一服务进程（无论它由哪个脚本启动），
-      所有连它的窗口随之失效 —— 天然实现「本次关闭时全部同时关闭」。
+    - 关闭就关全部：无论按 Q 退出、Ctrl+C、还是直接点窗口右上角 X 关闭，
+      都会停掉端口上的全部服务进程（双栈 / 多层 / 残留），所有窗口同时失效。
     """
     import time
     import webbrowser
@@ -144,6 +204,41 @@ def handle_menu_command(args):
     from rich.table import Table
 
     url = f"http://127.0.0.1:{args.port}"
+
+    # 兜底：Ctrl+C / 点 X 关窗口（控制台关闭事件）时也停掉全部服务。
+    # Q 分支走主循环退出；这里的处理器覆盖「没走主循环就被终止」的路径，
+    # 保证两种关闭方式都做到「一起关」。
+    closed_by_handler = {"flag": False}
+    handler_ref: dict[str, object] = {"fn": None}
+
+    def _on_console_event(event_type: int) -> bool:
+        # Windows 控制台事件：2=Ctrl+C / 5=CTRL_CLOSE_EVENT（点 X）/ 6=CTRL_LOGOFF_EVENT / 7=CTRL_SHUTDOWN_EVENT
+        if event_type in (0, 2, 5, 6, 7) and not closed_by_handler["flag"]:
+            closed_by_handler["flag"] = True
+            try:
+                stop_port_services(args.port)
+            finally:
+                if handler_ref["fn"] is not None:
+                    try:
+                        import ctypes
+
+                        ctypes.windll.kernel32.SetConsoleCtrlHandler(handler_ref["fn"], False)
+                    except Exception:
+                        pass  # 进程即将退出，卸载 handler 失败无害
+        return False
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import WINFUNCTYPE, c_bool, c_uint
+
+            _HandlerRoutine = WINFUNCTYPE(c_bool, c_uint)
+            fn = _HandlerRoutine(_on_console_event)
+            handler_ref["fn"] = fn
+            # 注册控制台事件处理器：返回非零表示「已处理」；这里返回 False 交给默认处理
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(fn, True)
+        except Exception:
+            handler_ref["fn"] = None
 
     def fetch_window_count() -> int:
         try:
@@ -170,31 +265,36 @@ def handle_menu_command(args):
             padding=(1, 2),
         )
 
-    while True:
-        console.print(render_status_panel())
-        choice = Prompt.ask("选择操作", choices=["N", "Q"], default="N")
-        if choice == "Q":
-            break
-        try:
-            resp = requests.get(f"{url}/api/window/next", timeout=5)
-            win = resp.json()["windowId"]
-            webbrowser.open(f"{url}/?win={win}")
-            print_success(f"已打开窗口 #{win}")
-        except Exception as e:
-            print_error(f"开新窗口失败: {e}")
-            time.sleep(2)
+    try:
+        while True:
+            console.print(render_status_panel())
+            choice = Prompt.ask("选择操作", choices=["N", "Q"], default="N")
+            if choice == "Q":
+                break
+            try:
+                resp = requests.get(f"{url}/api/window/next", timeout=5)
+                win = resp.json()["windowId"]
+                webbrowser.open(f"{url}/?win={win}")
+                print_success(f"已打开窗口 #{win}")
+            except Exception as e:
+                print_error(f"开新窗口失败: {e}")
+                time.sleep(2)
+    finally:
+        # 无论按 Q 退出、Ctrl+C、点 X 关窗口（控制台关闭事件）、还是异常终止，
+        # 都统一停掉端口上的全部服务进程（一次关闭全部）。
+        if not closed_by_handler["flag"]:
+            closed_by_handler["flag"] = True
+            try:
+                stop_port_services(args.port)
+            finally:
+                # 释放控制台事件处理器，避免重复注册
+                if handler_ref["fn"] is not None:
+                    try:
+                        import ctypes
 
-    # Q 退出：一次关闭全部 —— 找出端口上所有监听进程（双栈 / 多层 / 残留），
-    # 逐个 taskkill /t 杀整个进程树，确保端口彻底释放、窗口全部失效。
-    pids = find_port_pids(args.port)
-    if pids:
-        import subprocess
-
-        for pid in pids:
-            subprocess.run(["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True, check=False)
-        print_success(f"服务已全部停止（PID {', '.join(str(p) for p in pids)}）")
-    else:
-        print_info("服务未在运行，无需停止")
+                        ctypes.windll.kernel32.SetConsoleCtrlHandler(handler_ref["fn"], False)
+                    except Exception:
+                        pass  # 进程即将退出，卸载 handler 失败无害
 
 
 def build_argument_parser():
