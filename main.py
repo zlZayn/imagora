@@ -252,23 +252,27 @@ def handle_menu_command(args):
         win_count = fetch_window_count()
         running = pid is not None
         table = Table(show_header=False, box=None, padding=(0, 2))
-        table.add_column(style="bold", justify="right", width=8)
+        table.add_column(style="bold", justify="right", width=10)
         table.add_column(style="white")
-        table.add_row("服务地址", f"{url}")
-        table.add_row("服务进程", f"PID {pid}" if running else "未运行")
+        table.add_row("服务地址", f"[bold #3d7a5c]{url}[/bold #3d7a5c]")
+        table.add_row("服务进程", f"PID {pid}" if running else "[#d97706]未运行[/#d97706]")
         table.add_row("已开窗口", f"编号已分配至 #{win_count}" if win_count else "暂无")
         return Panel(
             table,
-            title="[bold]Imagora · AI 生图工作台[/bold]",
-            border_style="green" if running else "yellow",
-            subtitle="[N] 打开新窗口    [Q] 退出并停止服务",
+            title="[bold #3d7a5c]Imagora · AI 生图工作台[/bold #3d7a5c]",
+            border_style="#3d7a5c" if running else "#d97706",
+            subtitle="[#6b7280]操作：[/#6b7280][bold]N[/bold] 打开新窗口   [bold]Q[/bold] 退出并停止服务",
             padding=(1, 2),
         )
 
     try:
         while True:
             console.print(render_status_panel())
-            choice = Prompt.ask("选择操作", choices=["N", "Q"], default="N")
+            choice = Prompt.ask(
+                "[bold]选择操作[/bold]（[bold]N[/bold] 打开新窗口 / [bold]Q[/bold] 退出并停止服务）",
+                choices=["N", "Q"],
+                default="N",
+            )
             if choice == "Q":
                 break
             try:
