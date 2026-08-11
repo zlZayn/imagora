@@ -209,6 +209,30 @@ describe("layout selection", () => {
     expect(result).toBe(nodes);
     expect(result[0].position).toEqual({ x: 100, y: 100 });
   });
+
+  it("re-layout on the same selection does not drift right/down (origin is the anchor, not an offset)", () => {
+    // 选中的块随意摆放在画布深处，origin = 选中包围盒左上角
+    const reference = { ...imageNode("reference"), position: { x: 310, y: 220 } } as WorkflowNode;
+    const prompt = { ...promptNode("p1", 0), position: { x: 400, y: 300 } } as WorkflowNode;
+    const result = { ...imageNode("result"), position: { x: 410, y: 900 } } as WorkflowNode;
+    const nodes = [reference, prompt, result];
+    const edges = [edge("reference", "p1"), edge("p1", "result")];
+    const selected = new Set(["reference", "p1", "result"]);
+
+    // 第一次整理：以选中块左上角 (310, 220) 为原点重排
+    const first = layoutSelection(nodes, edges, selected);
+    const firstMinX = Math.min(...first.filter((n) => selected.has(n.id)).map((n) => n.position.x));
+    const firstMinY = Math.min(...first.filter((n) => selected.has(n.id)).map((n) => n.position.y));
+
+    // 第二次整理（用第一次结果 + 同样的包围盒原点）：不应再整体位移
+    const second = layoutSelection(first, edges, selected);
+    const secondMinX = Math.min(...second.filter((n) => selected.has(n.id)).map((n) => n.position.x));
+    const secondMinY = Math.min(...second.filter((n) => selected.has(n.id)).map((n) => n.position.y));
+
+    // 核心断言：二次整理后选中块包围盒原点不变（无 60/40 累积漂移）
+    expect(secondMinX).toBe(firstMinX);
+    expect(secondMinY).toBe(firstMinY);
+  });
 });
 
 describe("auto connect", () => {

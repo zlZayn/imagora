@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import type { CanvasGroupNodeData, CanvasImageNodeData, CanvasPromptNodeData } from "../types";
@@ -127,9 +127,7 @@ export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowN
   const mb = data.totalSize > 0 ? (data.totalSize / (1024 * 1024)).toFixed(1) : "0.0";
   return (
     <div
-      className={`group relative w-56 rounded-lg bg-brand/5 !p-4 node-pop ${
-        selected ? "ring-2 ring-brand" : ""
-      }`}
+      className={`group relative w-56 rounded-lg bg-brand/5 !p-4 node-pop ${selected ? "node-selected" : ""}`}
     >
       {/* 顶部接收图片，底部输出到提示词。 */}
       <Handle
@@ -206,7 +204,7 @@ function StatusLight({ data }: { data: CanvasPromptNodeData }) {
   );
 }
 
-export function PromptNode({
+export const PromptNode = memo(function PromptNode({
   id,
   data,
   selected,
@@ -239,7 +237,12 @@ export function PromptNode({
           <Trash2 aria-hidden="true" size={14} />
         </ActionButton>
       </NodeActions>
-      <div className="mb-2 text-xs font-semibold text-brand-dark">提示词生成</div>
+      <div
+        className="mb-2 truncate text-xs font-semibold text-brand-dark"
+        title={data.title ?? "提示词生成"}
+      >
+        {data.title ?? "提示词生成"}
+      </div>
       <textarea
         value={data.prompt}
         onChange={(e) => onUpdate(id, { prompt: e.target.value })}
@@ -290,4 +293,4 @@ export function PromptNode({
       </div>
     </div>
   );
-}
+});

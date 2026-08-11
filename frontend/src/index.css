@@ -13,9 +13,13 @@ body {
 
 /* ============ 公共组件类：表单 / 按钮 / 卡片 统一 ============ */
 @layer components {
-  /* 输入控件（textarea / input / select 通用基底） */
+  /* 输入控件（textarea / input / select 通用基底）。
+     transition 只作用于 border/box-shadow（focus/hover 变色），
+     不包含 width/height——否则 textarea 原生 resize 拖动时每帧被插值动画
+     「拖慢一拍」，表现为右下角拉伸卡顿/不跟手（经典表单与画布卡片同源）。 */
   .field-control {
-    @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none transition-all duration-200;
+    @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .field-control:hover {
     @apply border-neutral-400;
@@ -175,15 +179,26 @@ body {
   z-index: 1001 !important;
 }
 
-/* 悬停/选中提示词节点时：入边加粗变色 + 关联图片节点描边（一眼核对参考图集合） */
+/* 悬停/选中提示词节点时：入边加粗变色 + 关联图片节点描边（一眼核对参考图集合）。
+   标记位置：node-selected 加在节点根 div（.panel-card/.node-pop）自身（组件 selected prop 驱动）；
+   node-related 加在 React Flow 外层 .react-flow__node 的 className（applyHighlight 驱动）。
+   两者统一为主题色 outline 描边，图片 / 提示词 / 图片组三种节点一致。 */
 .react-flow__edge.edge-highlight .react-flow__edge-path {
   stroke: var(--color-brand) !important;
   stroke-width: 3 !important;
 }
 .react-flow__node.node-related .panel-card,
-.react-flow__node.node-selected .panel-card {
+.react-flow__node.node-related .node-pop,
+.react-flow__node .panel-card.node-selected,
+.react-flow__node .node-pop.node-selected {
   outline: 2px solid var(--color-brand);
   outline-offset: 1px;
+}
+
+/* 覆盖 React Flow 对内置 group 类型的默认选中阴影（黑框）：
+   图片组节点与图片/提示词节点一样，选中态统一为主题色 outline 描边。 */
+.react-flow__node-group.selectable.selected {
+  box-shadow: none;
 }
 
 /* 连接点使用固定画布尺寸，避免缩放后 React Flow 的边缘坐标过期。 */
