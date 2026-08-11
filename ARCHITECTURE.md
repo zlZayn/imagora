@@ -28,7 +28,7 @@ FastAPI (server.py) ── 托管 frontend/dist 静态产物（单端口）
 | 子命令 | 用途 | 关键参数 |
 | --- | --- | --- |
 | `ui` | 启动网页界面（FastAPI + 托管前端） | `--port`（默认 7860）、`--no-browser`（由外部脚本控制开窗） |
-| `menu` | rich 交互菜单（启动脚本用） | `--port`；N 开新窗口 / Q 退出并停止服务 |
+| `menu` | rich 交互菜单（启动脚本用） | `--port`；N 开新窗口 / Q（或 Ctrl+C、点 X 关窗）退出并连根停止全部服务 |
 | `batch` | 批量生图 | `--config`、`--only`（只跑指定模块）、`--dry-run`（预览不花钱） |
 | `gen` | 单张生图 | `prompt`、`-i` 参考图、`-o` 输出、`--ratio/--size/--tier`、`--quality/--model/--n/--format` |
 
@@ -44,11 +44,11 @@ FastAPI (server.py) ── 托管 frontend/dist 静态产物（单端口）
 
 服务状态**实时动态探测**，不依赖任何落盘状态文件：
 
-- 进程 PID：`find_port_pid()` 用 `netstat -ano` 找监听端口的进程（端口是唯一真相源）
+- 进程 PID：`find_port_pid()` / `find_port_pids()` 用 `netstat -ano` 找监听端口的进程（端口是唯一真相源；`find_port_pids` 收集全部监听 PID，兼容双栈 IPv4/IPv6 各占一行）
 - 窗口编号：`GET /api/status` 读服务端计数器（只读最大已分配编号）
-- N → `GET /api/window/next` 分配编号并开新窗；Q → `taskkill /pid <PID> /f /t` 停掉端口上的服务进程
+- N → `GET /api/window/next` 分配编号并开新窗；Q → `stop_port_services()` 连根拔掉端口上的全部服务进程
 
-设计取舍：**Q 停掉的是端口上的服务进程，无论它由哪个脚本启动**——天然实现「本次关闭时所有窗口同时关闭」，也避免了多个脚本互相覆盖 PID 文件造成的误杀/漏杀。
+**关闭就关全部（Q / Ctrl+C / 点 X 关窗口都生效）**：`stop_port_services(port)` 先 `find_port_pids()` 找到端口全部监听进程，再用 `_process_ancestors()` 从每个监听 PID 沿 ParentProcessId **逐级回溯到根**（`uv → python shim → python 监听` 多层包装全找到），从根开始逐个 `taskkill /pid <PID> /f /t`——既杀监听层也杀掉 uv/python 宿主，避免「端口释放了但进程残留」。点 X 关窗口走 Windows `SetConsoleCtrlHandler` 控制台关闭事件（`CTRL_CLOSE_EVENT`），Ctrl+C 走 `SIGINT`，Q 走主循环 finally——三种退出路径都收敛到 `stop_port_services`，天然实现「本次关闭时所有窗口同时关闭」，也避免了多个脚本互相覆盖 PID 文件造成的误杀/漏杀。
 
 ## 目录结构与模块依赖
 
@@ -59,23 +59,43 @@ tools/
 ├── 启动生图工具.cmd   # 双击入口：构建检查 → 起服务 → 开窗 → 菜单     │         ├→ core/console.py（rich 终端输出）
 ├── core/              # 核心逻辑（见下）                              │         ├→ core/logging.py（统一生成日志）
 │   ├── config.py      # 配置中心：Key / BASE_URL / 尺寸+质量选项 / RATIOS / 默认参数│         ├→ core/history.py（生成历史读取）
-│   ├── api.py         # 生图请求封装：generate_image / 尺寸解析       │         └→ 上游 API（requests）
+│   ├── api.py         # 生图请求封装：generate_image / 尺寸解析       │         ├→ core/tasks.py（异步任务管线 TaskManager）
+│   ├── tasks.py       # 异步任务：TaskManager 提交/轮询快照/取消/TTL ─┘         └→ 上游 API（requests）
 │   ├── batch.py       # 批量生图编排（读 batch_prompts.json）
 │   ├── canvas.py      # 画布注册表 / 工作流存取（纯逻辑无 HTTP）
 │   ├── history.py     # 生成历史 JSONL 读取（纯逻辑无 HTTP）
 │   ├── logging.py     # 生成日志统一写入（线程锁串行）
 │   └── console.py     # rich 终端输出（彩色成功/失败/信息 + Progress + Panel）
-├── frontend/          # React：api.ts ─→ server.py 的 /api/*（含画布页 CanvasPage）
-├── tests/             # 纯函数单元测试（不碰网络，90 用例）
+├── frontend/          # React SPA（TypeScript 严格模式）
+│   └── src/
+│       ├── main.tsx / App.tsx        # 入口：经典表单 / 画布双模式
+│       ├── api.ts                    # /api/* 请求封装（类型化）
+│       ├── types.ts                  # 前后端类型契约（AppConfig / 节点 / 任务快照）
+│       ├── useGenerationTask.ts      # 提交-轮询任务 hook（画布与经典表单共用）
+│       ├── useCanvasRecovery.ts      # 画布恢复存档（挂载询问 + 防抖自动保存）
+│       ├── promptContract.ts         # 提示词契约：解析器 + 尺寸映射 + 建卡构造器
+│       ├── workflow.ts               # 画布纯函数：节点工具 / 动画类 / 布局 / 连线
+│       ├── canvasHistory.ts          # 撤销/恢复历史栈（50 条）
+│       ├── components/
+│       │   ├── CanvasPage.tsx        # 画布页：状态中枢 + 工具栏 + ReactFlow
+│       │   ├── CanvasNodes.tsx       # 三类节点组件（图片/图片组/提示词）+ 操作栏
+│       │   ├── PromptImportModal.tsx # 粘贴导入弹窗（契约实时解析预览）
+│       │   ├── WorkflowModals.tsx    # 保存/加载/放大预览弹窗
+│       │   ├── TaskCenter.tsx        # 任务中心（全部任务列表 + 取消/重试）
+│       │   ├── HistoryGallery.tsx    # 生成历史画廊 + 导入画布
+│       │   ├── UploadZone.tsx / Gallery.tsx / Select.tsx / FolderPicker.tsx
+│       └── *.test.ts(x)              # vitest 单元测试
+├── tests/             # 后端 pytest（纯函数 + 路由，113 用例）
 ├── logs/              # 生成日志（git 忽略）：每次生图记录提示词/结果/费用/耗时
-├── pyproject.toml     # Python 依赖（uv）
+├── pyproject.toml     # Python 依赖（uv）+ ruff 配置
 ├── .env / .env.example
 ├── README.md / ARCHITECTURE.md   # 用户文档 / 本文档
+├── docs/prompt-contract.md      # 提示词契约模板（发给多模态模型的输出格式规范）
 ├── output/            # 生成产物（git 忽略）：win{N} 窗口分区 + .refs 参考图缓存 + .canvas 画布图片 + workflows 工作流
 └── .superpowers/      # 规划/执行工件（git 忽略）：plans/ 实施计划 + specs/ 设计文档
 ```
 
-依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 依赖 `core/config.py`（唯一配置源）与 `core/console.py`；`core/console.py` 只依赖 rich（无业务依赖，可被任意模块引用，CLI 统一输出入口：彩色成功/失败/信息 + Progress 进度条 + Panel 分组）；`core/canvas.py` 依赖 `core/config.py`（画布图片注册表与工作流存取，纯逻辑无 HTTP），`server.py` 路由薄层调用它；`core/history.py` 依赖 `core/logging.py` 的 `LOGS_DIR`（生成历史 JSONL 读取，纯逻辑无 HTTP）；`server.py`/`core/batch.py`/`main.py` 共用 `core/logging.py` 记录生成日志；`main.py` 的 `menu` 子命令直接调用 server 的 HTTP 接口（`/api/status`、`/api/window/next`）感知与驱动服务；**没有反向/循环依赖**。
+依赖规则：`main.py`/`server.py`/`core/batch.py` 都调用 `core/api.py`；`core/api.py` 依赖 `core/config.py`（唯一配置源）与 `core/console.py`；`core/console.py` 只依赖 rich（无业务依赖，可被任意模块引用，CLI 统一输出入口：彩色成功/失败/信息 + Progress 进度条 + Panel 分组）；`core/canvas.py` 依赖 `core/config.py`（画布图片注册表与工作流存取，纯逻辑无 HTTP），`server.py` 路由薄层调用它；`core/tasks.py` 是异步任务管线（TaskManager：提交登记 + 线程池并发 + 快照 + 取消 + TTL），`server.py` 的 `/api/generate` 提交即返回、`/api/tasks/*` 轮询/取消；`core/history.py` 依赖 `core/logging.py` 的 `LOGS_DIR`（生成历史 JSONL 读取，纯逻辑无 HTTP）；`server.py`/`core/batch.py`/`main.py` 共用 `core/logging.py` 记录生成日志；`main.py` 的 `menu` 子命令直接调用 server 的 HTTP 接口（`/api/status`、`/api/window/next`）感知与驱动服务；前端 `promptContract.ts` 零依赖（解析器/尺寸映射/建卡构造器纯函数），`components/PromptImportModal.tsx` 依赖 `promptContract.ts` 与 `types.ts`，`CanvasPage.tsx` 编排调用（`buildPromptNodes` 建卡 + `withEnterAnim` 入场）；**没有反向/循环依赖**。
 
 ## 三条调用链
 
@@ -112,7 +132,26 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
   → find_port_pid（netstat 探测，服务状态的唯一真相源）
   → GET /api/status（读服务端窗口计数器，只读展示）
   → N: GET /api/window/next → webbrowser.open(/?win=N)
-  → Q: taskkill /pid <PID> /f /t（停掉端口上的服务进程）
+  → Q / Ctrl+C / 点 X 关窗口：stop_port_services(port)
+      → find_port_pids（收集全部监听 PID，双栈兼容）
+      → _process_ancestors（逐级回溯 uv → python shim → python 监听完整祖先链）
+      → 逐个 taskkill /pid /f /t（从根开始杀整棵进程树）
+```
+
+**5. 提示词契约导入（画布批量建卡）**
+```
+多模态模型按 docs/prompt-contract.md 契约回复（=== 标题 === + ```text 围栏 + ratio: N:M）
+  → CanvasPage 工具栏「粘贴导入」→ setShowImportModal(true)
+  → PromptImportModal（text 变化实时 parsePromptContract）
+      → parsePromptContract(text)：标题锚点切分 + 首尾围栏配对 + 块内首行 ratio 校验
+          → 合法块进 cards[PromptCardSpec]，缺漏进 issues[]（missing-*/bad-*/empty/duplicate，绝不静默猜测）
+          → 预览区逐条展示标题/比例/匹配尺寸/正文；问题标红；数量与 EXPECTED_CARDS=10 比对
+  → 确认 → onConfirm(cards) → CanvasPage:handleImportCards
+      → recordHistory()（可撤销）
+      → getCreatePosition(节点数) 取视口中心 → buildPromptNodes(cards, {sizes, defaultQuality, defaultOutputDir}, origin)
+          → 每卡片 resolveCardSize(ratio, config.sizes)（按 label 含 "(N:M" 匹配真实尺寸，找不到回退 sizes[0]+fallback 标记）
+          → 产 PromptNode（id=prompt-{ts}-{i}，6 列栅格平铺，data 含 title）
+      → withEnterAnim 逐个入场 → setNodes 批量追加 → pushLog("已从契约导入 N 张提示词卡片")
 ```
 
 ## 前后端 API 契约
@@ -176,7 +215,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 
 ## 测试覆盖
 
-`uv run pytest`（0.5s，90 用例，全部纯函数，不调 API 不花钱）；前端 `cd frontend && npm test`（vitest，29 用例）。静态检查：后端 `uv run ruff check .`、前端 `npm run lint`（eslint），均零告警：
+`uv run pytest`（4s，113 用例，全部纯函数，不调 API 不花钱）；前端 `cd frontend && npm test`（vitest，57 用例）。静态检查：后端 `uv run ruff check .`、前端 `npm run lint`（eslint），均零告警：
 
 | 文件 | 用例数 | 覆盖 |
 | --- | --- | --- |
@@ -188,8 +227,16 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | `tests/test_core_history.py` | 2 | `read_generation_history` 读取 / 坏行容忍 / limit 上限 / query/status 筛选 |
 | `tests/test_core_canvas.py` | 16 | 注册表读写/原子写/损坏兜底 / register 内容去重（同内容一文件）/ 不同内容 / 不存在 / import 目录递归 + 单文件 + 越界拒绝 + 缺失跳过 + 非图片跳过 / delete 移除 + 容忍文件缺失 / list 含 absPath / allowlist 双根放行 + 穿越拒绝 |
 | `tests/test_server_canvas.py` | 17 | canvas upload 登记 / import 目录+单文件+越界 skipped / images 列表 / image delete + 容忍缺失 / workflow save 写 version1 + 不可序列化报错 / load 往返 + missing 收集 + 版本错误 + 文件缺失 / generate ref_paths 放行 canvas（monkeypatch 挡真实 API） |
+| `tests/test_main_process.py` | 4 | `find_port_pids`（空端口 / 临时监听探测）/ `_process_ancestors`（自身入链 + 父进程可达 + 无环 / 未知 PID 兜底） |
+| `frontend/src/promptContract.test.ts` | 19 | 契约解析（10 块标准 / 单块 / 缺 ratio / bad-ratio / 容错 / 空正文 / 重复标题 / 缺围栏 / 缺标题 / 序言跳过 / CRLF+BOM / 围栏混合 / 嵌套围栏）+ `resolveCardSize`（匹配/回退/空/非法）+ `buildPromptNodes`（标题/尺寸/栅格平铺） |
+| `frontend/src/useGenerationTask.test.ts` | 2 | hook 稳定成员引用（submit/cancel/get/subscribe 多次渲染不重建，任务刷新后仍稳定）——防 nodeTypes 依赖链重建导致画布闪烁 |
+| `frontend/src/workflow.test.ts` | 21 | 自动布局（三段式/组居中/孤立兜底）/ 局部整理（只重排选中 + **二次整理不漂移**回归）/ 动画类工具 / 连线约束 / workflowToCanvas |
+| `frontend/src/canvasHistory.test.ts` | 5 | 撤销/恢复/新分支清空 future |
+| `frontend/src/canvasStyles.test.ts` | 3 | 动效 CSS（动画作用于内层 .node-pop、delayed 交错、never transform 外层） |
+| `frontend/src/recovery.test.ts` | 5 | 恢复快照剥离动画类 / 运行期字段清除 |
+| `frontend/src/components/CanvasNodes.test.tsx` | 5 | 图片节点预览/替换/删除操作栏 + node-pop 内层动画容器 |
 
-未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API）、`/api/status` 与 `find_port_pid`（纯探测逻辑），编排与请求层靠 dry_run 与人工验证。
+未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API）、`/api/status` 探测（纯探测逻辑），编排与请求层靠 dry_run 与人工验证。画布端到端（导入/建卡/动画剥离/全选/整理不漂移）用 Playwright 冒烟脚本人工验证。
 
 ## 关键决策
 
@@ -200,7 +247,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **打开文件夹置前**：后台进程启动的 explorer 窗口默认不抢前台，用 Win32 API（枚举窗口 + 模拟 Alt 绕过前台锁）置前
 - **前端未构建**：dist 缺失时根路径返回 503 提示页，不静默空白
 - **生成日志**：每次生成（UI/批量/CLI）由 `core/logging.py` 统一记录到 `logs/generation.jsonl`（git 忽略），字段：时间/模式/参考图数/提示词/尺寸/质量/结果/费用/耗时/输出路径/窗口号（多开时）
-- **多开窗口**：服务端 `_WIN_VALUE + threading.Lock` 原子分配递增编号（`_next_window_id()`），`current_window_id()` 只读当前最大值供状态展示；前端沿用优先级 `?win= > window.name（跨刷新记忆，复制标签不继承）> 服务端分配`；默认输出优先记住的上次路径（`output/.last_output_dir`：用户改路径前端即 `POST /api/output-dir` 上报 + generate 成功兜底写入，config 读取，服务重启沿用），无记录才按窗口分区 `output/win{N}`，顶栏显示「窗口 #N」，可一键开新窗口；启动脚本按 N 开新窗、Q 停服务（`start /b` 同控制台启动，关闭窗口即停止服务；`--no-browser` 由脚本统一控制开窗；交互菜单由 `main.py menu` 子命令用 rich 渲染 Panel，**PID 由 `find_port_pid` 用 netstat 动态探测端口监听者，窗口数由 `/api/status` 实时读取**——不依赖会被多开脚本互相覆盖的 PID 文件；Q 停掉端口上的唯一服务进程，无论谁启动，本次关闭全部同时关闭）
+- **多开窗口**：服务端 `_WIN_VALUE + threading.Lock` 原子分配递增编号（`_next_window_id()`），`current_window_id()` 只读当前最大值供状态展示；前端沿用优先级 `?win= > window.name（跨刷新记忆，复制标签不继承）> 服务端分配`；默认输出优先记住的上次路径（`output/.last_output_dir`：用户改路径前端即 `POST /api/output-dir` 上报 + generate 成功兜底写入，config 读取，服务重启沿用），无记录才按窗口分区 `output/win{N}`，顶栏显示「窗口 #N」，可一键开新窗口；启动脚本按 N 开新窗、Q 停服务（`start /b` 同控制台启动，关闭窗口即停止服务；`--no-browser` 由脚本统一控制开窗；交互菜单由 `main.py menu` 子命令用 rich 渲染 Panel，**PID 由 `find_port_pids` 用 netstat 动态探测端口全部监听者，窗口数由 `/api/status` 实时读取**——不依赖会被多开脚本互相覆盖的 PID 文件；Q / Ctrl+C / 点 X 关窗都经 `stop_port_services` 连根停掉端口上的全部服务进程，无论谁启动，本次关闭全部同时关闭）
 - **新窗口状态继承**：页面内「＋ 新窗口」不再序列化图片——参考图在拖入上传区时已落盘服务端（见「参考图服务端化」），继承时只把 `refs` 元信息（path / name / size / ext）+ 尺寸/质量/输出路径写入 `sessionStorage`（几百字节，永不会超 5MB 配额），再 `window.open`——新标签拷贝一份 sessionStorage，挂载时读取并清除，用 `/api/image?path=` 直接渲染参考图；仅提示词不保留；命令行 `?win=` 直开无该键，保持全新窗口
 - **参考图服务端化**：参考图在**添加进上传区时**即 `POST /api/upload-ref` 落盘 `output/.refs/`（输出根下隐藏缓存目录，独立于窗口输出分区，不混入生成产物），返回 `{ id, path, url, name, size, ext, mime }`；前端缩略图直接加载 `url`，移除时 `POST /api/delete-ref` 尽力删除；生成时传 `ref_paths` 复用已落盘文件，避免大图二次上传。存储位置与文件名复用「按名管理 / 并发唯一」约定（全局序号 + 时间戳防撞）。清理：服务启动时删除 `output/.refs/` 中 mtime 超 24h 的孤儿文件（前端删除失败 / 上传后未用的情况兜底），不引入引用计数
 - **窗口主题色**：`accent.ts` 按编号黄金角取色（137.508° 分布，相邻编号色相差大），运行时覆盖 `--color-brand` CSS 变量，全局强调色（按钮/焦点/图标/徽章/上传阴影）随窗口变色；确定性函数，同编号恒定、刷新不变
@@ -218,5 +265,9 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 - **生成状态机**：提示词节点状态 `idle → queued → running → done`（前端 `status` 字段）。状态指示用右侧操作栏顶部的状态灯（`StatusLight`，圆点配色）：就绪灰、排队琥珀、生成中品牌色 + `animate-pulse` 呼吸、完成绿、失败红；生成中秒数显示在运行按钮上（经典表单同款文案，共用 `format.ts:generatingLabel`，返回「生成中 Xs」），张数 / 失败原因走 `title` 悬停提示。点「全部运行」时所有待运行节点**立即**置 `queued`（运行按钮禁用），服务端线程池真正开始执行时转 `running`；`running` 由 `useGenerationTask` 轮询 + 本地计时每秒刷新 `elapsed`；完成记录 `resultCount`。状态变更通过 `setNodes` 更新对应节点 `data.status` / `data.elapsed` / `data.resultCount` / `data.message`
 - **防重复生成**：双层守卫——节点 `data.status`（queued/running）+ `nodeTaskRef`（nodeId→taskId 映射）。点单节点「运行」时先检查两者，命中则直接忽略；点「全部运行」时过滤掉已在映射中的节点。终态（done/failed/cancelled）订阅回调解除映射，删节点/加载工作流时同步清理，避免状态残留导致按钮永久禁用
 - **结果回流去重**：生成完成后结果图按 `registryId` 过滤——画布上已存在同 registryId 的节点则不再创建新节点（避免节点 id `img-<id>` 冲突导致 React Flow 警告）。回流只对新增节点建连线，连线 id `${promptId}->${resultId}` 自然不重复。回流前还检查目标提示词节点是否仍存在于 `nodesRef`，删节点后完成的结果不再回流（避免幽灵节点出现在默认坐标）
-- **自动整理布局**：`workflow.ts:autoLayout` 纯函数，全局三段式布局——参考图和图片组在上方（图片组放在其关联提示词范围的水平中心，组内成员围绕组节点聚拢；无关联图片按提示词中心对齐），提示词横向排列在中间（保留整理前的视觉顺序），生成结果在下方（以来源提示词为中心横向展开，跨提示词时水平避让）；未识别的孤立节点落到各列之后不重叠。布局参数集中在 `LAYOUT` 常量（refGap/resultGap/nodeGap/groupGap/leftMargin/topMargin），节点估算尺寸集中在 `NODE_SIZES`。整理后调 `rfInstance.fitView({ padding: 0.2, duration: 300 })` 自适应居中（60ms 延迟等 React 渲染新坐标）。**局部整理**：`layoutSelection(nodes, edges, selectedIds)` 复用同一三段式算法，以选中节点包围盒左上角为 origin（`autoLayout` 可选 origin 平移参数）只重排选中的节点，其余原位不动——工具栏「自动整理」在 Shift 框选后点击时走局部整理，否则全量整理。**无外部图布局库依赖**（曾用 dagre，因"同层节点堆一列"不符合需求已移除，改纯手写几何计算）
-- **画布快捷键与历史**：画布操作历史用 `canvasHistory.ts`（50 条上限的 past/future 栈，`record/undo/restore`，新分支清空 future，`canUndo/canRestore` 驱动按钮禁用态），删除/连线/新建/导入等操作前 `recordHistory` 快照。全局 keydown 监听画布快捷键：`Ctrl+Z` 撤销 / `Ctrl+Y` 恢复 / `Ctrl+S` 保存 / `Delete` 删除选中（走退场动画删除，与按钮一致）；`isEditable` 检查跳过 input/textarea/select/contentEditable 聚焦（文本输入内不拦截）；React Flow 默认 Backspace 裸删已通过 `deleteKeyCode={null}` 禁用，删除统一走动画+历史，不绕过
+- **自动整理布局**：`workflow.ts:autoLayout` 纯函数，全局三段式布局——参考图和图片组在上方（图片组放在其关联提示词范围的水平中心，组内成员围绕组节点聚拢；无关联图片按提示词中心对齐），提示词横向排列在中间（保留整理前的视觉顺序），生成结果在下方（以来源提示词为中心横向展开，跨提示词时水平避让）；未识别的孤立节点落到各列之后不重叠。布局参数集中在 `LAYOUT` 常量（refGap/resultGap/nodeGap/groupGap/leftMargin/topMargin），节点估算尺寸集中在 `NODE_SIZES`。整理后调 `rfInstance.fitView({ padding: 0.2, duration: 300 })` 自适应居中（60ms 延迟等 React 渲染新坐标）。**局部整理**：`layoutSelection(nodes, edges, selectedIds)` 复用同一三段式算法，以选中节点包围盒左上角为 origin（`autoLayout` 可选 origin 平移参数）只重排选中的节点，其余原位不动——工具栏「自动整理」在 Shift 框选后点击时走局部整理，否则全量整理。**origin 是锚点不是偏移**：`autoLayout` 收到 origin 时内部坐标从 0 起算（baseX/baseY），最后整体平移到 origin——若内部仍叠加 LAYOUT 边距再 +origin，每次整理会整体右移 60/下移 40 累积漂移（曾出 bug，已修并有二次整理不漂移回归测试）。**无外部图布局库依赖**（曾用 dagre，因"同层节点堆一列"不符合需求已移除，改纯手写几何计算）
+- **画布快捷键与历史**：画布操作历史用 `canvasHistory.ts`（50 条上限的 past/future 栈，`record/undo/restore`，新分支清空 future，`canUndo/canRestore` 驱动按钮禁用态），删除/连线/新建/导入等操作前 `recordHistory` 快照。全局 keydown 监听画布快捷键：`Ctrl+A` 全选（把 nodes 全标 selected:true，React Flow 同步 selection 并触发 onSelectionChange 刷新选中计数与高亮；`preventDefault` 拦截浏览器"选页面文字"默认行为）/ `Ctrl+Z` 撤销 / `Ctrl+Y` 恢复 / `Ctrl+S` 保存 / `Delete` 删除选中（走退场动画删除，与按钮一致）；`isEditable` 检查跳过 input/textarea/select/contentEditable 聚焦（文本输入内不拦截）；React Flow 默认 Backspace 裸删已通过 `deleteKeyCode={null}` 禁用，删除统一走动画+历史，不绕过
+- **节点选中态统一**：三种节点的选中标记都加在**节点根 div 自身**（`selected ? "node-selected"`），CSS 选择器 `.react-flow__node .panel-card.node-selected, .react-flow__node .node-pop.node-selected` 统一为主题色 outline 描边（2px solid var(--color-brand)）。坑：曾误把选择器写成 `.react-flow__node.node-selected .panel-card`（要求标记在外层 .react-flow__node），导致图片/提示词选中态一直失效、只有图片组（用独立 Tailwind ring）显示——现统一。另外覆盖 React Flow 对内置 group 类型的默认选中阴影（`.react-flow__node-group.selectable.selected { box-shadow: none }`），避免图片组选中出现黑框。高亮核验（hover 关联图）走 `node-related` class（加在 node.className 外层，applyHighlight 设置），同样命中统一 outline
+- **提示词契约导入**：`promptContract.ts` 纯函数模块三段式——`parsePromptContract`（解析器）/ `resolveCardSize`（尺寸映射）/ `buildPromptNodes`（建卡构造器），零依赖便于单测。契约格式固定：`=== 标题 ===` 行 + ` ```text ` 围栏 + 块内首行 `ratio: N:M`（见 `docs/prompt-contract.md` 模板）。解析策略**标题锚点切分 + 段内首尾围栏配对 + 块内首非空行校验 ratio**，缺漏（缺标题/围栏/ratio、bad-ratio、空正文、重复标题）全部进 `issues[]` 逐条标红，**绝不静默猜测**（进 cards 的必然合法）。尺寸**不硬编码**：`resolveCardSize` 按 `config.sizes` 的 label 含 `"(N:M"` 匹配（label 形如 `1024x1024 (1:1 1K)`），找不到回退 `sizes[0]` 并标记 `fallback`（弹窗提示"尺寸回退"）。`EXPECTED_CARDS=10` 与模板"恰好 10 块"对应，数量不符时弹窗 amber 提示。建卡后 PromptNode 头部显示 `data.title`（手动建卡缺省回退"提示词生成"）
+- **画布闪烁防护（nodeTypes 稳定性）**：React Flow v12 中 `nodeTypes` 对象引用变化会让所有节点组件**重挂载**（NodeComponent 视为新类型），带 `node-enter` 入场类的节点会重播动画 → 新增节点持续闪烁。根因：`useGenerationTask()` 返回新对象字面量（含每次 `Array.from` 新建的 tasks），依赖整个对象的 `runNodeInternal`/`handleDeleteNode` 每次渲染重建 → `handleRun` → `nodeTypes` 重建。修复：解构稳定成员（`generationTask.submit/cancel/subscribe` 由 useCallback 缓存，引用恒定）进入依赖数组；配套 `useGenerationTask.test.ts` 锁住成员引用稳定。**双保险**：另加 `animationend` 事件委托——画布容器内 `enter-up` 动画播完即剥离该节点 `node-enter` 类（`stripAnimClasses`），即使未来再有重挂载源也不会重播。运行期动画类（node-enter/node-exiting/enter-delay-N）本就设计为不持久化（保存/恢复快照剥离）
+- **关闭服务连根拔**：`main.py:stop_port_services` 一次关闭全部——`find_port_pids`（netstat 收集端口全部监听 PID，双栈兼容）→ `_process_ancestors`（wmic 逐级回溯 ParentProcessId 到根，覆盖 `uv → python shim → python` 多层包装）→ 从根开始逐个 `taskkill /f /t`（杀整棵进程树）。`taskkill /t` 只杀子进程树不杀父，单杀监听层会留 uv/python 宿主残留（"端口释放了但进程还在"）——必须回溯祖先连根拔。Q（主循环 finally）/ Ctrl+C（SIGINT）/ 点 X 关窗（`SetConsoleCtrlHandler` 捕获 CTRL_CLOSE_EVENT）三路都收敛到它；`closed_by_handler` 标志防重复执行。单元测试 `tests/test_main_process.py` 覆盖探测与回溯（不依赖真实服务，用临时监听 socket 与当前进程自身）
