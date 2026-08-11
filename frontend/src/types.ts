@@ -111,6 +111,8 @@ export interface CanvasPromptNodeData {
   quality: string;
   outputDir: string;
   status: "idle" | "queued" | "running" | "done" | "failed";
+  /** 契约导入生成的提示词卡片标题（手动建卡时缺省） */
+  title?: string;
   /** 运行已等待秒数（running 时实时刷新） */
   elapsed?: number;
   /** 成功生成的张数（done 时显示） */

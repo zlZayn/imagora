@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePromptContract } from "./promptContract";
+import { buildPromptNodes, parsePromptContract, resolveCardSize } from "./promptContract";
 
 /** 构造一块契约文本（标题 + ```text 围栏 + ratio 行 + 正文） */
 function block(title: string, ratio: string, prompt: string): string {
@@ -121,5 +121,75 @@ describe("parsePromptContract", () => {
     expect(result.cards).toHaveLength(1);
     expect(result.cards[0].prompt).toContain("inside");
     expect(result.cards[0].prompt).toContain("last line");
+  });
+});
+
+describe("resolveCardSize", () => {
+  // label 形如后端 config.sizes： "1024x1024 (1:1 1K)"
+  const sizes = [
+    { value: "1024x1024", label: "1024x1024 (1:1 1K)", cost: 0.05 },
+    { value: "1152x2048", label: "1152x2048 (9:16 竖版长图)", cost: 0.1 },
+  ];
+
+  it("按 label 匹配比例", () => {
+    expect(resolveCardSize("1:1", sizes)).toEqual({ value: "1024x1024", fallback: false });
+    expect(resolveCardSize("9:16", sizes)).toEqual({ value: "1152x2048", fallback: false });
+  });
+
+  it("无匹配比例 → 回退 sizes[0] 且 fallback=true", () => {
+    const r = resolveCardSize("4:3", sizes);
+    expect(r).toEqual({ value: "1024x1024", fallback: true });
+  });
+
+  it("sizes 为空 → 内置 1024x1024 且 fallback=true", () => {
+    const r = resolveCardSize("1:1", []);
+    expect(r).toEqual({ value: "1024x1024", fallback: true });
+  });
+
+  it("ratio 格式非法 → fallback", () => {
+    const r = resolveCardSize("abc", sizes);
+    expect(r.fallback).toBe(true);
+  });
+});
+
+describe("buildPromptNodes", () => {
+  const config = {
+    sizes: [
+      { value: "1024x1024", label: "1024x1024 (1:1 1K)", cost: 0.05 },
+      { value: "1152x2048", label: "1152x2048 (9:16 竖版长图)", cost: 0.1 },
+    ],
+    defaultQuality: "high",
+    defaultOutputDir: "imgs",
+  };
+
+  it("每卡片一个节点，携带标题与正确尺寸", () => {
+    const nodes = buildPromptNodes(
+      [
+        { title: "轮播图1", ratio: "1:1", prompt: "a bottle" },
+        { title: "详情图1", ratio: "9:16", prompt: "vertical poster" },
+      ],
+      config,
+      { x: 100, y: 50 },
+    );
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0].id).toMatch(/^prompt-\d+-0$/);
+    expect(nodes[0].type).toBe("prompt");
+    expect(nodes[0].data.title).toBe("轮播图1");
+    expect(nodes[0].data.size).toBe("1024x1024");
+    expect(nodes[0].data.quality).toBe("high");
+    expect(nodes[0].data.outputDir).toBe("imgs");
+    expect(nodes[1].data.title).toBe("详情图1");
+    expect(nodes[1].data.size).toBe("1152x2048");
+  });
+
+  it("位置按 6 列栅格平铺", () => {
+    const nodes = buildPromptNodes(
+      Array.from({ length: 3 }, (_, i) => ({ title: `图${i}`, ratio: "1:1", prompt: "p" })),
+      config,
+      { x: 100, y: 50 },
+    );
+    expect(nodes[0].position).toEqual({ x: 100, y: 50 });
+    expect(nodes[1].position).toEqual({ x: 130, y: 50 });
+    expect(nodes[2].position).toEqual({ x: 160, y: 50 });
   });
 });

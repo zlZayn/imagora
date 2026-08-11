@@ -163,3 +163,58 @@ export function parsePromptContract(text: string): PromptParseResult {
 
   return { cards, issues, skippedText: skipped };
 }
+
+// ---- 尺寸映射：单一事实源在 config.sizes（/api/config 下发），不硬编码 ----
+
+import type { SizeOption, WorkflowNode } from "./types";
+
+export interface ResolvedSize {
+  /** 前端展示/生成用的尺寸值（config.sizes[].value，如 "1024x1024"） */
+  value: string;
+  /** true 表示按 label 未匹配到比例，回退到 sizes[0] */
+  fallback: boolean;
+}
+
+/** 解析 "N:M" 比例 → 匹配 config.sizes 中 label 含 "(N:M" 的项（label 形如 "1024x1024 (1:1 1K)"） */
+export function resolveCardSize(ratio: string, sizes: SizeOption[]): ResolvedSize {
+  if (!/^\d+:\d+$/.test(ratio) || sizes.length === 0) {
+    return { value: sizes[0]?.value ?? "1024x1024", fallback: true };
+  }
+  const match = sizes.find((s) => s.label.includes(`(${ratio}`));
+  if (!match) {
+    return { value: sizes[0].value, fallback: true };
+  }
+  return { value: match.value, fallback: false };
+}
+
+// ---- 建卡构造器：契约条目 → WorkflowNode 数组 ----
+
+export interface PromptNodeBuildConfig {
+  sizes: SizeOption[];
+  defaultQuality: string;
+  defaultOutputDir: string;
+}
+
+/** 每张卡片产出一个 PromptNode；位置在 origin 基础上按 6 列栅格平铺，6 个后换行下移 */
+export function buildPromptNodes(
+  cards: PromptCardSpec[],
+  config: PromptNodeBuildConfig,
+  origin: { x: number; y: number },
+): WorkflowNode[] {
+  return cards.map((card, i) => {
+    const size = resolveCardSize(card.ratio, config.sizes);
+    return {
+      id: `prompt-${Date.now()}-${i}`,
+      type: "prompt" as const,
+      position: { x: origin.x + (i % 6) * 30, y: origin.y + Math.floor(i / 6) * 30 },
+      data: {
+        prompt: card.prompt,
+        size: size.value,
+        quality: config.defaultQuality,
+        outputDir: config.defaultOutputDir,
+        status: "idle" as const,
+        title: card.title,
+      },
+    };
+  });
+}
