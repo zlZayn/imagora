@@ -923,7 +923,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog(`已重新提交 ${failed.length} 个失败节点`);
   }, [pushLog, runNodeInternal]);
 
-  /* ---------------- 画布快捷键：Ctrl+Z 撤销 / Ctrl+Y 恢复 / Ctrl+S 保存 / Delete 删除选中 ----------------
+  /* ---------------- 画布快捷键：Ctrl+A 全选 / Ctrl+Z 撤销 / Ctrl+Y 恢复 / Ctrl+S 保存 / Delete 删除选中 ----------------
    * 跳过输入框聚焦（提示词/保存名等文本框内按键走浏览器原生行为）；
    * Delete 走退场动画删除（与按钮一致），React Flow 默认 Backspace 裸删已禁用（deleteKeyCode={null}）。 */
   useEffect(() => {
@@ -934,6 +934,16 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isEditable(event.target)) return;
       const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.key.toLowerCase() === "a") {
+        // 全选：阻止浏览器默认"选中页面文字"，改选画布全部节点。
+        // 直接把 selected 标记写进 nodes，React Flow 会同步 selection 并触发 onSelectionChange，
+        // 从而刷新 selectedCount / highlight 与工具栏「删除所选」。
+        event.preventDefault();
+        if (!nodesRef.current.length) return;
+        setNodes((nds) => (nds.some((n) => !n.selected) ? nds.map((n) => ({ ...n, selected: true })) : nds));
+        pushLog(`已全选 ${nodesRef.current.length} 个节点`);
+        return;
+      }
       if (mod && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) {
@@ -960,7 +970,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleDeleteSelected, handleRestore, handleSave, handleUndo]);
+  }, [handleDeleteSelected, handleRestore, handleSave, handleUndo, pushLog, setNodes]);
 
   /* ---------------- 渲染 ---------------- */
   const nodeTypes = useMemo(

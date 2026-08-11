@@ -309,6 +309,10 @@ export function autoLayout(
   origin?: { x: number; y: number },
 ): WorkflowNode[] {
   if (!nodes.length) return nodes;
+  // 布局基准：origin 存在时（局部整理）以选中块左上角为新原点，内部坐标从 0 起算，
+  // 最后整体平移到 origin——避免把画布边距 (60,40) 与 origin 叠加导致每次整理整体右移/下移。
+  const baseX = origin ? 0 : LAYOUT.leftMargin;
+  const baseY = origin ? 0 : LAYOUT.topMargin;
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const promptNodes = nodes
     .filter((node) => node.type === "prompt")
@@ -331,7 +335,7 @@ export function autoLayout(
     (height, node) => Math.max(height, nodeSize(node).height),
     0,
   );
-  let bandY = LAYOUT.topMargin;
+  let bandY = baseY;
   const imageY = bandY;
   if (topImages.length) bandY += maxHeight(topImages) + LAYOUT.refGap;
   const groupY = bandY;
@@ -341,7 +345,7 @@ export function autoLayout(
   const resultY = promptY + promptHeight + LAYOUT.resultGap;
 
   // 中层：提示词保持同一横排，并保留整理前的视觉顺序。
-  let promptX = LAYOUT.leftMargin;
+  let promptX = baseX;
   for (const prompt of promptNodes) {
     positions.set(prompt.id, { x: promptX, y: promptY });
     promptX += nodeSize(prompt).width + LAYOUT.groupGap;
@@ -361,12 +365,12 @@ export function autoLayout(
       .filter((center): center is number => center !== null);
     const center = centers.length
       ? (Math.min(...centers) + Math.max(...centers)) / 2
-      : LAYOUT.leftMargin + nodeSize(group).width / 2;
+      : baseX + nodeSize(group).width / 2;
     return { group, desiredX: center - nodeSize(group).width / 2 };
   }).sort((a, b) => a.desiredX - b.desiredX);
-  let groupRight = LAYOUT.leftMargin;
+  let groupRight = baseX;
   for (const { group, desiredX } of desiredGroups) {
-    const x = Math.max(LAYOUT.leftMargin, desiredX, groupRight);
+    const x = Math.max(baseX, desiredX, groupRight);
     positions.set(group.id, { x, y: groupY });
     groupRight = x + nodeSize(group).width + LAYOUT.nodeGap;
   }
@@ -406,9 +410,9 @@ export function autoLayout(
     topPlacements.push({ node: image, desiredX: center - nodeSize(image).width / 2 });
   }
   topPlacements.sort((a, b) => a.desiredX - b.desiredX);
-  let topRight = LAYOUT.leftMargin;
+  let topRight = baseX;
   for (const { node, desiredX } of topPlacements) {
-    const x = Math.max(LAYOUT.leftMargin, desiredX, topRight);
+    const x = Math.max(baseX, desiredX, topRight);
     positions.set(node.id, { x, y: imageY });
     topRight = x + nodeSize(node).width + LAYOUT.nodeGap;
   }
@@ -435,9 +439,9 @@ export function autoLayout(
     }
   }
   resultPlacements.sort((a, b) => a.desiredX - b.desiredX);
-  let resultRight = LAYOUT.leftMargin;
+  let resultRight = baseX;
   for (const { node, desiredX } of resultPlacements) {
-    const x = Math.max(LAYOUT.leftMargin, desiredX, resultRight);
+    const x = Math.max(baseX, desiredX, resultRight);
     positions.set(node.id, { x, y: resultY });
     resultRight = x + nodeSize(node).width + LAYOUT.nodeGap;
   }
