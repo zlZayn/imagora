@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """终端输出工具 —— 基于 rich 的统一控制台
 
-CLI（main / batch / api）共用输出入口。颜色语义与前端品牌一致：
-成功=品牌绿 #3d7a5c / 失败=红 #dc2626 / 警告=琥珀 #d97706 / 信息=青蓝 #2563eb / 次要=灰 #6b7280。
+CLI（main / batch / api）共用输出入口。标签统一英文（[OK]/[ERROR]/[INFO]/[WARN]），
+颜色语义与前端一致：成功=品牌绿 / 失败=红 / 警告=琥珀 / 信息=蓝 / 次要=灰。
 批量进度用 Progress、任务分组用 Panel。无业务依赖，可被任意模块引用。
 """
 from rich.console import Console
@@ -19,19 +19,19 @@ COLOR_DIM = "#6b7280"
 
 
 def print_success(message: str) -> None:
-    console.print(f"[bold {COLOR_OK}]{message}[/bold {COLOR_OK}]")
+    console.print(f"[bold {COLOR_OK}][OK] {message}[/bold {COLOR_OK}]")
 
 
 def print_error(message: str) -> None:
-    console.print(f"[bold {COLOR_ERR}]{message}[/bold {COLOR_ERR}]")
+    console.print(f"[bold {COLOR_ERR}][ERROR] {message}[/bold {COLOR_ERR}]")
 
 
 def print_info(message: str) -> None:
-    console.print(f"[{COLOR_INFO}]{message}[/{COLOR_INFO}]")
+    console.print(f"[{COLOR_INFO}][INFO] {message}[/{COLOR_INFO}]")
 
 
 def print_warn(message: str) -> None:
-    console.print(f"[{COLOR_WARN}]{message}[/{COLOR_WARN}]")
+    console.print(f"[{COLOR_WARN}][WARN] {message}[/{COLOR_WARN}]")
 
 
 def print_dim(message: str) -> None:

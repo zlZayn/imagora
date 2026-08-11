@@ -9,6 +9,7 @@
   python -m main gen "提示词" [-i 参考图] [-o 输出.png] [--ratio 9:16]  # 单张生图
 """
 import argparse
+import colorsys
 import os
 import sys
 from pathlib import Path
@@ -21,6 +22,16 @@ from core.console import console, print_error, print_info, print_success
 _reconfigure = getattr(sys.stdout, "reconfigure", None)
 if _reconfigure is not None:
     _reconfigure(encoding="utf-8")
+
+
+def accent_for_window(window_id: int | None) -> str:
+    """窗口主题色（与 frontend/src/accent.ts 同算法）：
+    hue = (windowId-1)*137.508 % 360，saturation 55%，lightness 42%。
+    返回 #rrggbb，供菜单面板边框随窗口编号变色（多开一眼可辨）。
+    """
+    hue = ((window_id or 1) - 1) * 137.508 % 360
+    r, g, b = colorsys.hls_to_rgb(hue / 360, 0.42, 0.55)
+    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 
 
 def handle_ui_command(args):
@@ -251,16 +262,18 @@ def handle_menu_command(args):
         pid = find_port_pid(args.port)
         win_count = fetch_window_count()
         running = pid is not None
+        # 边框颜色随窗口主题色（accent.ts 同算法）：不同窗口号不同色相
+        accent = accent_for_window(win_count)
         table = Table(show_header=False, box=None, padding=(0, 2))
         table.add_column(style="bold", justify="right", width=10)
         table.add_column(style="white")
-        table.add_row("服务地址", f"[bold #3d7a5c]{url}[/bold #3d7a5c]")
+        table.add_row("服务地址", f"[bold {accent}]{url}[/bold {accent}]")
         table.add_row("服务进程", f"PID {pid}" if running else "[#d97706]未运行[/#d97706]")
         table.add_row("已开窗口", f"编号已分配至 #{win_count}" if win_count else "暂无")
         return Panel(
             table,
-            title="[bold #3d7a5c]Imagora · AI 生图工作台[/bold #3d7a5c]",
-            border_style="#3d7a5c" if running else "#d97706",
+            title=f"[bold {accent}]Imagora · AI 生图工作台[/bold {accent}]",
+            border_style=accent if running else "#d97706",
             subtitle="[#6b7280]操作：[/#6b7280][bold]N[/bold] 打开新窗口   [bold]Q[/bold] 退出并停止服务",
             padding=(1, 2),
         )
