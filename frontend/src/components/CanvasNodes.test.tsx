@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ImageNode } from "./CanvasNodes";
+import { ImageNode, PromptNode } from "./CanvasNodes";
 
 afterEach(cleanup);
 
@@ -78,5 +78,38 @@ describe("node-pop animation wrapper", () => {
   it("adds the node-pop class to the image node card for inner animation", () => {
     renderImageNode();
     expect(document.querySelector(".node-pop")).toBeTruthy();
+  });
+});
+
+describe("PromptNode", () => {
+  it("keeps failure text out of the card and shows the end of long output paths", () => {
+    const outputDir = "C:\\very\\long\\campaign\\product\\outputs\\final";
+    const failureMessage = "A very long provider failure that must not resize the card";
+    const props = {
+      id: "prompt-1",
+      type: "prompt",
+      data: {
+        prompt: "product photo",
+        size: "1024x1024",
+        quality: "high",
+        outputDir,
+        status: "failed",
+        message: failureMessage,
+      },
+      selected: false,
+      onUpdate: vi.fn(),
+      onRun: vi.fn(),
+      onDelete: vi.fn(),
+      sizeOptions: [{ value: "1024x1024", label: "1:1" }],
+      qualityOptions: [{ value: "high", label: "high" }],
+    } as unknown as ComponentProps<typeof PromptNode>;
+
+    render(<ReactFlowProvider><PromptNode {...props} /></ReactFlowProvider>);
+
+    expect(screen.queryByText(failureMessage)).toBeNull();
+    const pathInput = screen.getByDisplayValue(outputDir);
+    expect(pathInput.className).toContain("text-right");
+    expect(pathInput.getAttribute("title")).toBe(outputDir);
+    expect(document.querySelector(".react-flow__node-prompt")).toBeNull();
   });
 });

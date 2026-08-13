@@ -224,7 +224,7 @@ export const PromptNode = memo(function PromptNode({
   const queued = data.status === "queued";
   const busy = running || queued;
   return (
-    <div className={`panel-card group relative !min-w-[300px] !p-3 node-pop ${selected ? "node-selected" : ""}`}>
+    <div className={`panel-card group relative !w-[300px] min-w-0 overflow-hidden !p-3 node-pop ${selected ? "node-selected" : ""}`}>
       {/* 顶部接收参考图，底部输出生成结果。 */}
       <Handle
         type="target"
@@ -279,7 +279,7 @@ export const PromptNode = memo(function PromptNode({
       <div className="nodrag mt-2">
         <label className="field-label text-[10px]">输出路径</label>
         <div className="mt-0.5">
-          <FolderPicker value={data.outputDir} onChange={(v) => onUpdate(id, { outputDir: v })} />
+          <FolderPicker value={data.outputDir} onChange={(v) => onUpdate(id, { outputDir: v })} alignEnd />
         </div>
       </div>
       <div className="nodrag mt-2 flex items-center gap-2">
@@ -291,11 +291,6 @@ export const PromptNode = memo(function PromptNode({
         >
           {running ? generatingLabel(data.elapsed ?? 0) : queued ? "排队中..." : "运行"}
         </button>
-        {data.message && (
-          <span className="min-w-0 flex-1 truncate text-[10px] text-red-500" title={data.message}>
-            {data.message}
-          </span>
-        )}
       </div>
     </div>
   );

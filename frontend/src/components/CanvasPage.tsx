@@ -25,6 +25,7 @@ import "@xyflow/react/dist/style.css";
 import {
   canvasUpload,
   historyCanvasImport,
+  selectFolder,
   workflowList,
   workflowLoad,
   workflowSave,
@@ -47,10 +48,12 @@ import {
   collectIncomingImages,
   computeCounts,
   extractAnimClasses,
+  layoutPromptResults,
   layoutSelection,
   nodeSize,
   stripAnimClasses,
   updatePromptNode,
+  updateSelectedPromptOutputDirs,
   withEnterAnim,
   workflowToCanvas,
 } from "../workflow";
@@ -132,6 +135,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   /** 当前选中的节点数（右键拖拽框选 / Ctrl+点击加选多选后显示批量删除） */
   const [selectedCount, setSelectedCount] = useState(0);
+  const [selectedPromptCount, setSelectedPromptCount] = useState(0);
+  const [pickingSelectedOutputDir, setPickingSelectedOutputDir] = useState(false);
   const selectedIdsRef = useRef<Set<string>>(new Set());
   /** 右键拖拽框选：拖拽起点（flow 坐标，null=未拖拽）。
    *   React Flow 默认 Shift+左键框选已通过 selectionKeyCode={null} 禁用，改为右键直接拖拽多选；
@@ -372,6 +377,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const onSelectionChange = useCallback(({ nodes: selected }: { nodes: Node[] }) => {
     selectedIdsRef.current = new Set(selected.map((n) => n.id));
     setSelectedCount(selected.length);
+    setSelectedPromptCount(selected.filter((node) => node.type === "prompt").length);
     const first = selected[0];
     setHighlightId(selected.length === 1 && first.type === "prompt" ? first.id : null);
   }, []);
@@ -661,9 +667,36 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     recordHistory();
     removeNodesWithFade(ids);
     setSelectedCount(0);
+    setSelectedPromptCount(0);
     selectedIdsRef.current = new Set();
     pushLog(`已删除 ${ids.size} 个选中节点（文件保留）`);
   }, [pushLog, recordHistory, removeNodesWithFade]);
+
+  /** 批量设置选区内提示词输出目录：混合选区自动忽略图片与图片组，一次修改对应一次撤销。 */
+  const handleSetSelectedOutputDir = useCallback(async () => {
+    const selectedIds = selectedIdsRef.current;
+    const firstSelectedPrompt = nodesRef.current.find(
+      (node) => node.type === "prompt" && selectedIds.has(node.id),
+    );
+    if (!firstSelectedPrompt || firstSelectedPrompt.type !== "prompt" || pickingSelectedOutputDir) return;
+    setPickingSelectedOutputDir(true);
+    try {
+      const { path } = await selectFolder(firstSelectedPrompt.data.outputDir);
+      if (!path) return;
+      const result = updateSelectedPromptOutputDirs(nodesRef.current, selectedIds, path);
+      if (!result.changedCount) {
+        pushLog("所选提示词卡片已使用该输出路径");
+        return;
+      }
+      recordHistory();
+      setNodes(result.nodes);
+      pushLog(`已设置 ${result.changedCount} 张提示词卡片的输出路径`);
+    } catch (err) {
+      pushLog(`批量设置输出路径失败：${errMessage(err)}`);
+    } finally {
+      setPickingSelectedOutputDir(false);
+    }
+  }, [pickingSelectedOutputDir, pushLog, recordHistory, setNodes]);
 
   /* ---------------- 运行编排：单节点提交（入边快照）+ 结果回流 + 全部运行（服务端并发队列） ---------------- */
   /** 结果回流：done 快照 → 结果图复制进画布注册表并建节点（放提示词节点右下方）+ 自动连线，返回回流张数 */
@@ -692,8 +725,11 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           nodesRef.current.filter((n) => n.type === "image").map((n) => n.data.registryId),
         );
         const fresh = imported.filter((entry) => !existingIds.has(entry.id));
-        const baseX = (promptNode.position.x ?? 40) + 340;
-        const baseY = (promptNode.position.y ?? 40) + 20;
+        const outputEdges: WorkflowEdge[] = imported.map((entry) => ({
+          id: `${nodeId}->img-${entry.id}`,
+          source: nodeId,
+          target: `img-${entry.id}`,
+        }));
         setNodes((nds) => {
           // 回调内用最新 nds 二次校验（防 setNodes 之间其他改动导致重复）
           const pn = nds.find((n) => n.id === nodeId);
@@ -703,19 +739,14 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           );
           const created = fresh
             .filter((entry) => !exIds.has(entry.id))
-            .map((entry, i) => withEnterAnim(buildImageNode(entry, { x: baseX, y: baseY + i * 130 }), i));
-          return [...nds, ...created];
+            .map((entry, i) => withEnterAnim(buildImageNode(entry, pn.position), i));
+          const nextNodes = [...nds, ...created];
+          return layoutPromptResults(nextNodes, [...edgesRef.current, ...outputEdges], nodeId);
         });
-        // 结果图自动连线：提示词节点 -> 结果图片（产出边，右边出线）
+        // 结果图自动连线：提示词节点 -> 结果图片（产出边，向下流动）
         setEdges((eds) => {
           const existing = new Set(eds.map((edge) => `${edge.source}->${edge.target}`));
-          const created = imported
-            .map((entry) => ({
-              id: `${nodeId}->img-${entry.id}`,
-              source: nodeId,
-              target: `img-${entry.id}`,
-            }))
-            .filter((edge) => !existing.has(`${edge.source}->${edge.target}`));
+          const created = outputEdges.filter((edge) => !existing.has(`${edge.source}->${edge.target}`));
           return [...eds, ...created];
         });
         pushLog(`节点 ${nodeId}：生成 ${imported.length} 张并已回流画布（自动连线）`);
@@ -1188,15 +1219,26 @@ export default function CanvasPage({ config }: CanvasPageProps) {
 
       {/* 画布 */}
       <div className="panel-card relative min-h-0 flex-1 overflow-hidden">
-        {/* 多选批量删除（右键框选后显示，沿用右上角小按钮风格） */}
+        {/* 多选批量操作：路径只作用于提示词，删除作用于全部选中节点。 */}
         {selectedCount >= 2 && (
-          <button
-            type="button"
-            onClick={handleDeleteSelected}
-            className="nodrag btn-ghost absolute right-3 top-3 z-40 !border-red-200 !bg-white/95 !px-2 !py-1 text-xs text-red-500 shadow"
-          >
-            删除所选 ({selectedCount})
-          </button>
+          <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-neutral-200 bg-white/95 p-1 shadow">
+            <button
+              type="button"
+              onClick={() => void handleSetSelectedOutputDir()}
+              disabled={!selectedPromptCount || pickingSelectedOutputDir}
+              title={selectedPromptCount ? `设置 ${selectedPromptCount} 张提示词卡片的输出路径` : "所选节点中没有提示词卡片"}
+              className="nodrag btn-ghost !px-2 !py-1 text-xs"
+            >
+              {pickingSelectedOutputDir ? "选择中..." : `设置输出路径 (${selectedPromptCount})`}
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteSelected}
+              className="nodrag btn-ghost !border-red-200 !px-2 !py-1 text-xs text-red-500"
+            >
+              删除所选 ({selectedCount})
+            </button>
+          </div>
         )}
         <div ref={canvasRef} className="relative h-full w-full">
         <ReactFlow

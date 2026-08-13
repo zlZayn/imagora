@@ -122,6 +122,23 @@ export function updatePromptNode(
   );
 }
 
+/** 批量更新选区内提示词节点的输出目录；其他节点类型与未选中节点保持原引用。 */
+export function updateSelectedPromptOutputDirs(
+  nodes: WorkflowNode[],
+  selectedIds: ReadonlySet<string>,
+  outputDir: string,
+): { nodes: WorkflowNode[]; changedCount: number } {
+  let changedCount = 0;
+  const next = nodes.map((node) => {
+    if (node.type !== "prompt" || !selectedIds.has(node.id) || node.data.outputDir === outputDir) {
+      return node;
+    }
+    changedCount += 1;
+    return { ...node, data: { ...node.data, outputDir } };
+  });
+  return { nodes: changedCount ? next : nodes, changedCount };
+}
+
 /** 计算各图片节点的引用计数与分组节点成员数/总大小，
  *  返回 registryId -> refCount、groupId -> 成员数、groupId -> 总字节 */
 export function computeCounts(
@@ -305,6 +322,43 @@ const LAYOUT = {
   /** 孤立节点列宽 */
   orphanColWidth: 144,
 };
+
+/** 只整理一个提示词的产出节点：在提示词正下方居中横排，不移动任何无关节点。 */
+export function layoutPromptResults(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  promptId: string,
+): WorkflowNode[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const prompt = byId.get(promptId);
+  if (prompt?.type !== "prompt") return nodes;
+  const seen = new Set<string>();
+  const results = edges
+    .filter((edge) => edge.source === promptId)
+    .map((edge) => byId.get(edge.target))
+    .filter((node): node is WorkflowNode => {
+      if (node?.type !== "image" || seen.has(node.id)) return false;
+      seen.add(node.id);
+      return true;
+    });
+  if (!results.length) return nodes;
+
+  const totalWidth = results.reduce(
+    (width, node, index) => width + nodeSize(node).width + (index ? LAYOUT.nodeGap : 0),
+    0,
+  );
+  let x = prompt.position.x + nodeSize(prompt).width / 2 - totalWidth / 2;
+  const y = prompt.position.y + nodeSize(prompt).height + LAYOUT.resultGap;
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const result of results) {
+    positions.set(result.id, { x, y });
+    x += nodeSize(result).width + LAYOUT.nodeGap;
+  }
+  return nodes.map((node) => {
+    const position = positions.get(node.id);
+    return position ? { ...node, position } : node;
+  });
+}
 
 /** 全局三段式布局：
  *  参考图和图片组在上方，提示词横向排列在中间，生成结果在下方。
