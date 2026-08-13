@@ -31,6 +31,7 @@ import itertools
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -154,7 +155,11 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         response.headers["Cache-Control"] = "no-cache"
         return response
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = (
+    Path(sys.executable).resolve().parent.parent
+    if getattr(sys, "frozen", False)
+    else Path(__file__).resolve().parent
+)
 FRONTEND_DIR = BASE_DIR / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
 

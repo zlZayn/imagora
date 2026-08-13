@@ -6,6 +6,7 @@ API Key 读取优先级:
   2. Imagora/.env 文件（AIWANWU_API_KEY=sk-...，自动加载，不覆盖已存在的环境变量）
 """
 import os
+import sys
 from pathlib import Path
 
 # ---------- 工作根（启动时固定一次，后续路径统一以此为基准） ----------
@@ -19,7 +20,10 @@ DEFAULT_OUTPUT_DIR = str(WORK_ROOT / "output")
 
 # ---------- API Key ----------
 ENV_KEY_NAME = "AIWANWU_API_KEY"
-ENV_FILE_PATH = Path(__file__).resolve().parent.parent / ".env"
+_APP_ROOT = Path(os.environ.get("IMAGORA_APP_ROOT", Path.cwd()))
+if getattr(sys, "frozen", False):
+    _APP_ROOT = Path(sys.executable).resolve().parent
+ENV_FILE_PATH = _APP_ROOT / ".env"
 
 
 def _load_env_file():

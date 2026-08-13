@@ -34,10 +34,12 @@ $env:AIWANWU_API_KEY = "sk-你的Key"
 
 ## 快速开始
 
-**一键启动（推荐）**：确保已安装 Python（含 `uv`）、Node.js，双击 `Imagora\启动生图工作台.cmd` 即可。脚本自动完成：
+**开发环境启动**：确保已安装 Python（含 `uv`）、Node.js，双击 `Imagora\启动生图工作台.cmd` 即可。脚本自动完成：
 
 - 检查前端构建状态——未构建或源码更新会询问是否现场构建（自动 `npm install` + `npm run build`），无需手动执行
 - 探测端口——已有服务在跑则直接开窗、不重复启动；否则自动后台启动服务并等待就绪
+
+**零安装便携发布**：在已安装开发依赖的电脑上运行 `powershell -ExecutionPolicy Bypass -File scripts\build-portable.ps1`，生成 `release\ImagoraPortable.zip`。收件电脑无需安装 Python、uv 或 Node.js：解压后复制 `.env.example` 为 `.env`，填入 `AIWANWU_API_KEY`，双击 `启动便携版.cmd` 即可。便携包使用系统自带 PowerShell，不依赖已移除的 `wmic`。
 - 开窗并进入彩色交互菜单（见「多开页面」）
 
 以下命令在脚本覆盖范围之外时才需要（换端口、开发模式、批量、单张、测试）：

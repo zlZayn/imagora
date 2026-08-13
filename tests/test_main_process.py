@@ -12,8 +12,12 @@ import main
 
 def _parent_of(pid: int) -> int:
     """取当前系统里 pid 的直接父进程（独立实现，用于交叉验证）。"""
+    command = (
+        f"$p = Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; "
+        "if ($p) { $p.ParentProcessId }"
+    )
     out = subprocess.run(
-        ["wmic", "process", "where", f"ProcessId={pid}", "get", "ParentProcessId"],
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
         capture_output=True, text=True, check=False, timeout=10,
     ).stdout
     for line in out.splitlines():

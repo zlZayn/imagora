@@ -6,6 +6,8 @@ __pycache__/
 .pyright/
 dist/
 build/
+release/
+*.spec
 *.egg-info/
 .env
 
