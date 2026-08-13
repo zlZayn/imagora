@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-setlocal
+setlocal EnableDelayedExpansion
 pushd "%~dp0" || exit /b 1
 
 set "PORT=7860"
@@ -15,11 +15,11 @@ if not exist "%APP%" (
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":%PORT%" ^| findstr "LISTENING"') do set "SRV_PID=%%p"
 if not defined SRV_PID (
   echo [INFO] 正在启动 Imagora ...
-  start "" /b "%APP%" ui --no-browser > "%TEMP%\imagora_portable_%PORT%.log" 2>&1
+  start "" /b "%APP%" ui --no-browser --port %PORT% > "%TEMP%\imagora_portable_%PORT%.log" 2>&1
   set /a TRIES=0
 :wait
   set /a TRIES+=1
-  if %TRIES% GTR 30 goto fail
+  if !TRIES! GTR 30 goto fail
   timeout /t 1 /nobreak >nul
   powershell -NoProfile -Command "try { if ((Invoke-WebRequest -UseBasicParsing '%URL%/api/config?win=1').StatusCode -eq 200) { exit 0 } } catch {}; exit 1" >nul 2>&1
   if errorlevel 1 goto wait
