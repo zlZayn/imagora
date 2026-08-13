@@ -53,7 +53,7 @@ export default function Select({ options, value, onChange, className = "", id }:
         aria-haspopup="listbox"
         className="field-control flex items-center justify-between gap-2 text-left"
       >
-        <span className="truncate">{current?.label ?? "请选择"}</span>
+        <span className="min-w-0 truncate">{current?.label ?? "请选择"}</span>
         <svg
           width="16"
           height="16"

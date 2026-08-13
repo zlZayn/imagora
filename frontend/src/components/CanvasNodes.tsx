@@ -224,7 +224,7 @@ export const PromptNode = memo(function PromptNode({
   const queued = data.status === "queued";
   const busy = running || queued;
   return (
-    <div className={`panel-card group relative !w-[300px] min-w-0 overflow-hidden !p-3 node-pop ${selected ? "node-selected" : ""}`}>
+    <div className={`panel-card group relative !w-[380px] min-w-0 !p-3 node-pop ${selected ? "node-selected" : ""}`}>
       {/* 顶部接收参考图，底部输出生成结果。 */}
       <Handle
         type="target"
@@ -257,7 +257,7 @@ export const PromptNode = memo(function PromptNode({
         className="nodrag field-control resize-y text-xs leading-relaxed"
       />
       <div className="nodrag mt-2 grid grid-cols-[7fr_3fr] gap-2">
-        <div>
+        <div className="min-w-0">
           <label className="field-label text-[10px]">尺寸</label>
           <Select
             options={sizeOptions}
@@ -266,7 +266,7 @@ export const PromptNode = memo(function PromptNode({
             className="mt-0.5"
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <label className="field-label text-[10px]">质量</label>
           <Select
             options={qualityOptions}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { selectFolder } from "../api";
 
 interface FolderPickerProps {
@@ -13,6 +13,14 @@ interface FolderPickerProps {
  */
 export default function FolderPicker({ value, onChange, alignEnd = false }: FolderPickerProps) {
   const [picking, setPicking] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // alignEnd 模式：路径变化后滚动到末尾，让路径尾部（如 .../aigc）可见
+  useEffect(() => {
+    if (alignEnd && inputRef.current) {
+      inputRef.current.scrollLeft = inputRef.current.scrollWidth;
+    }
+  }, [value, alignEnd]);
 
   const handlePick = async () => {
     setPicking(true);
@@ -29,6 +37,7 @@ export default function FolderPicker({ value, onChange, alignEnd = false }: Fold
   return (
     <div className="flex gap-2">
       <input
+        ref={inputRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="图片保存目录"
