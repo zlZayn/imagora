@@ -143,7 +143,7 @@ def _process_ancestors(pid: int) -> list[int]:
     典型场景：uv run python -m main ui 会产生 uv → python(shim) → python(监听) 多层，
     只杀监听层（taskkill /t 杀的是子进程树）会留下 uv/python 宿主残留。
     这里沿 ParentProcessId 逐级回溯到根，返回 [自身, 父, 祖父, ...]。
-    逐级查询而非整表解析：避免 wmic 整表在不同 locale / 列宽下解析失真。
+    逐级查询而非整表解析：使用 Windows 自带 PowerShell CIM，兼容已移除 WMIC 的新系统。
     """
     import subprocess
 
@@ -154,8 +154,12 @@ def _process_ancestors(pid: int) -> list[int]:
         seen.add(cur)
         chain.append(cur)
         try:
+            command = (
+                f"$p = Get-CimInstance Win32_Process -Filter 'ProcessId={cur}'; "
+                "if ($p) { $p.ParentProcessId }"
+            )
             out = subprocess.run(
-                ["wmic", "process", "where", f"ProcessId={cur}", "get", "ParentProcessId"],
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
                 capture_output=True, text=True, check=False, timeout=5,
             ).stdout
         except (OSError, subprocess.TimeoutExpired):

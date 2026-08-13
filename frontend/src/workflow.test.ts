@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoLayout, collectIncomingImages, extractAnimClasses, layoutSelection, snapshotIncomingAbsPaths, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoConnect, autoLayout, collectIncomingImages, extractAnimClasses, layoutPromptResults, layoutSelection, snapshotIncomingAbsPaths, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -57,6 +57,66 @@ describe("workflow defaults", () => {
     const prompt = result.nodes[0];
 
     expect(prompt.type === "prompt" && prompt.data.quality).toBe("high");
+  });
+});
+
+describe("prompt output directory updates", () => {
+  it("updates only selected prompt nodes in a mixed selection", () => {
+    const selectedPrompt = promptNode("selected-prompt");
+    const untouchedPrompt = promptNode("untouched-prompt");
+    const selectedImage = imageNode("selected-image");
+    const group = {
+      id: "selected-group",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { name: "group", imageCount: 0, totalSize: 0 },
+    } as WorkflowNode;
+    const nodes = [selectedPrompt, untouchedPrompt, selectedImage, group];
+
+    const result = updateSelectedPromptOutputDirs(
+      nodes,
+      new Set(["selected-prompt", "selected-image", "selected-group"]),
+      "D:\\outputs\\campaign",
+    );
+
+    expect(result.changedCount).toBe(1);
+    expect(result.nodes.find((node) => node.id === "selected-prompt")!.data.outputDir).toBe("D:\\outputs\\campaign");
+    expect(result.nodes.find((node) => node.id === "untouched-prompt")).toBe(untouchedPrompt);
+    expect(result.nodes.find((node) => node.id === "selected-image")).toBe(selectedImage);
+    expect(result.nodes.find((node) => node.id === "selected-group")).toBe(group);
+  });
+
+  it("returns the original node array when no selected prompt changes", () => {
+    const nodes = [promptNode("prompt"), imageNode("image")];
+
+    const result = updateSelectedPromptOutputDirs(nodes, new Set(["image"]), "D:\\outputs");
+
+    expect(result).toEqual({ nodes, changedCount: 0 });
+    expect(result.nodes).toBe(nodes);
+  });
+});
+
+describe("prompt result layout", () => {
+  it("centers existing and new results below the prompt without moving unrelated nodes", () => {
+    const prompt = { ...promptNode("prompt"), position: { x: 400, y: 300 } } as WorkflowNode;
+    const existing = { ...imageNode("existing"), position: { x: 900, y: 50 } } as WorkflowNode;
+    const created = { ...imageNode("created"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const unrelated = { ...imageNode("unrelated"), position: { x: 75, y: 825 } } as WorkflowNode;
+    const nodes = [prompt, existing, created, unrelated];
+    const edges = [edge("prompt", "existing"), edge("prompt", "created")];
+
+    const result = layoutPromptResults(nodes, edges, "prompt");
+    const byId = new Map(result.map((node) => [node.id, node]));
+    const first = byId.get("existing")!;
+    const second = byId.get("created")!;
+
+    expect(first.position.y).toBeGreaterThan(prompt.position.y + 300);
+    expect(second.position.y).toBe(first.position.y);
+    expect(first.position.x).toBeLessThan(second.position.x);
+    const resultCenter = (first.position.x + 144 / 2 + second.position.x + 144 / 2) / 2;
+    expect(resultCenter).toBe(prompt.position.x + 300 / 2);
+    expect(byId.get("unrelated")).toBe(unrelated);
+    expect(byId.get("prompt")).toBe(prompt);
   });
 });
 

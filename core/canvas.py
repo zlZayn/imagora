@@ -211,6 +211,7 @@ WORKFLOWS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "workflows")
 RECOVERY_DIR = os.path.join(WORKFLOWS_DIR, ".recovery")
 RECOVERY_LIMIT = 20
 _RECOVERY_LOCK = threading.Lock()
+_RECOVERY_SEQUENCE = 0
 
 # Windows / 通用非法文件名字符（含路径分隔符，防穿越）
 _INVALID_NAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -395,18 +396,20 @@ def recovery_save(nodes: list, edges: list) -> dict:
     """
     if not isinstance(nodes, list) or not isinstance(edges, list):
         return {"ok": False, "error": "恢复快照结构非法"}
-    saved_at = time.strftime("%Y-%m-%d %H:%M:%S")
-    name = f"recovery_{time.time_ns()}"
-    path = os.path.join(RECOVERY_DIR, f"{name}.json")
-    payload = {
-        "version": 1,
-        "name": name,
-        "savedAt": saved_at,
-        "nodes": _normalize_workflow_nodes(nodes),
-        "edges": edges,
-    }
     try:
         with _RECOVERY_LOCK:
+            global _RECOVERY_SEQUENCE
+            _RECOVERY_SEQUENCE += 1
+            saved_at = time.strftime("%Y-%m-%d %H:%M:%S")
+            name = f"recovery_{time.time_ns()}_{_RECOVERY_SEQUENCE:04d}"
+            path = os.path.join(RECOVERY_DIR, f"{name}.json")
+            payload = {
+                "version": 1,
+                "name": name,
+                "savedAt": saved_at,
+                "nodes": _normalize_workflow_nodes(nodes),
+                "edges": edges,
+            }
             os.makedirs(RECOVERY_DIR, exist_ok=True)
             _atomic_write_json(path, payload)
             _prune_recovery_snapshots(RECOVERY_LIMIT)
