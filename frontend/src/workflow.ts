@@ -55,8 +55,9 @@ export function buildImageNode(
 }
 
 /** 注册表条目批量建节点：按 registryId 去重（同一文件画布上只一个节点）。
- *  origin 可选：把本批节点放在该坐标（画布视口中心）附近，缺省回退画布左上角 (40,40)；
- *  批次内按 IMAGE_STEP 横向错开，批次间按已有节点数小幅错位，避免与旧节点完全重叠。 */
+ *  origin 可选：本批节点以该坐标（画布视口中心）为起点，缺省回退画布左上角 (40,40)；
+ *  批次内按 IMAGE_STEP 横向排开。origin 由调用方负责错开（getCreatePosition 记忆阶梯），
+ *  这里不再按节点数叠加偏移，避免"上传/新建越偏越远"的漂移。 */
 export function canvasEntriesToNodes(
   entries: CanvasImageEntry[],
   existing: WorkflowNode[],
@@ -69,8 +70,8 @@ export function canvasEntriesToNodes(
     }
   }
   const created: WorkflowNode[] = [];
-  const baseX = (origin?.x ?? 40) + (existing.length % 6) * 30;
-  const baseY = (origin?.y ?? 40) + (existing.length % 4) * 30;
+  const baseX = origin?.x ?? 40;
+  const baseY = origin?.y ?? 40;
   let n = 0;
   for (const entry of entries) {
     if (seen.has(entry.id)) {

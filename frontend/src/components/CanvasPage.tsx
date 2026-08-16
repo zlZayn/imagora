@@ -207,14 +207,27 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       .forEach((task) => void cancelGenerationTask(task.taskId));
   }, [cancelGenerationTask, generationTask.tasks]);
 
+  /** 一屏全览：等 React Flow 完成状态提交和节点测量后 fitView。
+   *  minZoom 显式放宽：节点很多时允许缩到很小，保证"全部显示在画面中"。
+   *  不用 ReactFlow 初始 fitView prop——空画布时它会被延迟到"第一个节点出现"才执行，
+   *  导致新建/上传后视口突然放大跳动。 */
+  const fitCanvasToContent = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        void rfInstanceRef.current?.fitView({ padding: 0.15, duration: 300, minZoom: MIN_FIT_ZOOM });
+      });
+    });
+  }, []);
+
   const restoreCanvas = useCallback(
     (restoredNodes: WorkflowNode[], restoredEdges: WorkflowEdge[]) => {
       historyRef.current.clear();
       setNodes(restoredNodes);
       setEdges(restoredEdges);
       refreshHistoryControls();
+      fitCanvasToContent();
     },
-    [refreshHistoryControls, setEdges, setNodes],
+    [fitCanvasToContent, refreshHistoryControls, setEdges, setNodes],
   );
 
   useCanvasRecovery({
@@ -393,8 +406,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     try {
       const { images } = await canvasUpload(Array.from(files));
       recordHistory();
-      // 新图放在画布视口中心附近（与新建卡片同约定），避免落在视口外/左上角
-      const origin = getCreatePosition(nodesRef.current.length);
+      // 新图放在画布视口中心（与新建卡片同约定），避免落在视口外/左上角
+      const origin = getCreatePosition();
       setNodes((nds) => [...nds, ...canvasEntriesToNodes(images, nds, origin).map((n, i) => withEnterAnim(n, i))]);
       pushLog(`已上传 ${images.length} 张图片到画布`);
     } catch (err) {
@@ -467,6 +480,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       setNodes(loadedNodes);
       setEdges(loadedEdges);
       refreshHistoryControls();
+      fitCanvasToContent();
       setShowLoadModal(false);
       pushLog(`已加载「${name}」${wf.missing.length ? `，${wf.missing.length} 张图片缺失` : ""}`);
     } catch (err) {
@@ -586,8 +600,12 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   /** 默认质量：优先 high（用户要求） */
   const defaultQuality = config.qualities.includes("high") ? "high" : config.qualities[0] ?? "low";
 
-  /** 新建节点定位：画布视口中心 + 错开偏移（实例未就绪回退固定坐标） */
-  const getCreatePosition = useCallback((count: number): { x: number; y: number } => {
+  /** 最近一次新建/上传落点：连续创建时阶梯错开（每次 +30px），视口移动或隔段时间后回到中心。
+   *  不用全局节点数做偏移——节点一多新内容会越偏越远，用户感知为"不在画面中央"。 */
+  const lastCreatePosRef = useRef<{ x: number; y: number } | null>(null);
+
+  /** 新建节点定位：画布视口中心（实例未就绪回退固定坐标），连续创建阶梯错开避免完全重叠 */
+  const getCreatePosition = useCallback((): { x: number; y: number } => {
     const rf = rfInstanceRef.current;
     const el = canvasRef.current;
     if (!rf || !el) return { x: 160, y: 100 };
@@ -596,17 +614,22 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     });
-    return {
-      x: center.x + (count % 6) * 30,
-      y: center.y + (count % 4) * 30,
-    };
+    const last = lastCreatePosRef.current;
+    // 视口基本没动（落点与上次相近）→ 阶梯错开；否则回到视口中心
+    if (last && Math.abs(last.x - center.x) < 200 && Math.abs(last.y - center.y) < 200) {
+      const next = { x: last.x + 30, y: last.y + 30 };
+      lastCreatePosRef.current = next;
+      return next;
+    }
+    lastCreatePosRef.current = center;
+    return center;
   }, []);
 
   /** 工具栏按钮：新建提示词卡片（视口中心定位 + 入场动画） */
   const handleCreatePrompt = useCallback(() => {
     recordHistory();
     setNodes((nds) => {
-      const pos = getCreatePosition(nds.length);
+      const pos = getCreatePosition();
       return [
         ...nds,
         withEnterAnim({
@@ -631,7 +654,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     (cards: PromptCardSpec[]) => {
       if (!cards.length) return;
       recordHistory();
-      const origin = getCreatePosition(nodesRef.current.length);
+      const origin = getCreatePosition();
       setNodes((nds) => [
         ...nds,
         ...buildPromptNodes(
@@ -650,7 +673,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const handleCreateGroup = useCallback(() => {
     recordHistory();
     setNodes((nds) => {
-      const pos = getCreatePosition(nds.length);
+      const pos = getCreatePosition();
       return [
         ...nds,
         withEnterAnim({
@@ -902,14 +925,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       setNodes(autoLayout(current, edgesRef.current));
       pushLog(`已整理 ${current.length} 个节点`);
     }
-    // 等 React Flow 连续完成状态提交和节点测量后再读取新坐标。
-    // minZoom 显式放宽：节点很多时允许 fitView 缩到很小，保证"全部显示在画面中"。
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        void rfInstanceRef.current?.fitView({ padding: 0.15, duration: 300, minZoom: MIN_FIT_ZOOM });
-      });
-    });
-  }, [recordHistory, setNodes, pushLog]);
+    fitCanvasToContent();
+  }, [fitCanvasToContent, recordHistory, setNodes, pushLog]);
 
   const handleAutoConnect = useCallback(() => {
     const currentEdges = edgesRef.current;
@@ -931,8 +948,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         return;
       }
       recordHistory();
-      // 与上传同约定：导入的图片放在画布视口中心附近
-      const origin = getCreatePosition(nodesRef.current.length);
+      // 与上传同约定：导入的图片放在画布视口中心
+      const origin = getCreatePosition();
       setNodes((nds) => [...nds, ...canvasEntriesToNodes(imported, nds, origin).map((n, i) => withEnterAnim(n, i))]);
       setShowHistory(false);
       pushLog(`已从生成历史导入 ${imported.length} 张图片`);
@@ -1077,7 +1094,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     };
 
     const onMouseUp = (event: MouseEvent) => {
-      rightDownRef.current = false;
+      // 注意：这里不能清 rightDownRef——Windows 上 contextmenu 在右键松开之后才触发，
+      // 提前清除会让"拖出画布后松开"的默认菜单漏网；由 onWindowContextMenu 处理完再清。
       const drag = boxSelectRef.current;
       const rf = rfInstanceRef.current;
       if (!drag || !rf) return;
@@ -1109,10 +1127,13 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       });
     };
 
-    /** window 捕获阶段统一屏蔽：拖拽期间任何位置（含画布外）不弹浏览器菜单；
-     *  非拖拽时只屏蔽画布内非输入区（文本框/输入框保留原生粘贴/复制菜单）。 */
+    /** window 捕获阶段统一屏蔽：右键按下（含拖拽出画布后松开）任何位置都不弹浏览器菜单；
+     *  非拖拽时只屏蔽画布内非输入区（文本框/输入框保留原生粘贴/复制菜单）。
+     *  每次处理后清除右键标志，避免残留导致后续右键菜单被永久屏蔽。 */
     const onWindowContextMenu = (event: MouseEvent) => {
-      if (rightDownRef.current) {
+      const wasRightDown = rightDownRef.current;
+      rightDownRef.current = false;
+      if (wasRightDown) {
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -1307,8 +1328,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             rfInstanceRef.current = instance;
             setCanvasZoom(instance.getViewport().zoom);
           }}
-          fitView
-          fitViewOptions={{ padding: 0.15, minZoom: MIN_FIT_ZOOM, maxZoom: 2 }}
           minZoom={0.05}
           maxZoom={2}
           defaultEdgeOptions={{ animated: true }}

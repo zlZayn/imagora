@@ -247,17 +247,27 @@ export function ZoomModal({
     setDragging(false);
   };
 
+  /** 点击关闭判定：图片本体与按钮（控制条）不关闭，其余区域（含图片周围透明容器）都算"空白处"。
+   *  用 pointerdown 而非 click——放大后拖拽的 pointer capture 会把 click 目标重定向到容器，
+   *  按 target 判断会误关；pointerdown 始终派发到真实按下元素。 */
+  const onOverlayPointerDown = (event: React.PointerEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest("button, [data-zoom-image]")) return;
+    onClose();
+  };
+
   return (
     <div
       ref={wrapRef}
       className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/60"
-      onClick={onClose}
+      onPointerDown={onOverlayPointerDown}
     >
-      <div ref={viewportRef} className="relative flex h-[85vh] w-[90vw] items-center justify-center">
+      {/* 图片可视区：预留控制条/文件名/提示行空间，小屏也不溢出 */}
+      <div ref={viewportRef} className="relative flex h-[calc(100vh-9rem)] min-h-[40vh] w-[90vw] items-center justify-center">
         <div
           className="flex h-full w-full touch-none items-center justify-center"
           style={{ cursor: dragging ? "grabbing" : view.zoom > 1 ? "grab" : "zoom-in" }}
-          onClick={(e) => e.stopPropagation()}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
@@ -268,6 +278,7 @@ export function ZoomModal({
           }}
         >
           <img
+            data-zoom-image
             src={`/api/image?path=${encodeURIComponent(imagePath)}`}
             alt="预览"
             draggable={false}
@@ -288,11 +299,8 @@ export function ZoomModal({
           />
         </div>
       </div>
-      {/* 控制条：缩放按钮 + 百分比 + 复位 / 适应窗口，nodrag 防误拖 */}
-      <div
-        className="mt-3 flex items-center gap-2 rounded-lg bg-black/40 px-2 py-1 text-xs text-white"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {/* 控制条：缩放按钮 + 百分比 + 复位 / 适应窗口（按钮已被 overlay 判定排除，不会误关） */}
+      <div className="mt-3 flex items-center gap-2 rounded-lg bg-black/40 px-2 py-1 text-xs text-white">
         <button type="button" className="px-1.5 hover:text-brand" onClick={() => setView((prev) => clampPan({ ...prev, zoom: clampZoom(prev.zoom * ZOOM_STEP) }))} aria-label="放大">
           ＋
         </button>
@@ -307,13 +315,10 @@ export function ZoomModal({
           1:1
         </button>
       </div>
-      <div
-        className="mt-2 max-w-[80vw] truncate rounded-md bg-black/40 px-3 py-1 text-xs text-white"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="mt-2 max-w-[80vw] truncate rounded-md bg-black/40 px-3 py-1 text-xs text-white">
         {name}
       </div>
-      <div className="mt-1 text-[10px] text-white/50" onClick={(e) => e.stopPropagation()}>
+      <div className="mt-1 text-[10px] text-white/50">
         滚轮缩放 · 放大后拖拽平移 · 双击复位 · 点击空白处或 Esc 关闭
       </div>
     </div>
