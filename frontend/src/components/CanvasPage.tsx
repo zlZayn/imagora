@@ -60,12 +60,14 @@ import {
 import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 import HistoryGallery from "./HistoryGallery";
 import { PromptImportModal } from "./PromptImportModal";
-import TaskCenter from "./TaskCenter";
 import { WorkflowLoadModal, WorkflowSaveModal, ZoomModal } from "./WorkflowModals";
 import { buildPromptNodes, type PromptCardSpec } from "../promptContract";
 
 /** 节点删除退场动画时长（与 .node-exiting 的 fade-out 0.2s 一致） */
 const FADE_DURATION = 200;
+
+/** fitView 允许的最小缩放：画布节点很多时仍能一屏全览（低于 ReactFlow minZoom 属性，仅 fitView 生效） */
+const MIN_FIT_ZOOM = 0.02;
 
 /** 工具栏统一样式按钮 */
 function ToolbarButton({
@@ -391,7 +393,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     try {
       const { images } = await canvasUpload(Array.from(files));
       recordHistory();
-      setNodes((nds) => [...nds, ...canvasEntriesToNodes(images, nds).map((n, i) => withEnterAnim(n, i))]);
+      // 新图放在画布视口中心附近（与新建卡片同约定），避免落在视口外/左上角
+      const origin = getCreatePosition(nodesRef.current.length);
+      setNodes((nds) => [...nds, ...canvasEntriesToNodes(images, nds, origin).map((n, i) => withEnterAnim(n, i))]);
       pushLog(`已上传 ${images.length} 张图片到画布`);
     } catch (err) {
       pushLog(`上传失败：${errMessage(err)}`);
@@ -899,9 +903,10 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       pushLog(`已整理 ${current.length} 个节点`);
     }
     // 等 React Flow 连续完成状态提交和节点测量后再读取新坐标。
+    // minZoom 显式放宽：节点很多时允许 fitView 缩到很小，保证"全部显示在画面中"。
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        void rfInstanceRef.current?.fitView({ padding: 0.2, duration: 300 });
+        void rfInstanceRef.current?.fitView({ padding: 0.15, duration: 300, minZoom: MIN_FIT_ZOOM });
       });
     });
   }, [recordHistory, setNodes, pushLog]);
@@ -926,7 +931,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
         return;
       }
       recordHistory();
-      setNodes((nds) => [...nds, ...canvasEntriesToNodes(imported, nds).map((n, i) => withEnterAnim(n, i))]);
+      // 与上传同约定：导入的图片放在画布视口中心附近
+      const origin = getCreatePosition(nodesRef.current.length);
+      setNodes((nds) => [...nds, ...canvasEntriesToNodes(imported, nds, origin).map((n, i) => withEnterAnim(n, i))]);
       setShowHistory(false);
       pushLog(`已从生成历史导入 ${imported.length} 张图片`);
     } catch (err) {
@@ -956,20 +963,26 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog("已恢复画布操作");
   }, [pushLog, refreshHistoryControls, setEdges, setNodes]);
 
-  const handleCancelTask = useCallback((taskId: string) => {
-    void cancelGenerationTask(taskId);
-    pushLog(`任务 ${taskId} 取消请求已发送`);
-  }, [cancelGenerationTask, pushLog]);
-
-  /** 重试失败：把状态 failed 的提示词节点重新提交（复用 runNodeInternal 的双层守卫） */
-  const handleRetryFailed = useCallback(() => {
-    const failed = nodesRef.current.filter((n) => n.type === "prompt" && n.data.status === "failed");
-    if (!failed.length) {
-      pushLog("没有可重试的失败任务");
+  /** 运行所选：只挑选中节点里的提示词卡片提交（图片/图片组自动忽略，混合选区不受影响）。
+   *  空提示词/运行中的卡片跳过，与「全部运行」同一守卫语义。 */
+  const handleRunSelected = useCallback(() => {
+    const selected = nodesRef.current.filter(
+      (node): node is Extract<WorkflowNode, { type: "prompt" }> =>
+        node.type === "prompt" && selectedIdsRef.current.has(node.id),
+    );
+    const runnable = selected.filter(
+      (node) => node.data.prompt.trim() && !nodeTaskRef.current.has(node.id),
+    );
+    if (!runnable.length) {
+      pushLog(
+        selected.length
+          ? "所选提示词卡片均不可运行（空提示词或运行中）"
+          : "所选节点中没有提示词卡片",
+      );
       return;
     }
-    failed.forEach((n) => void runNodeInternal(n.id));
-    pushLog(`已重新提交 ${failed.length} 个失败节点`);
+    runnable.forEach((node) => void runNodeInternal(node.id));
+    pushLog(`已提交 ${runnable.length} 张提示词卡片（服务端并发队列）`);
   }, [pushLog, runNodeInternal]);
 
   /* ---------------- 画布快捷键：Ctrl+A 全选 / Ctrl+Z 撤销 / Ctrl+Y 恢复 / Ctrl+S 保存 / Delete 删除选中 ----------------
@@ -1026,11 +1039,14 @@ export default function CanvasPage({ config }: CanvasPageProps) {
    * 右键按下→拖拽→松开：起点与终点用 screenToFlowPosition 换算到画布坐标，
    * 松开时按「节点完全包含于选框」（与 React Flow 默认 selectionMode=full 一致）落定选中，
    * 直接写 selected 标记——与 Ctrl+A 全选同机制，React Flow 会同步 selection 并触发 onSelectionChange，
-   * 从而刷新 selectedCount / 高亮与工具栏「删除所选」。
-   * 画布内同时屏蔽浏览器右键菜单（文本框/输入框保留原生粘贴/复制菜单）。 */
+   * 从而刷新 selectedCount / 高亮与选中操作栏。
+   * 右键菜单屏蔽走 window 捕获阶段：拖拽期间（含指针移出画布、在工具栏/空白处松开）浏览器
+   * 默认菜单一律不弹出；画布内非输入区右键同样屏蔽（文本框/输入框保留原生粘贴/复制菜单）。 */
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
+    /** 右键是否按下（按下到松开期间全局屏蔽 contextmenu，含指针拖出画布的情况） */
+    const rightDownRef = { current: false };
 
     const onMouseDown = (event: MouseEvent) => {
       if (event.button !== 2) return;
@@ -1039,6 +1055,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       // 文本框/输入框内右键仍走原生菜单，不启动框选
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, [contenteditable]")) return;
+      rightDownRef.current = true;
       const startFlow = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
       boxSelectRef.current = { startFlow };
       setBoxRect({ x: startFlow.x, y: startFlow.y, width: 0, height: 0 });
@@ -1060,6 +1077,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     };
 
     const onMouseUp = (event: MouseEvent) => {
+      rightDownRef.current = false;
       const drag = boxSelectRef.current;
       const rf = rfInstanceRef.current;
       if (!drag || !rf) return;
@@ -1091,15 +1109,26 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       });
     };
 
-    const onContextMenu = (event: MouseEvent) => {
+    /** window 捕获阶段统一屏蔽：拖拽期间任何位置（含画布外）不弹浏览器菜单；
+     *  非拖拽时只屏蔽画布内非输入区（文本框/输入框保留原生粘贴/复制菜单）。 */
+    const onWindowContextMenu = (event: MouseEvent) => {
+      if (rightDownRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const target = event.target as HTMLElement | null;
-      // 文本框/输入框保留原生右键菜单（粘贴/复制）
-      if (target?.closest("input, textarea, [contenteditable]")) return;
-      event.preventDefault();
+      if (!target) return;
+      if (target.closest("input, textarea, [contenteditable]")) return;
+      if (el.contains(target)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     };
 
     // 拖拽中途窗口失焦（Alt+Tab 等）时复位，避免残留拖拽状态
     const onWindowBlur = () => {
+      rightDownRef.current = false;
       if (boxSelectRef.current) {
         boxSelectRef.current = null;
         setBoxRect(null);
@@ -1109,13 +1138,13 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     el.addEventListener("mousedown", onMouseDown);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-    el.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("contextmenu", onWindowContextMenu, true);
     window.addEventListener("blur", onWindowBlur);
     return () => {
       el.removeEventListener("mousedown", onMouseDown);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
-      el.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("contextmenu", onWindowContextMenu, true);
       window.removeEventListener("blur", onWindowBlur);
     };
   }, [setNodes]);
@@ -1206,31 +1235,50 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           </ToolbarButton>
         </div>
       </div>
-      {/* 操作帮助：单行小字，画布/节点/连线三类交互用分隔符紧凑展示 */}
+      {/* 操作帮助：单行小字，画布/节点/连线三类交互用分隔符紧凑展示（与 README「画布工作流」章节保持一致） */}
       <div className="flex flex-wrap items-center gap-x-1 text-[10px] leading-tight text-neutral-400">
-        <span className="font-medium text-neutral-500">画布</span>右键拖拽框选 · Ctrl+点击加选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · Ctrl+A 全选 · Ctrl+Z 撤销 / Ctrl+Y 恢复 · Delete 删除选中 · Ctrl+S 保存
+        <span className="font-medium text-neutral-500">画布</span>右键拖拽框选 · Ctrl+点击加选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · 左下角「适应视图」一屏全览 · Ctrl+A 全选 · Ctrl+Z 撤销 / Ctrl+Y 恢复 · Delete 删除选中 · Ctrl+S 保存
         <span className="text-neutral-300">｜</span>
-        <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 双击图片放大 · 拖动右下角拉伸
+        <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 选中后右上角操作栏可运行所选/自动整理/设输出路径/删除 · 双击图片放大（弹窗内滚轮缩放、拖拽平移） · 拖动右下角拉伸
         <span className="text-neutral-300">｜</span>
         <span className="font-medium text-neutral-500">连线</span>图片→提示词/图片组 · 图片组→提示词 · 提示词→图片；提示词顶部仅一条入边，多图用图片组聚合
       </div>
 
-      <TaskCenter tasks={generationTask.tasks} onCancel={handleCancelTask} onRetryFailed={handleRetryFailed} />
-
       {/* 画布 */}
       <div className="panel-card relative min-h-0 flex-1 overflow-hidden">
-        {/* 多选批量操作：路径只作用于提示词，删除作用于全部选中节点。 */}
-        {selectedCount >= 2 && (
+        {/* 选中操作栏：任意选中 ≥1 个节点即出现；「运行所选/设置输出路径」只作用于提示词卡片，
+            图片与图片组自动忽略（混合选区不误伤）；「自动整理」局部重排选中节点；「删除所选」作用于全部。 */}
+        {selectedCount >= 1 && (
           <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-neutral-200 bg-white/95 p-1 shadow">
+            {selectedPromptCount > 0 && (
+              <button
+                type="button"
+                onClick={handleRunSelected}
+                title={`运行 ${selectedPromptCount} 张选中的提示词卡片（只运行提示词，图片/图片组忽略）`}
+                className="nodrag btn-primary !px-2 !py-1 text-xs"
+              >
+                运行所选 ({selectedPromptCount})
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => void handleSetSelectedOutputDir()}
-              disabled={!selectedPromptCount || pickingSelectedOutputDir}
-              title={selectedPromptCount ? `设置 ${selectedPromptCount} 张提示词卡片的输出路径` : "所选节点中没有提示词卡片"}
+              onClick={handleAutoLayout}
+              title="局部整理选中的节点，其余保持原位"
               className="nodrag btn-ghost !px-2 !py-1 text-xs"
             >
-              {pickingSelectedOutputDir ? "选择中..." : `设置输出路径 (${selectedPromptCount})`}
+              自动整理 ({selectedCount})
             </button>
+            {selectedPromptCount > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleSetSelectedOutputDir()}
+                disabled={pickingSelectedOutputDir}
+                title={selectedPromptCount ? `设置 ${selectedPromptCount} 张提示词卡片的输出路径` : "所选节点中没有提示词卡片"}
+                className="nodrag btn-ghost !px-2 !py-1 text-xs"
+              >
+                {pickingSelectedOutputDir ? "选择中..." : `设置输出路径 (${selectedPromptCount})`}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleDeleteSelected}
@@ -1260,7 +1308,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             setCanvasZoom(instance.getViewport().zoom);
           }}
           fitView
-          minZoom={0.2}
+          fitViewOptions={{ padding: 0.15, minZoom: MIN_FIT_ZOOM, maxZoom: 2 }}
+          minZoom={0.05}
           maxZoom={2}
           defaultEdgeOptions={{ animated: true }}
           deleteKeyCode={null}
@@ -1271,7 +1320,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
-          <Controls />
+          {/* 左下角控制钮：fitView 显式放宽 minZoom，节点再多也能一屏全览 */}
+          <Controls fitViewOptions={{ padding: 0.15, minZoom: MIN_FIT_ZOOM, maxZoom: 2 }} />
         </ReactFlow>
         {/* 右键拖拽框选的选框（画布坐标转屏幕坐标定位，pointer-events-none 不挡交互） */}
         {boxRect &&

@@ -54,10 +54,13 @@ export function buildImageNode(
   };
 }
 
-/** 注册表条目批量建节点：按 registryId 去重（同一文件画布上只一个节点） */
+/** 注册表条目批量建节点：按 registryId 去重（同一文件画布上只一个节点）。
+ *  origin 可选：把本批节点放在该坐标（画布视口中心）附近，缺省回退画布左上角 (40,40)；
+ *  批次内按 IMAGE_STEP 横向错开，批次间按已有节点数小幅错位，避免与旧节点完全重叠。 */
 export function canvasEntriesToNodes(
   entries: CanvasImageEntry[],
   existing: WorkflowNode[],
+  origin?: { x: number; y: number },
 ): WorkflowNode[] {
   const seen = new Set<string>();
   for (const node of existing) {
@@ -66,14 +69,15 @@ export function canvasEntriesToNodes(
     }
   }
   const created: WorkflowNode[] = [];
-  const baseX = 40 + existing.length * IMAGE_STEP;
+  const baseX = (origin?.x ?? 40) + (existing.length % 6) * 30;
+  const baseY = (origin?.y ?? 40) + (existing.length % 4) * 30;
   let n = 0;
   for (const entry of entries) {
     if (seen.has(entry.id)) {
       continue;
     }
     seen.add(entry.id);
-    created.push(buildImageNode(entry, { x: baseX + n * IMAGE_STEP, y: 40 }));
+    created.push(buildImageNode(entry, { x: baseX + n * IMAGE_STEP, y: baseY }));
     n += 1;
   }
   return created;

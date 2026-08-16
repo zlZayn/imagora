@@ -19,7 +19,7 @@ export interface UseGenerationTaskResult {
   cancel: (taskId: string) => Promise<void>;
   /** 读取某任务最新视图（含本地 elapsed） */
   get: (taskId: string) => GenerationTaskView | undefined;
-  /** 当前所有已注册任务（含已终态，TaskCenter 展示用） */
+  /** 当前所有已注册任务（含已终态；「全部运行」按钮的运行中判定用） */
   tasks: GenerationTaskView[];
   /** 订阅任务变化（任意状态更新 / elapsed 每秒刷新），返回取消订阅函数 */
   subscribe: (listener: (taskId: string, view: GenerationTaskView) => void) => () => void;
