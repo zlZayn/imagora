@@ -153,6 +153,25 @@ def main():
             page.wait_for_timeout(400)
             check("预览点击空白处关闭", modal.count() == 0)
 
+        # 7. 放大后（zoom>1）点图片边缘空白也应关闭（历史 bug：放大态点击被拖拽拦截）
+        page.locator(".react-flow__node-image img").first.dblclick()
+        page.wait_for_timeout(700)
+        if page.locator("img[data-zoom-image]").count() == 1:
+            # 滚轮放大
+            vp = page.viewport_size
+            page.mouse.move(round(vp["width"] / 2), round(vp["height"] / 2))
+            page.mouse.wheel(0, -400)
+            page.wait_for_timeout(300)
+            geom = page.evaluate("""() => {
+              const img = document.querySelector("img[data-zoom-image]");
+              const b = img.getBoundingClientRect();
+              return { x: b.x, y: b.y, w: b.width, h: b.height };
+            }""")
+            # 点图片右侧边缘外 20px（仍在图片容器内）
+            page.mouse.click(round(geom["x"] + geom["w"] + 20), round(geom["y"] + geom["h"] / 2))
+            page.wait_for_timeout(400)
+            check("放大后点击图片边缘空白关闭", page.locator("img[data-zoom-image]").count() == 0)
+
         browser.close()
 
     failed = [n for n, ok in results if not ok]

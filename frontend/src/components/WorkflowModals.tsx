@@ -147,11 +147,21 @@ export function ZoomModal({
   const naturalRef = useRef<{ width: number; height: number } | null>(null);
   /** 图片布局盒（fit 到容器后的实际尺寸，缩放基准） */
   const imageBoxRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
-  /** 拖拽起点与起始平移（指针捕获期间持续更新） */
-  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  /** 拖拽状态：起点、起始平移、是否已发生位移、按下位置是否在图片本体上 */
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    panX: number;
+    panY: number;
+    moved: boolean;
+    onImage: boolean;
+  } | null>(null);
   /** 图片可视区（90vw×85vh 容器，平移夹紧与缩放锚点都以它为基准） */
   const wrapRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  /** 按下未移动视为"点击"的位移阈值（px），超过才算拖拽平移 */
+  const CLICK_TOLERANCE = 5;
 
   /** 限制平移范围：数学在 previewZoom.ts:clampPreviewPan（纯函数，有单测） */
   const clampPan = useCallback((next: PreviewView): PreviewView => {
@@ -215,27 +225,43 @@ export function ZoomModal({
   }, [onClose]);
 
   const onPointerDown = (event: React.PointerEvent) => {
-    // 未放大时无需平移；按下即捕获指针，移出图片也能继续拖
+    // 未放大：不拦截，冒泡给 overlay 判定（点空白关闭 / 点图片本体不关）
     if (view.zoom <= 1) return;
+    // 放大：拦截并捕获指针用于拖拽；按下位置记录是否在图片本体（endDrag 判断点击时用）
     event.preventDefault();
     event.stopPropagation();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    dragRef.current = { startX: event.clientX, startY: event.clientY, panX: view.pan.x, panY: view.pan.y };
+    dragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: view.pan.x,
+      panY: view.pan.y,
+      moved: false,
+      onImage: event.target === imageRef.current,
+    };
     setDragging(true);
   };
   const onPointerMove = (event: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
+    // 位移超过阈值才进入平移，避免"点击"被误判为拖拽
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(dx, dy) <= CLICK_TOLERANCE) return;
+    drag.moved = true;
     setView((prev) =>
       clampPan({
         ...prev,
-        pan: { x: drag.panX + event.clientX - drag.startX, y: drag.panY + event.clientY - drag.startY },
+        pan: { x: drag.panX + dx, y: drag.panY + dy },
       }),
     );
   };
   const endDrag = () => {
+    const drag = dragRef.current;
     dragRef.current = null;
     setDragging(false);
+    // 放大态下"按下未拖动"= 点击：点在空白（非图片本体）则关闭
+    if (drag && !drag.moved && !drag.onImage) onClose();
   };
 
   /** 点击关闭判定：图片本体与按钮（控制条）不关闭，其余区域（含图片周围透明容器）都算"空白处"。
@@ -269,6 +295,7 @@ export function ZoomModal({
           }}
         >
           <img
+            ref={imageRef}
             data-zoom-image
             src={`/api/image?path=${encodeURIComponent(imagePath)}`}
             alt="预览"
