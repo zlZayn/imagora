@@ -18,8 +18,9 @@ logs/
 # 运行产物：输出图片 / 参考图缓存 / 上次路径记录
 output/
 
-# 规划/执行工件（Prometheus 计划、draft、boulder、ledger、SDD 账本）
-.omo/
+# 例外：CONTEXT.md 是跨会话交接文档，纳入版本控制（先 .omo/* 排除全部，再 ! 反选该文件）
+.omo/*
+!.omo/CONTEXT.md
 docs/superpowers/
 .superpowers/
 
