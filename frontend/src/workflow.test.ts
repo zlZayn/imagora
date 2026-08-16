@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoLayout, collectIncomingImages, extractAnimClasses, layoutPromptResults, layoutSelection, snapshotIncomingAbsPaths, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoConnect, autoLayout, collectIncomingImages, extractAnimClasses, layoutPromptResults, layoutSelection, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -474,5 +474,35 @@ describe("animation class helpers", () => {
     expect(first.className).toContain("node-enter");
     expect(first.className).toContain("enter-delay-1");
     expect(second.className).toContain("enter-delay-3");
+  });
+});
+
+describe("create position stagger", () => {
+  const center = { x: 659, y: 334.5 };
+
+  it("uses the viewport center when there is no previous position", () => {
+    expect(staggerCreatePosition(center, null)).toEqual({ position: center, next: center });
+  });
+
+  it("stacks +30px when the viewport barely moved (consecutive creates)", () => {
+    const first = staggerCreatePosition(center, null);
+    const second = staggerCreatePosition(center, first.next);
+    expect(second.position).toEqual({ x: center.x + 30, y: center.y + 30 });
+    const third = staggerCreatePosition(center, second.next);
+    expect(third.position).toEqual({ x: center.x + 60, y: center.y + 60 });
+  });
+
+  it("returns to the center after the viewport moved far away", () => {
+    const last = { x: center.x + 30, y: center.y + 30 };
+    const farCenter = { x: center.x + 3000, y: center.y - 2000 };
+    expect(staggerCreatePosition(farCenter, last)).toEqual({ position: farCenter, next: farCenter });
+  });
+
+  it("never drifts with node count (no modulo-of-total cascade)", () => {
+    // 模拟画布已有 23 个节点时创建：落点仍以中心为基准，而不是 150px 偏移
+    const last = { x: center.x + 30, y: center.y + 30 };
+    const result = staggerCreatePosition(center, last);
+    expect(Math.abs(result.position.x - center.x)).toBeLessThanOrEqual(60);
+    expect(Math.abs(result.position.y - center.y)).toBeLessThanOrEqual(60);
   });
 });

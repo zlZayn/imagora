@@ -8,6 +8,28 @@ import type {
 /** 批量导入图片节点时的错开间距（避免互相重叠） */
 const IMAGE_STEP = 260;
 
+/* ---------------- 新建节点落点：视口中心 + 连续创建阶梯错开 ----------------
+ * 纯函数：与上次落点相近（视口基本没动）时每次 +CREATE_STAGGER_STEP，
+ * 否则回到视口中心。不依赖节点总数——节点一多按总数取模偏移会越偏越远（历史 bug）。 */
+export const CREATE_STAGGER_STEP = 30;
+/** 与上次落点相距多少以内视为"连续创建"（视口没怎么动） */
+export const CREATE_STAGGER_RADIUS = 200;
+
+export function staggerCreatePosition(
+  center: { x: number; y: number },
+  last: { x: number; y: number } | null,
+): { position: { x: number; y: number }; next: { x: number; y: number } } {
+  if (
+    last &&
+    Math.abs(last.x - center.x) < CREATE_STAGGER_RADIUS &&
+    Math.abs(last.y - center.y) < CREATE_STAGGER_RADIUS
+  ) {
+    const next = { x: last.x + CREATE_STAGGER_STEP, y: last.y + CREATE_STAGGER_STEP };
+    return { position: next, next };
+  }
+  return { position: center, next: center };
+}
+
 /* ---------------- 运行期动画类：节点 className 上的视觉标记，不持久化 ---------------- */
 
 /** 动画类正则：node-enter / node-exiting / enter-delay-1..3 */

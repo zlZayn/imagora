@@ -51,6 +51,8 @@ uv run python -m main gen "a red apple on white background" -o out.png   # 单�
 uv run pytest                                # 运行后端测试（零成本，不调 API）
 uv run ruff check .                          # 后端 lint
 cd Imagora/frontend; npm test; npm run lint    # 前端测试 + lint
+uv run python -m main ui --no-browser --port 7860   # 起服务后另开终端：
+python Imagora/frontend/e2e/verify_canvas.py       # 画布核心交互 E2E（Playwright，需 pip install playwright）
 ```
 
 > 批量配置 `batch_prompts.json` 需先在产品目录准备，格式见 `core/batch.py` 与 `ARCHITECTURE.md`。

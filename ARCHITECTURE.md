@@ -235,7 +235,7 @@ main.py:handle_gen_command → api.resolve_size_with_ratio + build_default_outpu
 | `frontend/src/recovery.test.ts` | 4 | 恢复快照剥离动画类 / 运行期字段清除 |
 | `frontend/src/components/CanvasNodes.test.tsx` | 6 | 图片节点预览/替换/删除操作栏 + node-pop 内层动画容器 |
 
-未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API）、`/api/status` 探测（纯探测逻辑），编排与请求层靠 dry_run 与人工验证。画布端到端（导入/建卡/动画剥离/全选/整理不漂移）用 Playwright 冒烟脚本人工验证。
+未覆盖：`generate_image`（需真实网络与计费）、`run_batch_generation` 实际生成分支（同样需 API）、`/api/status` 探测（纯探测逻辑），编排与请求层靠 dry_run 与人工验证。画布端到端（新建/上传居中、视口不突变、右键菜单屏蔽、预览开/关）由 `frontend/e2e/verify_canvas.py` 覆盖（Playwright，需服务已启动，见 README）。
 
 ## 关键决策
 

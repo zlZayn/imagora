@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { clampPreviewPan, clampZoom } from "../previewZoom";
+
 /** 工作流条目（保存/加载弹窗共用） */
 export interface WorkflowEntry {
   name: string;
@@ -119,11 +121,8 @@ export function WorkflowLoadModal({
 /* ---------------- 放大预览：滚轮缩放 + 拖拽平移 + 适应窗口 ----------------
  * 状态收敛为一个 view 对象（zoom + pan），所有更新走同一 clampView 出口，
  * 缩放锚定指针位置（transform-origin 为图片中心时的精确补偿），放大后拖拽平移，
- * 双击复位 1:1，Esc / 点击遮罩关闭。 */
+ * 双击复位 1:1，Esc / 点击遮罩关闭。缩放与夹紧的数学在 previewZoom.ts（纯函数，有单测）。 */
 
-/** 预览缩放范围 */
-const ZOOM_MIN = 0.2;
-const ZOOM_MAX = 8;
 /** 滚轮缩放步进 */
 const ZOOM_STEP = 1.2;
 
@@ -131,8 +130,6 @@ interface PreviewView {
   zoom: number;
   pan: { x: number; y: number };
 }
-
-const clampZoom = (zoom: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
 
 export function ZoomModal({
   imagePath,
@@ -156,22 +153,16 @@ export function ZoomModal({
   const wrapRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
-  /** 限制平移范围：放大后至少让图片主体留在可视区内（中心对称夹紧） */
+  /** 限制平移范围：数学在 previewZoom.ts:clampPreviewPan（纯函数，有单测） */
   const clampPan = useCallback((next: PreviewView): PreviewView => {
     const viewport = viewportRef.current;
     if (!viewport) return next;
-    const { width: boxW, height: boxH } = imageBoxRef.current;
-    if (!boxW || !boxH) return next;
-    const scaledW = boxW * next.zoom;
-    const scaledH = boxH * next.zoom;
-    const maxX = Math.max(0, (scaledW - viewport.clientWidth) / 2);
-    const maxY = Math.max(0, (scaledH - viewport.clientHeight) / 2);
     return {
       zoom: next.zoom,
-      pan: {
-        x: Math.min(maxX, Math.max(-maxX, next.pan.x)),
-        y: Math.min(maxY, Math.max(-maxY, next.pan.y)),
-      },
+      pan: clampPreviewPan(next.pan, next.zoom, imageBoxRef.current, {
+        width: viewport.clientWidth,
+        height: viewport.clientHeight,
+      }),
     };
   }, []);
 

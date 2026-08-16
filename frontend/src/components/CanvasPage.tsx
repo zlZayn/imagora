@@ -51,6 +51,7 @@ import {
   layoutPromptResults,
   layoutSelection,
   nodeSize,
+  staggerCreatePosition,
   stripAnimClasses,
   updatePromptNode,
   updateSelectedPromptOutputDirs,
@@ -601,7 +602,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   const defaultQuality = config.qualities.includes("high") ? "high" : config.qualities[0] ?? "low";
 
   /** 最近一次新建/上传落点：连续创建时阶梯错开（每次 +30px），视口移动或隔段时间后回到中心。
-   *  不用全局节点数做偏移——节点一多新内容会越偏越远，用户感知为"不在画面中央"。 */
+   *  阶梯算法在 workflow.ts:staggerCreatePosition（纯函数，有单测）。 */
   const lastCreatePosRef = useRef<{ x: number; y: number } | null>(null);
 
   /** 新建节点定位：画布视口中心（实例未就绪回退固定坐标），连续创建阶梯错开避免完全重叠 */
@@ -614,15 +615,9 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     });
-    const last = lastCreatePosRef.current;
-    // 视口基本没动（落点与上次相近）→ 阶梯错开；否则回到视口中心
-    if (last && Math.abs(last.x - center.x) < 200 && Math.abs(last.y - center.y) < 200) {
-      const next = { x: last.x + 30, y: last.y + 30 };
-      lastCreatePosRef.current = next;
-      return next;
-    }
-    lastCreatePosRef.current = center;
-    return center;
+    const { position, next } = staggerCreatePosition(center, lastCreatePosRef.current);
+    lastCreatePosRef.current = next;
+    return position;
   }, []);
 
   /** 工具栏按钮：新建提示词卡片（视口中心定位 + 入场动画） */
@@ -1057,13 +1052,13 @@ export default function CanvasPage({ config }: CanvasPageProps) {
    * 松开时按「节点完全包含于选框」（与 React Flow 默认 selectionMode=full 一致）落定选中，
    * 直接写 selected 标记——与 Ctrl+A 全选同机制，React Flow 会同步 selection 并触发 onSelectionChange，
    * 从而刷新 selectedCount / 高亮与选中操作栏。
-   * 右键菜单屏蔽走 window 捕获阶段：拖拽期间（含指针移出画布、在工具栏/空白处松开）浏览器
-   * 默认菜单一律不弹出；画布内非输入区右键同样屏蔽（文本框/输入框保留原生粘贴/复制菜单）。 */
+   * 右键菜单屏蔽是【无状态】的：window 捕获层一律屏蔽非输入区的 contextmenu——
+   * 不依赖"按下→松开"时序（Windows 上 contextmenu 在右键松开后才触发，时序标志极易漏网），
+   * 因此拖拽出画布/在工具栏松开永远不会弹出浏览器默认菜单，也不存在状态残留。
+   * 取舍：页面其他区域（工具栏/表单）右键菜单一并屏蔽；文本框/输入框保留原生粘贴/复制菜单。 */
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
-    /** 右键是否按下（按下到松开期间全局屏蔽 contextmenu，含指针拖出画布的情况） */
-    const rightDownRef = { current: false };
 
     const onMouseDown = (event: MouseEvent) => {
       if (event.button !== 2) return;
@@ -1072,7 +1067,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       // 文本框/输入框内右键仍走原生菜单，不启动框选
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, [contenteditable]")) return;
-      rightDownRef.current = true;
       const startFlow = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
       boxSelectRef.current = { startFlow };
       setBoxRect({ x: startFlow.x, y: startFlow.y, width: 0, height: 0 });
@@ -1094,8 +1088,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     };
 
     const onMouseUp = (event: MouseEvent) => {
-      // 注意：这里不能清 rightDownRef——Windows 上 contextmenu 在右键松开之后才触发，
-      // 提前清除会让"拖出画布后松开"的默认菜单漏网；由 onWindowContextMenu 处理完再清。
       const drag = boxSelectRef.current;
       const rf = rfInstanceRef.current;
       if (!drag || !rf) return;
@@ -1127,29 +1119,17 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       });
     };
 
-    /** window 捕获阶段统一屏蔽：右键按下（含拖拽出画布后松开）任何位置都不弹浏览器菜单；
-     *  非拖拽时只屏蔽画布内非输入区（文本框/输入框保留原生粘贴/复制菜单）。
-     *  每次处理后清除右键标志，避免残留导致后续右键菜单被永久屏蔽。 */
+    /** 无状态屏蔽：非输入区的 contextmenu 一律 preventDefault（含画布内外、拖拽中/后）。
+     *  捕获阶段执行，先于一切页面监听器，浏览器默认菜单永远不出现。 */
     const onWindowContextMenu = (event: MouseEvent) => {
-      const wasRightDown = rightDownRef.current;
-      rightDownRef.current = false;
-      if (wasRightDown) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
       const target = event.target as HTMLElement | null;
       if (!target) return;
       if (target.closest("input, textarea, [contenteditable]")) return;
-      if (el.contains(target)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+      event.preventDefault();
     };
 
     // 拖拽中途窗口失焦（Alt+Tab 等）时复位，避免残留拖拽状态
     const onWindowBlur = () => {
-      rightDownRef.current = false;
       if (boxSelectRef.current) {
         boxSelectRef.current = null;
         setBoxRect(null);
