@@ -102,7 +102,7 @@ function CanvasLog({ logs }: { logs: { id: number; text: string }[] }) {
       {recent.map((log) => (
         <div
           key={log.id}
-          className="log-toast text-[11px] font-medium leading-relaxed text-brand/80 [text-shadow:0_1px_3px_rgb(255_255_255_/_0.95)]"
+          className="log-toast text-[11px] leading-relaxed text-neutral-500/75 [text-shadow:0_1px_3px_rgb(255_255_255_/_0.9)]"
         >
           {log.text}
         </div>
@@ -1248,15 +1248,16 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       {/* 画布 */}
       <div className="panel-card relative min-h-0 flex-1 overflow-hidden">
         {/* 选中操作栏：任意选中 ≥1 个节点即出现；「运行所选/设置输出路径」只作用于提示词卡片，
-            图片与图片组自动忽略（混合选区不误伤）；「自动整理」局部重排选中节点；「删除所选」作用于全部。 */}
+            图片与图片组自动忽略（混合选区不误伤）；「自动整理」局部重排选中节点；「删除所选」作用于全部。
+            半透明毛玻璃样式：悬停时更实，平时不遮挡画布内容。 */}
         {selectedCount >= 1 && (
-          <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-neutral-200 bg-white/95 p-1 shadow">
+          <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-white/50 bg-white/50 p-1 shadow-sm backdrop-blur-md transition-colors hover:bg-white/75">
             {selectedPromptCount > 0 && (
               <button
                 type="button"
                 onClick={handleRunSelected}
                 title={`运行 ${selectedPromptCount} 张选中的提示词卡片（只运行提示词，图片/图片组忽略）`}
-                className="nodrag btn-primary !px-2 !py-1 text-xs"
+                className="nodrag btn-primary !px-2 !py-1 text-xs !bg-brand/85 hover:!bg-brand"
               >
                 运行所选 ({selectedPromptCount})
               </button>
@@ -1265,7 +1266,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
               type="button"
               onClick={handleAutoLayout}
               title="局部整理选中的节点，其余保持原位"
-              className="nodrag btn-ghost !px-2 !py-1 text-xs"
+              className="nodrag btn-ghost !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
             >
               自动整理 ({selectedCount})
             </button>
@@ -1275,7 +1276,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
                 onClick={() => void handleSetSelectedOutputDir()}
                 disabled={pickingSelectedOutputDir}
                 title={selectedPromptCount ? `设置 ${selectedPromptCount} 张提示词卡片的输出路径` : "所选节点中没有提示词卡片"}
-                className="nodrag btn-ghost !px-2 !py-1 text-xs"
+                className="nodrag btn-ghost !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
               >
                 {pickingSelectedOutputDir ? "选择中..." : `设置输出路径 (${selectedPromptCount})`}
               </button>
@@ -1283,7 +1284,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
             <button
               type="button"
               onClick={handleDeleteSelected}
-              className="nodrag btn-ghost !border-red-200 !px-2 !py-1 text-xs text-red-500"
+              className="nodrag btn-ghost !border-red-300/60 !px-2 !py-1 text-xs !bg-red-50/40 text-red-500 hover:!bg-red-50/90"
             >
               删除所选 ({selectedCount})
             </button>
