@@ -16,6 +16,7 @@ from pathlib import Path
 import requests
 
 from core.config import (
+    API_PATHS,
     BASE_URL,
     DEFAULT_MODEL,
     DEFAULT_OUTPUT_DIR,
@@ -91,7 +92,7 @@ def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
     image_paths = images if images else ([image_path] if image_path else [])
     if image_paths:
         # 图生图：一张或多张参考图，一次请求提交（ExitStack 保证任一打开失败时已开的也关闭）
-        url = f"{BASE_URL}/v1/images/edits"
+        url = f"{BASE_URL}{API_PATHS['edits']}"
         with contextlib.ExitStack() as stack:
             opened = [stack.enter_context(open(p, "rb")) for p in image_paths]
             files = [
@@ -101,7 +102,7 @@ def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
             response = requests.post(url, headers=headers, files=files, data=payload, timeout=300)
     else:
         # 文生图
-        url = f"{BASE_URL}/v1/images/generations"
+        url = f"{BASE_URL}{API_PATHS['generations']}"
         response = requests.post(url, headers=headers, json=payload, timeout=300)
 
     if response.status_code != 200:

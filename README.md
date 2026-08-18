@@ -32,6 +32,25 @@ $env:AIWANWU_API_KEY = "sk-你的Key"
 
 注意：`.env` 已 git 忽略，不会泄露；未设置 Key 时调用生图会明确报错，界面顶部也会显示黄色提示条。
 
+## 切换中转站 / 多配置（profiles）
+
+工具支持**多套供应商配置并存、一行切换**，不用改代码：
+
+- **公开配置**（中转站地址 / 模型 / 尺寸 / 质量 / ratios）在 `config.json`（git 跟踪，团队共享默认）：
+  `default_profile` 指定默认用哪套，`profiles` 下可放多套（示例已含 `wanwu` 与 `other`）。
+- **密钥与本机覆盖**在 `.env`（git 忽略）：key 按 profile 命名 `API_KEY_<大写 profile 名>`（如 `API_KEY_WANWU`），
+  切换中转站时 key **自动跟随**；旧写法 `AIWANWU_API_KEY` 仍兼容。
+- **选择优先级**：环境变量 / `.env` 的 `ACTIVE_PROFILE` > `config.json` 的 `default_profile` > 内置默认。
+
+### 三种场景
+
+1. **个人临时切站**（测别的供应商）：`.env` 加两行 → 重启。不改仓库、不污染公共配置：
+   `ACTIVE_PROFILE=other` + `API_KEY_OTHER=sk-...`
+2. **团队换默认供应商**：改 `config.json` 的 `default_profile`（连同该 profile 一起提交）→ 大家 pull 后生效。
+3. **新机器初始化**：`cp .env.example .env` → 填 Key → 其余默认即可用。
+
+切换后**标题栏显示当前 profile · 模型**徽章，一眼确认生效。配置写错（未知键 / 缺 profile / JSON 格式错）会在控制台打警告并回退默认，不会静默出错。
+
 ## 快速开始
 
 **开发环境启动**：确保已安装 Python（含 `uv`）、Node.js，双击 `Imagora\启动生图工作台.cmd` 即可。脚本自动完成：

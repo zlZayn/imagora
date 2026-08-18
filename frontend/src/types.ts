@@ -12,6 +12,12 @@ export interface AppConfig {
   defaultOutputDir: string;
   /** 窗口编号（多开页面时由后端分配或沿用已有编号） */
   windowId: number;
+  /** 当前中转站 base URL（config.json profile 解析，前端展示用） */
+  baseUrl?: string;
+  /** 当前 profile 的默认模型（标题栏徽章展示，确认切换生效） */
+  defaultModel?: string;
+  /** 当前生效的配置 profile 名（config.json 多 profile，.env ACTIVE_PROFILE 可覆盖） */
+  activeProfile?: string;
 }
 
 /** 已落盘服务端的参考图（/api/upload-ref 返回；未上传成功的本地兜底 synced=false） */

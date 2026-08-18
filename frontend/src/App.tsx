@@ -39,17 +39,23 @@ function openNewWindow() {
   window.open(url.pathname + url.search, "_blank");
 }
 
-/** 顶部标题区：logo + 标题 + 窗口徽章 + 模式切换（并入标题行省空间）+ 新窗口按钮 */
+/** 顶部标题区：logo + 标题 + 窗口徽章 + 配置徽章（当前 profile·模型，确认切换中转站生效）+ 模式切换 + 新窗口按钮 */
 function TitleBar({
   windowId,
   onNewWindow,
   mode,
   onModeChange,
+  activeProfile,
+  defaultModel,
 }: {
   windowId: number | null;
   onNewWindow: () => void;
   mode: "classic" | "canvas";
   onModeChange: (m: "classic" | "canvas") => void;
+  /** 当前生效的 config.json profile 名（config.json 多 profile，换中转站后可在此确认） */
+  activeProfile?: string;
+  /** 当前 profile 的默认模型 */
+  defaultModel?: string;
 }) {
   return (
     <header className="enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-200/70 pb-3">
@@ -66,6 +72,15 @@ function TitleBar({
       {windowId !== null && (
         <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
           窗口 #{windowId}
+        </span>
+      )}
+      {activeProfile && (
+        <span
+          className="rounded-md bg-brand/10 px-2 py-0.5 font-mono text-[10px] font-medium text-brand/80"
+          title={`当前配置：profile「${activeProfile}」${defaultModel ? ` · 默认模型 ${defaultModel}` : ""}`}
+        >
+          {activeProfile}
+          {defaultModel ? ` · ${defaultModel}` : ""}
         </span>
       )}
       {/* 模式切换：紧凑分段按钮，并入标题行右侧 */}
@@ -325,7 +340,14 @@ useEffect(() => {
       className="mx-auto max-w-[1500px] px-6 py-4"
       style={{ "--color-brand": accent.brand, "--color-brand-dark": accent.brandDark } as CSSProperties}
     >
-      <TitleBar windowId={windowId} onNewWindow={handleNewWindow} mode={mode} onModeChange={switchMode} />
+      <TitleBar
+        windowId={windowId}
+        onNewWindow={handleNewWindow}
+        mode={mode}
+        onModeChange={switchMode}
+        activeProfile={config?.activeProfile}
+        defaultModel={config?.defaultModel}
+      />
 
       {healthIssues.length > 0 && (
         <div className="mb-3 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">

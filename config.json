@@ -1,0 +1,163 @@
+{
+  "default_profile": "wanwu",
+  "profiles": {
+    "wanwu": {
+      "base_url": "https://2api.aiwanwu.cc",
+      "api_paths": {
+        "generations": "/v1/images/generations",
+        "edits": "/v1/images/edits"
+      },
+      "default_model": "gpt-image-2",
+      "default_quality": "high",
+      "default_size": "1024x1024",
+      "default_tier": "2K",
+      "size_options": [
+        {
+          "value": "1024x1024",
+          "label": "1024x1024 (1:1 1K)",
+          "cost": 0.05
+        },
+        {
+          "value": "1024x1536",
+          "label": "1024x1536 (2:3 竖版)",
+          "cost": 0.1
+        },
+        {
+          "value": "1536x1024",
+          "label": "1536x1024 (3:2 横版)",
+          "cost": 0.1
+        },
+        {
+          "value": "1152x2048",
+          "label": "1152x2048 (9:16 竖版长图)",
+          "cost": 0.1
+        },
+        {
+          "value": "2048x1152",
+          "label": "2048x1152 (16:9 横版)",
+          "cost": 0.1
+        },
+        {
+          "value": "1024x1792",
+          "label": "1024x1792 (竖版长图)",
+          "cost": 0.1
+        },
+        {
+          "value": "1792x1024",
+          "label": "1792x1024 (横版长图)",
+          "cost": 0.1
+        }
+      ],
+      "quality_options": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "ratios": {
+        "1:1": {
+          "1K": "1024x1024",
+          "2K": "2048x2048"
+        },
+        "3:2": {
+          "2K": "1536x1024"
+        },
+        "2:3": {
+          "2K": "1024x1536"
+        },
+        "16:9": {
+          "2K": "2048x1152",
+          "4K": "3840x2160"
+        },
+        "9:16": {
+          "2K": "1152x2048",
+          "4K": "2160x3840"
+        },
+        "7:4": {
+          "2K": "1792x1024"
+        },
+        "4:7": {
+          "2K": "1024x1792"
+        }
+      }
+    },
+    "other": {
+      "base_url": "https://api.other-provider.example.com",
+      "api_paths": {
+        "generations": "/v1/images/generations",
+        "edits": "/v1/images/edits"
+      },
+      "default_model": "gpt-image-1",
+      "default_quality": "medium",
+      "default_size": "1024x1024",
+      "default_tier": "2K",
+      "size_options": [
+        {
+          "value": "1024x1024",
+          "label": "1024x1024 (1:1)",
+          "cost": 0.05
+        },
+        {
+          "value": "1024x1536",
+          "label": "1024x1536 (2:3)",
+          "cost": 0.1
+        },
+        {
+          "value": "1536x1024",
+          "label": "1536x1024 (3:2)",
+          "cost": 0.1
+        },
+        {
+          "value": "1152x2048",
+          "label": "1152x2048 (9:16)",
+          "cost": 0.1
+        },
+        {
+          "value": "2048x1152",
+          "label": "2048x1152 (16:9)",
+          "cost": 0.1
+        },
+        {
+          "value": "1024x1792",
+          "label": "1024x1792 (竖版长图)",
+          "cost": 0.1
+        },
+        {
+          "value": "1792x1024",
+          "label": "1792x1024 (横版长图)",
+          "cost": 0.1
+        }
+      ],
+      "quality_options": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "ratios": {
+        "1:1": {
+          "1K": "1024x1024",
+          "2K": "2048x2048"
+        },
+        "3:2": {
+          "2K": "1536x1024"
+        },
+        "2:3": {
+          "2K": "1024x1536"
+        },
+        "16:9": {
+          "2K": "2048x1152",
+          "4K": "3840x2160"
+        },
+        "9:16": {
+          "2K": "1152x2048",
+          "4K": "2160x3840"
+        },
+        "7:4": {
+          "2K": "1792x1024"
+        },
+        "4:7": {
+          "2K": "1024x1792"
+        }
+      }
+    }
+  }
+}

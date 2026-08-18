@@ -17,7 +17,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 ### 1.2 设计哲学
 
-- **配置分离**：API Key、接口地址、尺寸/质量选项、默认参数全部集中在 `core/config.py`（唯一配置源），代码中不出现明文密钥。
+- **配置分离**：公开配置（中转站地址/模型/尺寸/质量）在 `config.json`（git 跟踪、多 profile）；密钥只在 `.env` / 环境变量（git 忽略）；`core/config.py` 是唯一加载层，代码中不出现明文密钥。
 - **职责单一**：一个模块一个职责——config 管配置、api 管上游请求、tasks 管异步任务、canvas 管画布存储、logging 管日志、server 只做路由薄层、frontend 管界面。
 - **产物与代码分离**：生成图片、参考图缓存、画布图片、工作流文件全部落在 `output/`（git 忽略），不进代码库。
 - **按名管理**：每个产品一个目录，素材/批量配置/输出随产品走；工具代码跨产品共享。
@@ -41,6 +41,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `main.py` | CLI 入口：`ui` / `menu` / `batch` / `gen` 四个子命令 |
 | `server.py` | FastAPI 应用：全部 `/api/*` 路由 + 托管 `frontend/dist` |
 | `启动生图工作台.cmd` | 开发环境双击入口：构建检查 → 起服务 → 开窗 → 进入交互菜单 |
+| `config.json` | 公开配置（git 跟踪）：多 profile（中转站/模型/尺寸/质量/ratios），`default_profile` 指定公共默认 |
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块 |
 | `frontend/` | React SPA（见 2.3） |
 | `tests/` | 后端 pytest（113 用例，纯函数 + 路由，不调上游） |
@@ -119,7 +120,16 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 参考图路径白名单：`/api/generate` 的 `ref_paths` 只接受 `output/.refs/` 与 `output/.canvas/` 两个目录内的路径（逐根 commonpath 校验，跨盘 root 单独捕获不误伤），防路径穿越；与 `images` multipart 互斥、`ref_paths` 优先——图生图不二次上传大图。
 
-### 4.4 错误处理与日志
+### 4.4 配置加载层
+
+配置分层（优先级从高到低）：环境变量（含 `.env` 自动加载，已存在的环境变量不被覆盖）→ `config.json` 的 `profiles[ACTIVE_PROFILE]` → `config.json` 的 `default_profile` → 内置默认值。
+
+- `ACTIVE_PROFILE` 选择来源：`.env` / 环境变量（本机临时覆盖）> `config.json` 的 `default_profile`（git 跟踪的公共默认）。
+- profile 解析是**纯函数**（`resolve_profile_config` / `unknown_profile_keys`，有单测）：profile 缺失 / JSON 格式错 / 未知键 → 控制台警告并回退，绝不静默。
+- **密钥跟随 profile**：`get_api_key()` 按 `API_KEY_<PROFILE 大写>` → `API_KEY` → `AIWANWU_API_KEY`（旧写法兼容）逐级查找，切换中转站 key 自动跟随。
+- **铁律**：密钥只允许在 `.env` / 环境变量；`config.json` 是公开配置（git 跟踪），绝不放密钥。
+
+### 4.5 错误处理与日志
 
 统一 `core/api.py:format_error(e, limit)` 输出「类型: 消息」截断，UI 与命令行共用。每次生成（UI/批量/CLI）由 `core/logging.py` 写入 `logs/generation.jsonl`（线程锁串行），字段：时间/模式/参考图数/提示词/尺寸/质量/结果/费用/耗时/输出路径/窗口号。
 
@@ -198,7 +208,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 | 方法 | 路径 | 请求 | 响应 |
 | --- | --- | --- | --- |
-| GET | `/api/config` | `?win=`（沿用窗口号，缺省服务端分配） | sizes / qualities / defaultOutputDir（优先记住的上次输出路径，无记录按窗口分区）/ windowId |
+| GET | `/api/config` | `?win=`（沿用窗口号，缺省服务端分配） | sizes / qualities / defaultOutputDir / windowId / baseUrl / defaultModel / activeProfile（后三项来自 config.json profile 解析，前端展示确认切换生效） |
 | GET | `/api/window/next` | 无 | { windowId }（原子分配，与 config 共用计数器） |
 | GET | `/api/status` | 无 | { windowCounter }（只读最大已分配编号） |
 | POST | `/api/select-folder` | { current } | { path }（系统弹窗，取消返回原值） |
@@ -236,7 +246,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `__file__` | 代码文件位置 | `.env`、`frontend/dist` 定位 |
 
 - 默认输出目录 `WORK_ROOT/output`（config 的 DEFAULT_OUTPUT_DIR，api 与 server 共用）。
-- `.env` 由 config 自动加载，不覆盖已存在的环境变量。
+- `.env` 由 config 自动加载（不覆盖已存在的环境变量）：放密钥（`API_KEY_<PROFILE>` / 旧写法 `AIWANWU_API_KEY`）与本机覆盖（`ACTIVE_PROFILE`）；模板见 `.env.example`。
 - 路径展示统一走 `server.display_path`：相对 WORK_ROOT + 正斜杠。
 
 ## 8. 关键设计决策
@@ -320,6 +330,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 1. **taskkill /t 只杀子树不杀父**：单杀监听层会留 uv/python 宿主。规范：先回溯祖先链再连根杀。测试：test_main_process.py。
 2. **PID 文件互相覆盖**：多开脚本同时写会误杀/漏杀。规范：端口是唯一真相源，动态探测，不落 PID 文件。
 3. **多 worker 翻倍并发**：uvicorn 必须单 worker。
+4. **配置 typo 静默失效**：config.json 拼错键名/选不存在的 profile → 控制台警告 + 回退默认。规范：profile 键有白名单校验（`unknown_profile_keys`），新增键必须同步加入 config 白名单和测试。
 
 ## 10. 测试与验证
 

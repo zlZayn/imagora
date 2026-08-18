@@ -46,6 +46,9 @@ from core import canvas
 from core.api import format_error, generate_image
 from core.canvas import safe_ref_path_allowlist
 from core.config import (
+    ACTIVE_PROFILE,
+    BASE_URL,
+    DEFAULT_MODEL,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_QUALITY,
     DEFAULT_SIZE,
@@ -240,6 +243,9 @@ def get_config(win: int | None = None):
         "qualities": QUALITY_OPTIONS,
         "defaultOutputDir": default_dir,
         "windowId": window_id,
+        "baseUrl": BASE_URL,
+        "defaultModel": DEFAULT_MODEL,
+        "activeProfile": ACTIVE_PROFILE,
     }
 
 
