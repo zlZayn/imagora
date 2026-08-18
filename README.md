@@ -39,7 +39,7 @@ $env:AIWANWU_API_KEY = "sk-你的Key"
 工具支持**多套供应商配置并存、一行切换**，不用改代码：
 
 - **公开配置**（中转站地址 / 模型 / 尺寸 / 质量 / ratios）在 `config.json`（git 跟踪，团队共享默认）：
-  `default_profile` 指定默认用哪套，`profiles` 下可放多套（示例已含 `wanwu` 与 `other`）。
+  `default_profile` 指定默认用哪套，`profiles` 下可放多套（示例已含 `wanwu` 与 `other`——后者是占位示例，实际地址/模型需自行替换）。
 - **密钥与本机覆盖**在 `.env`（git 忽略）：key 按 profile 命名 `API_KEY_<大写 profile 名>`（如 `API_KEY_WANWU`），
   切换中转站时 key **自动跟随**；旧写法 `AIWANWU_API_KEY` 仍兼容。
 - **选择优先级**：环境变量 / `.env` 的 `ACTIVE_PROFILE` > `config.json` 的 `default_profile` > 内置默认。

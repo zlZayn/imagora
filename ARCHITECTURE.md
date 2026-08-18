@@ -336,18 +336,20 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-后端 `uv run pytest`（113 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，73 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
+后端 `uv run pytest`（126 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，73 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
 | `tests/test_core_api.py` | 13 | 尺寸解析 / 默认输出路径（并发唯一）/ 错误格式化 |
 | `tests/test_core_batch.py` | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
-| `tests/test_core_config.py` | 4 | API Key / RATIOS 表结构 |
+| `tests/test_core_config.py` | 14 | API Key（环境变量 / 跟随 profile / 缺失报错）/ profile 解析（优先级 / 缺失回退 / 白名单校验）/ RATIOS 表结构 |
 | `tests/test_server_helpers.py` | 21 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 |
 | `tests/test_core_logging.py` | 7 | 日志写入 / 并发串行 / 路径相对化 |
 | `tests/test_core_history.py` | 2 | 历史读取 / 坏行容忍 / 筛选 |
 | `tests/test_core_canvas.py` | 19 | 注册表 / 内容去重 / import 边界 / workflow 归一化与自愈 / recovery |
 | `tests/test_server_canvas.py` | 17 | canvas 路由 / workflow 往返 / missing 收集 / ref_paths 放行 |
+| `tests/test_core_tasks.py` | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
+| `tests/test_server_tasks.py` | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
 | `tests/test_main_process.py` | 4 | 端口探测 / 祖先链回溯 |
 | `frontend/src/workflow.test.ts` | 31 | 自动布局 / 局部整理不漂移 / 动画类 / 连线约束 / 入边收集 / 落点阶梯 |
 | `frontend/src/promptContract.test.ts` | 19 | 契约解析容错 / 尺寸映射 / 建卡 |
