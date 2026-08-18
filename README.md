@@ -29,7 +29,7 @@ Copy-Item Imagora\.env.example Imagora\.env
 **方式 2：环境变量**（仅当前终端生效）
 
 ```powershell
-$env:AIWANWU_API_KEY = "sk-你的Key"
+$env:API_KEY_WANWU = "sk-你的Key"
 ```
 
 注意：`.env` 已 git 忽略，不会泄露；未设置 Key 时调用生图会明确报错，界面顶部也会显示黄色提示条。
