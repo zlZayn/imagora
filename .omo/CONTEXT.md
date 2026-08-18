@@ -12,6 +12,8 @@
 - 前端：`types.ts` 补三个可选字段；标题栏新增「profile · 模型」徽章，切换后一眼确认生效
 - `.env.example` / README（「切换中转站」章节）/ ARCHITECTURE（4.4 配置加载层 / API 表 / 防错清单条目）同步
 
+> 文档质量：README 已按「克制、清晰、必要信息」标准收敛——画布章节删实现细节（双层守卫/registryId/存储路径/动效数值），key 示例与 .env.example 统一为 API_KEY_WANWU，多开章节去重。
+
 ## 方案讨论记录
 
 ### 用户需求
