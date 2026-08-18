@@ -13,6 +13,9 @@ import core.config as config
 def test_get_api_key_from_env(monkeypatch, tmp_path):
     """环境变量已设置 -> 直接返回"""
     monkeypatch.setattr(config, "ENV_FILE_PATH", tmp_path / "no.env")
+    monkeypatch.setattr(config, "ACTIVE_PROFILE", "wanwu")
+    monkeypatch.delenv("API_KEY_WANWU", raising=False)
+    monkeypatch.delenv("API_KEY", raising=False)
     monkeypatch.setenv(config.ENV_KEY_NAME, "sk-test")
     assert config.get_api_key() == "sk-test"
 
@@ -20,6 +23,9 @@ def test_get_api_key_from_env(monkeypatch, tmp_path):
 def test_get_api_key_missing_raises(monkeypatch, tmp_path):
     """未设置任何来源 -> 抛清晰错误"""
     monkeypatch.setattr(config, "ENV_FILE_PATH", tmp_path / "no.env")
+    monkeypatch.setattr(config, "ACTIVE_PROFILE", "wanwu")
+    monkeypatch.delenv("API_KEY_WANWU", raising=False)
+    monkeypatch.delenv("API_KEY", raising=False)
     monkeypatch.delenv(config.ENV_KEY_NAME, raising=False)
     with pytest.raises(RuntimeError, match="AIWANWU_API_KEY"):
         config.get_api_key()
@@ -71,7 +77,7 @@ def test_resolve_profile_empty_config_returns_none():
 def test_resolve_profile_no_profiles_key_warns():
     """有 default_profile 但没有 profiles 对象 -> 警告并回退"""
     with pytest.warns(UserWarning):
-        name, profile = config.resolve_profile_config({"default_profile": "wanwu"}, None)
+        _, profile = config.resolve_profile_config({"default_profile": "wanwu"}, None)
     assert profile == {}
 
 

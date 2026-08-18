@@ -132,9 +132,10 @@ ACTIVE_PROFILE, _profile = resolve_profile_config(
     _cfg, os.environ.get("ACTIVE_PROFILE")
 )
 for _k in unknown_profile_keys(_profile):
+    _available = ", ".join(sorted(_PROFILE_KEYS))
     warnings.warn(
         f"profile「{ACTIVE_PROFILE}」包含未知配置键「{_k}」，已忽略"
-        f"（可用键：{", ".join(sorted(_PROFILE_KEYS))}）"
+        f"（可用键：{_available}）"
     )
 
 
