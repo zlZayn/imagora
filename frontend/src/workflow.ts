@@ -353,7 +353,12 @@ export function autoConnect(nodes: WorkflowNode[], edges: WorkflowEdge[]): Workf
   return next;
 }
 
-/* ---------------- 自动布局：以提示词为中心的模块化布局 ---------------- */
+/* ---------------- 自动布局：按连线深度分层（广义三段式） ----------------
+ * 层号 = 从任一源点的最长路径长度（入边指向更深层）。普通三段式恰好映射到
+ * 参考图 0 / 图片组 1 / 提示词 2 / 结果 3；结果图被复用（连到图片组/别的提示词）或
+ * 出现多级链路（提示词→结果→图片组→提示词）时自动向下延伸——连线只朝下，不横穿。
+ * 未连线的孤立节点按类型保底（图片/组 0，提示词 1），保持"图在上、卡在下"的直觉。
+ * 环（结果图回连自身提示词等）容忍：DFS 回边不计层，仅连线跨层，不死循环。 */
 
 /** 各节点类型的估算尺寸（用于对齐计算，无需与实际像素完全一致） */
 const NODE_SIZES: Record<WorkflowNode["type"], { width: number; height: number }> = {
@@ -375,21 +380,45 @@ export function nodeSize(node: WorkflowNode): { width: number; height: number } 
 
 /** 布局间距参数 */
 const LAYOUT = {
-  /** 参考图与提示词之间的水平间距 */
-  refGap: 60,
-  /** 提示词与结果图之间的水平间距 */
+  /** 相邻两层（连线深度）之间的垂直间距 */
+  layerGap: 60,
+  /** 提示词与结果图之间的水平间距（layoutPromptResults 单用） */
   resultGap: 60,
-  /** 同列节点之间的垂直间距 */
+  /** 同层节点之间的水平间距 */
   nodeGap: 16,
-  /** 不同提示词组之间的垂直间距 */
-  groupGap: 60,
   /** 画布左边距 */
   leftMargin: 60,
   /** 画布上边距 */
   topMargin: 40,
-  /** 孤立节点列宽 */
-  orphanColWidth: 144,
 };
+
+/** 孤立节点的类型保底层号：图片/组在最浅层，提示词恒在其下一层（保"图在上、卡在下"直觉） */
+const TYPE_LAYER_FLOOR: Record<WorkflowNode["type"], number> = {
+  image: 0,
+  group: 0,
+  prompt: 1,
+};
+
+/** 最长路径分层（纯递归）：返回 nodeId 的层号；环回边（正在访问的节点）返回 -1 不计层 */
+function longestPathLayer(
+  nodeId: string,
+  preds: Map<string, string[]>,
+  layer: Map<string, number>,
+  visiting: Set<string>,
+): number {
+  const known = layer.get(nodeId);
+  if (known !== undefined) return known;
+  if (visiting.has(nodeId)) return -1;
+  visiting.add(nodeId);
+  let l = 0;
+  for (const pred of preds.get(nodeId) ?? []) {
+    const pl = longestPathLayer(pred, preds, layer, visiting);
+    if (pl >= 0) l = Math.max(l, pl + 1);
+  }
+  visiting.delete(nodeId);
+  layer.set(nodeId, l);
+  return l;
+}
 
 /** 只整理一个提示词的产出节点：在提示词正下方居中横排，不移动任何无关节点。 */
 export function layoutPromptResults(
@@ -428,10 +457,11 @@ export function layoutPromptResults(
   });
 }
 
-/** 全局三段式布局：
- *  参考图和图片组在上方，提示词横向排列在中间，生成结果在下方。
- *  origin 可选：把整套布局平移到该坐标（局部整理选中节点时用，选中块原地重排不跳位）。
- *  返回带新 position 的节点数组（边不变）。 */
+/** 分层布局：
+ *  按连线深度（最长路径）把节点分到逐层纵带，层内按「前驱中心均值（barycenter）」
+ *  排序并块居中放置——结果图天然对齐在提示词正下方、图片组成员对齐在组下方，
+ *  复用/多级链路自动往下延伸。origin 可选：整套布局平移到该坐标
+ *  （局部整理选中节点时用，选中块原地重排不跳位）。返回带新 position 的节点数组（边不变）。 */
 export function autoLayout(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
@@ -443,145 +473,80 @@ export function autoLayout(
   const baseX = origin ? 0 : LAYOUT.leftMargin;
   const baseY = origin ? 0 : LAYOUT.topMargin;
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const promptNodes = nodes
-    .filter((node) => node.type === "prompt")
-    .sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
-  const groupNodes = nodes
-    .filter((node) => node.type === "group")
-    .sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
-  const imageNodes = nodes.filter((node) => node.type === "image");
-  const promptIds = new Set(promptNodes.map((node) => node.id));
-  const groupIds = new Set(groupNodes.map((node) => node.id));
-  const resultIds = new Set(
-    edges
-      .filter((edge) => promptIds.has(edge.source) && byId.get(edge.target)?.type === "image")
-      .map((edge) => edge.target),
-  );
-  const topImages = imageNodes.filter((node) => !resultIds.has(node.id));
-  const positions = new Map<string, { x: number; y: number }>();
-
-  const maxHeight = (items: WorkflowNode[]) => items.reduce(
-    (height, node) => Math.max(height, nodeSize(node).height),
-    0,
-  );
-  let bandY = baseY;
-  const imageY = bandY;
-  if (topImages.length) bandY += maxHeight(topImages) + LAYOUT.refGap;
-  const groupY = bandY;
-  if (groupNodes.length) bandY += maxHeight(groupNodes) + LAYOUT.groupGap;
-  const promptY = bandY;
-  const promptHeight = maxHeight(promptNodes);
-  const resultY = promptY + promptHeight + LAYOUT.resultGap;
-
-  // 中层：提示词保持同一横排，并保留整理前的视觉顺序。
-  let promptX = baseX;
-  for (const prompt of promptNodes) {
-    positions.set(prompt.id, { x: promptX, y: promptY });
-    promptX += nodeSize(prompt).width + LAYOUT.groupGap;
+  // 入边表：只收两端都在本次节点集合内的边（局部整理时忽略指向未选中节点的边）
+  const preds = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (!byId.has(edge.source) || !byId.has(edge.target)) continue;
+    const list = preds.get(edge.target) ?? [];
+    list.push(edge.source);
+    preds.set(edge.target, list);
   }
-
-  const promptCenter = (promptId: string) => {
-    const prompt = byId.get(promptId);
-    const position = positions.get(promptId);
-    return prompt && position ? position.x + nodeSize(prompt).width / 2 : null;
-  };
-
-  // 图片组放在其关联提示词范围的水平中心；无关联组进入上层待整理区。
-  const desiredGroups = groupNodes.map((group) => {
-    const centers = edges
-      .filter((edge) => edge.source === group.id && promptIds.has(edge.target))
-      .map((edge) => promptCenter(edge.target))
-      .filter((center): center is number => center !== null);
-    const center = centers.length
-      ? (Math.min(...centers) + Math.max(...centers)) / 2
-      : baseX + nodeSize(group).width / 2;
-    return { group, desiredX: center - nodeSize(group).width / 2 };
-  }).sort((a, b) => a.desiredX - b.desiredX);
-  let groupRight = baseX;
-  for (const { group, desiredX } of desiredGroups) {
-    const x = Math.max(baseX, desiredX, groupRight);
-    positions.set(group.id, { x, y: groupY });
-    groupRight = x + nodeSize(group).width + LAYOUT.nodeGap;
-  }
-
-  interface DesiredPlacement {
-    node: WorkflowNode;
-    desiredX: number;
-  }
-  const topPlacements: DesiredPlacement[] = [];
-  const claimedTopIds = new Set<string>();
-  for (const group of groupNodes) {
-    const members = edges
-      .filter((edge) => edge.target === group.id && byId.get(edge.source)?.type === "image")
-      .map((edge) => byId.get(edge.source)!)
-      .filter((node) => !resultIds.has(node.id) && !claimedTopIds.has(node.id));
-    const groupPosition = positions.get(group.id);
-    if (!groupPosition || !members.length) continue;
-    const blockWidth = members.reduce(
-      (width, node, index) => width + nodeSize(node).width + (index ? LAYOUT.nodeGap : 0),
-      0,
-    );
-    let x = groupPosition.x + nodeSize(group).width / 2 - blockWidth / 2;
-    for (const member of members) {
-      topPlacements.push({ node: member, desiredX: x });
-      claimedTopIds.add(member.id);
-      x += nodeSize(member).width + LAYOUT.nodeGap;
-    }
-  }
-  for (const image of topImages.filter((node) => !claimedTopIds.has(node.id))) {
-    const centers = edges
-      .filter((edge) => edge.source === image.id && promptIds.has(edge.target))
-      .map((edge) => promptCenter(edge.target))
-      .filter((center): center is number => center !== null);
-    const center = centers.length
-      ? (Math.min(...centers) + Math.max(...centers)) / 2
-      : promptX + topPlacements.length * LAYOUT.nodeGap;
-    topPlacements.push({ node: image, desiredX: center - nodeSize(image).width / 2 });
-  }
-  topPlacements.sort((a, b) => a.desiredX - b.desiredX);
-  let topRight = baseX;
-  for (const { node, desiredX } of topPlacements) {
-    const x = Math.max(baseX, desiredX, topRight);
-    positions.set(node.id, { x, y: imageY });
-    topRight = x + nodeSize(node).width + LAYOUT.nodeGap;
-  }
-
-  // 下层：结果图以来源提示词为中心横向展开，跨提示词时做水平避让。
-  const resultPlacements: DesiredPlacement[] = [];
-  const claimedResultIds = new Set<string>();
-  for (const prompt of promptNodes) {
-    const results = edges
-      .filter((edge) => edge.source === prompt.id && byId.get(edge.target)?.type === "image")
-      .map((edge) => byId.get(edge.target)!)
-      .filter((node) => !claimedResultIds.has(node.id));
-    const center = promptCenter(prompt.id);
-    if (center === null || !results.length) continue;
-    const blockWidth = results.reduce(
-      (width, node, index) => width + nodeSize(node).width + (index ? LAYOUT.nodeGap : 0),
-      0,
-    );
-    let x = center - blockWidth / 2;
-    for (const result of results) {
-      resultPlacements.push({ node: result, desiredX: x });
-      claimedResultIds.add(result.id);
-      x += nodeSize(result).width + LAYOUT.nodeGap;
-    }
-  }
-  resultPlacements.sort((a, b) => a.desiredX - b.desiredX);
-  let resultRight = baseX;
-  for (const { node, desiredX } of resultPlacements) {
-    const x = Math.max(baseX, desiredX, resultRight);
-    positions.set(node.id, { x, y: resultY });
-    resultRight = x + nodeSize(node).width + LAYOUT.nodeGap;
-  }
-
-  // 防御性兜底：未识别的分组关系仍进入上层，不保留可能重叠的旧坐标。
-  let fallbackX = Math.max(topRight, groupRight, promptX) + LAYOUT.nodeGap;
+  // 1) 分层：最长路径 + 类型保底（孤立图片/组 0、提示词 1）
+  const layer = new Map<string, number>();
+  const visiting = new Set<string>();
   for (const node of nodes) {
-    if (positions.has(node.id)) continue;
-    const y = groupIds.has(node.id) ? groupY : imageY;
-    positions.set(node.id, { x: fallbackX, y });
-    fallbackX += nodeSize(node).width + LAYOUT.nodeGap;
+    const l = Math.max(
+      longestPathLayer(node.id, preds, layer, visiting),
+      TYPE_LAYER_FLOOR[node.type],
+    );
+    layer.set(node.id, l);
+  }
+  const layerGroups = new Map<number, WorkflowNode[]>();
+  for (const node of nodes) {
+    const list = layerGroups.get(layer.get(node.id) ?? 0) ?? [];
+    list.push(node);
+    layerGroups.set(layer.get(node.id) ?? 0, list);
+  }
+  const sortedLayers = [...layerGroups.keys()].sort((a, b) => a - b);
+
+  // 2) 逐层放置：层内 barycenter 排序 + 同中心块居中，层间按最大高度 + 层距错开
+  const positions = new Map<string, { x: number; y: number }>();
+  let bandY = baseY;
+  const centerOf = (node: WorkflowNode) => (positions.get(node.id)?.x ?? node.position.x) + nodeSize(node).width / 2;
+
+  for (const layerIndex of sortedLayers) {
+    const layerNodes = layerGroups.get(layerIndex)!;
+    // 期望中心：有已放置前驱（在更浅层）用前驱中心均值；无前驱（层 0 / 环回边）一律左对齐打底——
+    // 不用原始坐标，否则 origin 平移模式会双重偏移导致二次整理漂移
+    const desired = new Map<string, number>();
+    for (const node of layerNodes) {
+      const centers = (preds.get(node.id) ?? [])
+        .map((pred) => byId.get(pred))
+        .filter((pred): pred is WorkflowNode => pred !== undefined && positions.has(pred.id))
+        .map((pred) => centerOf(pred));
+      desired.set(
+        node.id,
+        centers.length
+          ? centers.reduce((sum, c) => sum + c, 0) / centers.length
+          : baseX + nodeSize(node).width / 2,
+      );
+    }
+    // 稳定排序：期望中心升序，同中心按原始 x（结果保持确定性）
+    const ordered = [...layerNodes].sort(
+      (a, b) => desired.get(a.id)! - desired.get(b.id)! || a.position.x - b.position.x,
+    );
+    // 块化放置：连续同期望中心的节点合成一块，块居中于该中心；与左侧已放节点碰撞时右移避让
+    let cursorX = baseX;
+    let i = 0;
+    while (i < ordered.length) {
+      const center = desired.get(ordered[i].id)!;
+      let j = i;
+      while (j + 1 < ordered.length && Math.abs(desired.get(ordered[j + 1].id)! - center) < 0.5) j += 1;
+      const block = ordered.slice(i, j + 1);
+      const blockWidth = block.reduce(
+        (width, node, index) => width + nodeSize(node).width + (index ? LAYOUT.nodeGap : 0),
+        0,
+      );
+      let x = Math.max(cursorX, center - blockWidth / 2);
+      for (const node of block) {
+        positions.set(node.id, { x, y: bandY });
+        x += nodeSize(node).width + LAYOUT.nodeGap;
+      }
+      cursorX = x - LAYOUT.nodeGap;
+      i = j + 1;
+    }
+    // 下一层纵带：本层最大高度 + 层距（不重叠）
+    bandY += layerNodes.reduce((height, node) => Math.max(height, nodeSize(node).height), 0) + LAYOUT.layerGap;
   }
 
   return nodes.map((node) => {
@@ -596,7 +561,7 @@ export function autoLayout(
 }
 
 /** 局部整理：只重排选中的节点，其余节点保持原位。
- *  以选中节点包围盒左上角为原点跑三段式布局（origin 平移），
+ *  以选中节点包围盒左上角为原点跑分层布局（origin 平移），
  *  未选中节点原样返回。边不变。 */
 export function layoutSelection(
   nodes: WorkflowNode[],

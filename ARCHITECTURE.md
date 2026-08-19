@@ -268,6 +268,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 8.2 画布数据模型
 
 - **独立任务模型**：连线 = 参考图输入（非执行顺序），提示词节点间无依赖，「全部运行」= 全部提交到服务端并发队列。
+- **自动整理=按连线深度分层**：`workflow.ts:autoLayout` 用**最长路径分层**（层号=入边最深路径；普通三段式恰为其特例 0/1/2/3）+ 层内 barycenter 块居中。结果图被复用（连图片组/别的提示词）或多级链路自动向下延伸——连线只朝下不横穿；环容忍（DFS 回边不计层）；孤立节点按类型保底（图/组 0、提示词 1）；无前驱节点左对齐打底（origin 平移模式二次整理不漂移）。
 - **派生路径不落盘**：图片节点只持久化 registryId，url/absPath 加载时实时重建——项目目录改名/移动后旧存档自愈；URL 构建单一入口 `canvas.image_url()`。
 - **删除分层**：删节点仅断连线不删文件；删文件是图片节点显式操作。
 - **缺图守卫**：参考图文件缺失时明确报错中止运行，不静默跳过导致不带参考图生成错误结果。
@@ -364,7 +365,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_core_tasks.py` | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
 | `tests/test_server_tasks.py` | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
 | `tests/test_main_process.py` | 4 | 端口探测 / 祖先链回溯 |
-| `frontend/src/workflow.test.ts` | 36 | 自动布局 / 局部整理不漂移 / 动画类 / 连线约束 / 入边收集 / 落点阶梯 / 图片文件识别 / 节点构建器（提示词/图片组） |
+| `frontend/src/workflow.test.ts` | 41 | 自动布局 / 复杂连接分层（结果图复用/多级链路/环容忍/结果块居中）/ 局部整理不漂移 / 动画类 / 连线约束 / 入边收集 / 落点阶梯 / 图片文件识别 / 节点构建器 |
 | `frontend/src/canvasDrop.test.ts` | 11 | 拖拽意图解析（文件/工具栏/放行+回退）/ 文件识别 / 数量统计 / 落点示意文案 |
 | `frontend/src/promptContract.test.ts` | 19 | 契约解析容错 / 尺寸映射 / 建卡 |
 | `frontend/src/previewZoom.test.ts` | 5 | 缩放范围 / 平移夹紧 |

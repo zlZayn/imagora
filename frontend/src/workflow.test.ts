@@ -241,6 +241,86 @@ describe("auto layout", () => {
   });
 });
 
+describe("auto layout complex connections", () => {
+  function groupNode(id: string): WorkflowNode {
+    return {
+      id,
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { name: id, imageCount: 0, totalSize: 0 },
+    } as WorkflowNode;
+  }
+
+  it("keeps a reused result flowing downward (prompt → result → group → prompt) instead of crossing back up", () => {
+    const nodes = [promptNode("p1"), imageNode("result"), groupNode("group"), promptNode("p2")];
+    const edges = [edge("p1", "result"), edge("result", "group"), edge("group", "p2")];
+
+    const arranged = autoLayout(nodes, edges);
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    expect(byId.get("p1")!.position.y).toBeLessThan(byId.get("result")!.position.y);
+    expect(byId.get("result")!.position.y).toBeLessThan(byId.get("group")!.position.y);
+    expect(byId.get("group")!.position.y).toBeLessThan(byId.get("p2")!.position.y);
+  });
+
+  it("lays out multi-level chains strictly downward (image → prompt → result → group → prompt → result)", () => {
+    const nodes = [imageNode("img"), promptNode("p1"), imageNode("r1"), groupNode("group"), promptNode("p2"), imageNode("r2")];
+    const edges = [
+      edge("img", "p1"),
+      edge("p1", "r1"),
+      edge("r1", "group"),
+      edge("group", "p2"),
+      edge("p2", "r2"),
+    ];
+
+    const arranged = autoLayout(nodes, edges);
+    const ys = arranged.map((node) => node.position.y);
+    for (let i = 1; i < ys.length; i += 1) {
+      expect(ys[i - 1]).toBeLessThan(ys[i]);
+    }
+  });
+
+  it("places a result reused as a direct reference below its source prompt", () => {
+    const nodes = [promptNode("p1"), imageNode("img"), promptNode("p2")];
+    const edges = [edge("p1", "img"), edge("img", "p2")];
+
+    const arranged = autoLayout(nodes, edges);
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    expect(byId.get("p1")!.position.y).toBeLessThan(byId.get("img")!.position.y);
+    expect(byId.get("img")!.position.y).toBeLessThan(byId.get("p2")!.position.y);
+  });
+
+  it("tolerates a cycle (result fed back as its own reference) without hanging", () => {
+    const nodes = [promptNode("p1"), imageNode("img")];
+    const edges = [edge("p1", "img"), edge("img", "p1")];
+
+    const arranged = autoLayout(nodes, edges);
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    for (const id of ["p1", "img"]) {
+      expect(Number.isFinite(byId.get(id)!.position.x)).toBe(true);
+      expect(Number.isFinite(byId.get(id)!.position.y)).toBe(true);
+    }
+  });
+
+  it("centers multiple results as a block under their prompt", () => {
+    const p1 = { ...promptNode("p1"), position: { x: 400, y: 300 } } as WorkflowNode;
+    const nodes = [p1, imageNode("r1"), imageNode("r2")];
+    const edges = [edge("p1", "r1"), edge("p1", "r2")];
+
+    const arranged = autoLayout(nodes, edges);
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    const promptCenter = byId.get("p1")!.position.x + 300 / 2;
+    const first = byId.get("r1")!;
+    const second = byId.get("r2")!;
+    const blockCenter = (first.position.x + 144 / 2 + second.position.x + 144 / 2) / 2;
+    expect(Math.abs(blockCenter - promptCenter)).toBeLessThanOrEqual(3);
+    expect(first.position.y).toBe(second.position.y);
+  });
+});
+
 describe("layout selection", () => {
   it("re-arranges only selected nodes, leaving unselected positions untouched", () => {
     const reference = { ...imageNode("reference"), position: { x: 10, y: 20 } } as WorkflowNode;
