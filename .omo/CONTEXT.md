@@ -4,7 +4,9 @@
 
 ## 当前工作（2026-08-13，画布拖拽添加：文件多图 + 工具栏按钮拖出）
 
-**画布「拖拽添加」已统一：前端 tsc / lint / build 全绿、78 用例通过，E2E 26/26 PASS。**
+**画布「拖拽添加」已统一并完成结构重构：前端 tsc / lint / build 全绿、89 用例通过，E2E 31/31 PASS，git 分步提交（feat → refactor×2）。**
+
+- **代码结构**：拖拽接线收敛到 `useCanvasDrop.tsx` hook（含落点示意/意图解析/窗口守卫/工作区四事件），纯逻辑在 `canvasDrop.ts`（11 单测），CanvasPage 只留建节点回调——组件瘦身 ~200 行，命名统一用长而明确的描述性命名
 
 - **文件拖拽多图**：拖本地图片（可多张）到画布任意位置松开即添加；**落点 = 鼠标松开处**（首个图片左上角，多图从落点向右排开 IMAGE_STEP=260）
 - **工具栏按钮拖出**：新建提示词卡片 / 新建图片组可拖到画布任意位置松开即建（点击仍自动居中）；dataTransfer 自定义类型 `application/x-imagora-canvas`（值 prompt/group）；节点构建走 `workflow.ts:buildPromptNode/buildGroupNode`（与点击新建同一构建，默认参数收敛为 `promptNodeDefaults`）
@@ -21,10 +23,14 @@
 | 文件 | 内容 |
 |---|---|
 | `frontend/src/workflow.ts` | `isImageFile`（MIME + 扩展名兜底）；`buildPromptNode` / `buildGroupNode`（点击/拖放共用构建） |
-| `frontend/src/workflow.test.ts` | `isImageFile` 3 用例 + 节点构建器 2 用例（78 总计，原 73） |
-| `frontend/src/index.css` | 画布光标重设计（细十字 + 白描边 + 中心品牌色加号）；落点示意（chip-in）；`.btn-draggable` 悬浮暗示（呼吸光晕 + 拖拽图标）；文件拖拽切 `copy` 光标 |
-| `frontend/src/components/CanvasPage.tsx` | 落点示意统一机制（showDropChip/hideDropChip/positionDropChip，portal + transform 直写）；文件 + 工具栏拖拽四事件；`dropPointFromEvent` / `handleCanvasDropFiles` / `handleCanvasDropNode` / `handleToolbarDragStart`；ToolbarButton 支持 dragStart/dragEnd |
-| `frontend/e2e/verify_canvas.py` | 第 8 节（文件拖拽）+ 第 9 节（工具栏拖出）：示意显隐/数量/跟随、落点精确、多图排开、非图片过滤、按钮拖起即显示、松开即建 |
+| `frontend/src/workflow.test.ts` | `isImageFile` 3 用例 + 节点构建器 2 用例 |
+| `frontend/src/canvasDrop.ts` | 拖拽纯函数模块：`CANVAS_DRAG_MIME` / `CanvasDropIntent` / `resolveDropIntent`（含 fallback 回退）/ `dragCarriesFiles` / `countDraggedFiles` / `extractImageFiles` / `dropChipLabel` |
+| `frontend/src/canvasDrop.test.ts` | 11 用例（桩 dataTransfer，只依赖类型契约） |
+| `frontend/src/useCanvasDrop.tsx` | 拖拽接线 hook：落点示意（显隐/定位/文案）、意图解析、window 守卫、工作区四事件；节点构建回调上抛 |
+| `frontend/src/index.css` | 画布光标（细十字+品牌色加号）；落点示意（chip-in）；`.btn-draggable` 悬浮暗示；文件拖拽切 `copy` 光标 |
+| `frontend/src/components/CanvasPage.tsx` | 瘦身 ~200 行：拖拽接线移入 useCanvasDrop；`handleDropFiles`/`handleDropNode` 只负责建节点 |
+| `frontend/e2e/verify_canvas.py` | 第 8-11 节：文件拖拽 / 工具栏拖出 / 真实鼠标 DnD / 拖到 UI 区域落点夹紧；真实拖拽断言等待加长到 300ms 防动画时序 flake |
+| `README.md` / `ARCHITECTURE.md` / `.omo/CONTEXT.md` | 用户视角 + 架构决策（2.3 模块表 / 5.4 / 10.1 用例数）+ 交接记录 |
 
 ## 历史工作（已提交，仅备忘）
 
@@ -37,9 +43,9 @@
 |---|---|
 | 前端 tsc / build | 通过 |
 | 前端 lint | 零告警 |
-| 前端 test | 78 passed（原 73 + 5） |
+| 前端 test | 89 passed（原 73 + 16；含 canvasDrop 11 用例） |
 | 后端 ruff | `uv run ruff check .` 零告警 |
-| E2E verify_canvas.py | **31/31 PASS**（含真实鼠标拖拽 3 条：原生 HTML5 DnD 管线 + 拖到 UI 区域落点夹紧画布顶边）；venv 已装 playwright + chromium headless |
+| E2E verify_canvas.py | **31/31 PASS**（含真实鼠标拖拽、拖到 UI 区域落点夹紧）；venv 已装 playwright + chromium headless |
 
 > E2E 运行方式：起服务（`.venv\Scripts\python.exe -m main ui --no-browser --port 7860`）后另开终端 `.venv\Scripts\python.exe frontend\e2e\verify_canvas.py`。拖拽断言用 DataTransfer + DragEvent 模拟（文件内容用 `crypto.getRandomValues` 防注册表去重影响重复运行）。
 

@@ -21,8 +21,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { GripVertical, Layers, Plus, Type } from "lucide-react";
-import { createPortal } from "react-dom";
+import { GripVertical } from "lucide-react";
 
 import {
   canvasUpload,
@@ -36,6 +35,7 @@ import { createCanvasHistory } from "../canvasHistory";
 import { errMessage } from "../format";
 import { useGenerationTask, type GenerationTaskView } from "../useGenerationTask";
 import { useCanvasRecovery } from "../useCanvasRecovery";
+import { useCanvasDrop } from "../useCanvasDrop";
 import type {
   AppConfig,
   CanvasPromptNodeData,
@@ -62,15 +62,6 @@ import {
   withEnterAnim,
   workflowToCanvas,
 } from "../workflow";
-import {
-  CANVAS_DRAG_MIME,
-  countDraggedFiles,
-  dragCarriesFiles,
-  dropChipLabel,
-  extractImageFiles,
-  resolveDropIntent,
-  type CanvasDropIntent,
-} from "../canvasDrop";
 import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 import HistoryGallery from "./HistoryGallery";
 import { PromptImportModal } from "./PromptImportModal";
@@ -205,16 +196,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   /** 替换图片：待替换的目标节点 + 专用文件选择 */
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const pendingReplaceRef = useRef<string | null>(null);
-  /** 文件拖拽添加图片：拖入画布时是否显示「松开添加图片」落点示意（跟随光标的小胶囊） */
-  const [dropIntent, setDropIntent] = useState<CanvasDropIntent | null>(null);
-  /** 落点意图的最新引用：window 级 dragover 跟随等回调经 ref 读取（避免闭包过期） */
-  const dropIntentRef = useRef<CanvasDropIntent | null>(null);
-  /** 拖拽进入/离开计数：dragenter/dragleave 在子元素间移动会成对触发，用计数平衡避免示意闪烁（仅文件拖拽用） */
-  const dragDepthRef = useRef(0);
-  /** 落点示意（跟随光标的小胶囊）：外层元素，位置由 JS 直接写 transform（高频拖拽不触发 React 渲染） */
-  const dropChipRef = useRef<HTMLDivElement>(null);
-  /** 落点示意文案（图片数量 / 新建类型） */
-  const dropChipTextRef = useRef<HTMLSpanElement>(null);
 
   /** 待真正移除的节点 id -> 定时器（退场动画播完后再删；撤销/恢复/卸载需清理） */
   const pendingRemovalRef = useRef<Map<string, number>>(new Map());
@@ -657,78 +638,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     return position;
   }, []);
 
-  /* ---------------- 落点示意（文件拖拽 / 工具栏拖出共用同一胶囊） ----------------
-   * 位置由 JS 直接写 fixed 元素的 transform（高频 dragover 不触发 React 渲染）；
-   * intent 决定 drop 行为与图标，label 决定文案，两者只在拖拽起止等低频事件里变化。 */
-
-  /** 显示落点示意：intent 决定 drop 行为与图标，label 决定文案（图片数量 / 新建类型） */
-  const showDropChip = useCallback((intent: CanvasDropIntent, label: string) => {
-    dropIntentRef.current = intent;
-    setDropIntent(intent);
-    const text = dropChipTextRef.current;
-    if (text && text.textContent !== label) text.textContent = label;
-  }, []);
-
-  /** 隐藏落点示意（drop / dragend / 失焦 / 文件拖拽离开工作区） */
-  const hideDropChip = useCallback(() => {
-    dropIntentRef.current = null;
-    setDropIntent(null);
-  }, []);
-
-  /** 落点示意跟随光标：直接写 fixed 定位元素的 transform（不进 React 状态，只做合成器层位移）；
-   *  贴近视口右/下边缘时向内收，保证胶囊完整可见；偏移比鼠标略大（22/28px），避免被拖拽虚影遮挡。 */
-  const positionDropChip = useCallback((clientX: number, clientY: number) => {
-    const chip = dropChipRef.current;
-    if (!chip) return;
-    const x = Math.min(clientX + 22, window.innerWidth - chip.offsetWidth - 8);
-    const y = Math.min(clientY + 28, window.innerHeight - chip.offsetHeight - 8);
-    chip.style.transform = `translate(${Math.max(8, x)}px, ${Math.max(8, y)}px)`;
-  }, []);
-
-  /** 拖放落点换算：屏幕坐标 → 画布坐标；落点在工作区但画布外（工具栏/帮助栏）时先夹紧到画布边缘，
-   *  保证节点始终落在可见画布内（实例未就绪回退视口中心定位）。 */
-  const dropPointFromEvent = useCallback(
-    (event: { clientX: number; clientY: number }) => {
-      const rf = rfInstanceRef.current;
-      const el = canvasRef.current;
-      if (!rf || !el) return getCreatePosition();
-      const rect = el.getBoundingClientRect();
-      const x = Math.min(Math.max(event.clientX, rect.left), rect.left + rect.width);
-      const y = Math.min(Math.max(event.clientY, rect.top), rect.top + rect.height);
-      return rf.screenToFlowPosition({ x, y });
-    },
-    [getCreatePosition],
-  );
-
-  /** 文件拖放落画布：上传画布注册表 → 以「鼠标松开处」为落点建节点。
-   *  图片过滤与落点换算已由拖拽接线完成（extractImageFiles / dropPointFromEvent），
-   *  批次内沿用 canvasEntriesToNodes 横向排开，与上传/导入/新建共用同一去重逻辑。 */
-  const handleCanvasDropFiles = useCallback(
-    async (event: { clientX: number; clientY: number; dataTransfer: DataTransfer | null }) => {
-      const files = extractImageFiles(event.dataTransfer);
-      if (!files.length) {
-        pushLog("未检测到图片文件，拖拽未添加任何图片");
-        return;
-      }
-      try {
-        const { images } = await canvasUpload(files);
-        if (!images.length) {
-          pushLog("拖拽添加图片失败：上传未返回图片");
-          return;
-        }
-        recordHistory();
-        const dropPoint = dropPointFromEvent(event);
-        setNodes((nds) => [
-          ...nds,
-          ...canvasEntriesToNodes(images, nds, dropPoint).map((n, i) => withEnterAnim(n, i)),
-        ]);
-        pushLog(`已拖放 ${images.length} 张图片到画布`);
-      } catch (err) {
-        pushLog(`拖拽添加图片失败：${errMessage(err)}`);
-      }
-    },
-    [dropPointFromEvent, pushLog, recordHistory, setNodes],
-  );
+  /* ---------------- 拖放落画布（接线在 useCanvasDrop：意图解析 / 落点换算 / 示意 / 窗口守卫） ----------------
+   * 这里只负责"节点怎么建"，与点击新建共用同一构建函数与去重逻辑。 */
 
   /** 提示词节点默认参数：点击居中新建与工具栏拖放新建共用同一构建（buildPromptNode） */
   const promptNodeDefaults = useMemo(
@@ -740,11 +651,33 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     [config, defaultQuality],
   );
 
-  /** 工具栏按钮拖放落画布：以松开处为落点新建提示词卡片 / 图片组（与点击新建同一构建函数） */
-  const handleCanvasDropNode = useCallback(
-    (event: { clientX: number; clientY: number }, kind: "prompt" | "group") => {
+  /** 文件拖放落画布：上传画布注册表 → 以落点为起点建节点（files 已过滤、落点已夹紧，由 hook 传入）。
+   *  批次内沿用 canvasEntriesToNodes 横向排开，与上传/导入/新建共用同一去重逻辑。 */
+  const handleDropFiles = useCallback(
+    async (files: File[], dropPoint: { x: number; y: number }) => {
+      try {
+        const { images } = await canvasUpload(files);
+        if (!images.length) {
+          pushLog("拖拽添加图片失败：上传未返回图片");
+          return;
+        }
+        recordHistory();
+        setNodes((nds) => [
+          ...nds,
+          ...canvasEntriesToNodes(images, nds, dropPoint).map((n, i) => withEnterAnim(n, i)),
+        ]);
+        pushLog(`已拖放 ${images.length} 张图片到画布`);
+      } catch (err) {
+        pushLog(`拖拽添加图片失败：${errMessage(err)}`);
+      }
+    },
+    [pushLog, recordHistory, setNodes],
+  );
+
+  /** 工具栏按钮拖放落画布：以落点为起点新建提示词卡片 / 图片组（与点击新建同一构建函数） */
+  const handleDropNode = useCallback(
+    (kind: "prompt" | "group", dropPoint: { x: number; y: number }) => {
       recordHistory();
-      const dropPoint = dropPointFromEvent(event);
       setNodes((nds) => [
         ...nds,
         withEnterAnim(
@@ -754,19 +687,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       ]);
       pushLog(kind === "prompt" ? "已新建提示词卡片" : "已新建图片组");
     },
-    [dropPointFromEvent, promptNodeDefaults, pushLog, recordHistory, setNodes],
-  );
-
-  /** 工具栏按钮拖起：登记拖拽类型 → 显示落点示意（portal 全局跟随，不限于画布内） */
-  const handleToolbarDragStart = useCallback(
-    (kind: "prompt" | "group") =>
-      (event: React.DragEvent<HTMLButtonElement>) => {
-        event.dataTransfer.setData(CANVAS_DRAG_MIME, kind);
-        event.dataTransfer.effectAllowed = "copy";
-        showDropChip(kind, dropChipLabel(kind, 0));
-        positionDropChip(event.clientX, event.clientY);
-      },
-    [positionDropChip, showDropChip],
+    [promptNodeDefaults, pushLog, recordHistory, setNodes],
   );
 
   /** 工具栏按钮：新建提示词卡片（视口中心定位 + 入场动画；也可拖出到画布任意位置） */
@@ -1277,39 +1198,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     };
   }, [setNodes]);
 
-  /* ---------------- 拖拽兜底：窗口级拦截 + 全局跟随 + 状态复位 ----------------
-   * 1) 拖拽文件时在 window 层 preventDefault：落到画布外（工具栏/帮助栏等）不会触发浏览器
-   *    「打开文件」导航（会丢掉整个画布）；只拦截携带 Files 的拖拽，文本拖拽进输入框不受影响。
-   * 2) 工具栏拖出时落点示意【全局】跟随光标：任何位置的 dragover 都更新胶囊位置（不 preventDefault）。
-   * 3) dragend / 窗口失焦时复位拖拽状态：文件拖出浏览器窗口或按 Esc 取消时没有 drop 事件，
-   *    计数可能残留，这里统一归零，保证下次拖拽状态干净。 */
-  useEffect(() => {
-    const preventFileDrop = (event: DragEvent) => {
-      if (dragCarriesFiles(event)) event.preventDefault();
-    };
-    const positionToolbarDrag = (event: DragEvent) => {
-      if (dropIntentRef.current && dropIntentRef.current !== "images") {
-        positionDropChip(event.clientX, event.clientY);
-      }
-    };
-    const resetDragState = () => {
-      dragDepthRef.current = 0;
-      hideDropChip();
-    };
-    window.addEventListener("dragover", preventFileDrop);
-    window.addEventListener("dragover", positionToolbarDrag);
-    window.addEventListener("drop", preventFileDrop);
-    window.addEventListener("dragend", resetDragState);
-    window.addEventListener("blur", resetDragState);
-    return () => {
-      window.removeEventListener("dragover", preventFileDrop);
-      window.removeEventListener("dragover", positionToolbarDrag);
-      window.removeEventListener("drop", preventFileDrop);
-      window.removeEventListener("dragend", resetDragState);
-      window.removeEventListener("blur", resetDragState);
-    };
-  }, [hideDropChip, positionDropChip]);
-
   /* ---------------- 渲染 ---------------- */
   const nodeTypes = useMemo(
     () => ({
@@ -1349,59 +1237,24 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     ],
   );
 
-  /* ---------------- 拖放接管挂在整个工作区（含工具栏/帮助栏）：落点夹紧到画布，UI 上不再出现浏览器禁止标志 ----------------
-   * 文本/无关拖拽放行（输入框原生行为不受影响）；弹窗打开时暂停接管，避免误落到弹窗背后。 */
+  /* ---------------- 拖放接管（useCanvasDrop：意图解析/落点示意/窗口守卫/工作区四事件） ----------------
+   * 挂在整个工作区（含工具栏/帮助栏）：落点夹紧到画布，UI 上不再出现浏览器禁止标志；
+   * 文本/无关拖拽放行；弹窗打开时暂停接管，避免误落到弹窗背后。 */
   const modalOpen = showSaveModal || showLoadModal || showImportModal || showHistory || zoomImage !== null;
+  const { dropIntent, dropChip, dragHandlers, startToolbarDrag, hideDropChip } = useCanvasDrop({
+    canvasRef,
+    rfInstanceRef,
+    modalOpen,
+    getCreatePosition,
+    onDropFiles: handleDropFiles,
+    onDropNode: handleDropNode,
+    onLog: pushLog,
+  });
 
   return (
     <div
       className={`flex h-[calc(100vh-130px)] flex-col gap-2 ${dropIntent ? "canvas-drop-active" : ""}`}
-      onDragEnter={(e) => {
-        if (modalOpen) return;
-        const kind = resolveDropIntent(e, dropIntentRef.current);
-        if (!kind) return;
-        e.preventDefault();
-        if (kind === "images") {
-          dragDepthRef.current += 1;
-          showDropChip(kind, dropChipLabel(kind, countDraggedFiles(e.dataTransfer)));
-        } else {
-          // 工具栏拖出：示意已由 dragstart 显示（全局跟随），这里只允许 drop 生效
-          showDropChip(kind, dropChipLabel(kind, 0));
-        }
-        positionDropChip(e.clientX, e.clientY);
-      }}
-      onDragOver={(e) => {
-        if (modalOpen) return;
-        const kind = resolveDropIntent(e, dropIntentRef.current);
-        if (!kind) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "copy";
-        positionDropChip(e.clientX, e.clientY);
-      }}
-      onDragLeave={(e) => {
-        if (modalOpen) return;
-        // 只对文件拖拽做计数平衡：离开工作区即隐藏示意；工具栏拖出示意全局跟随，不在这里隐藏
-        if (resolveDropIntent(e, dropIntentRef.current) === "images") {
-          dragDepthRef.current -= 1;
-          if (dragDepthRef.current <= 0) {
-            dragDepthRef.current = 0;
-            hideDropChip();
-          }
-        }
-      }}
-      onDrop={(e) => {
-        if (modalOpen) return;
-        const kind = resolveDropIntent(e, dropIntentRef.current);
-        if (!kind) return;
-        e.preventDefault();
-        dragDepthRef.current = 0;
-        hideDropChip();
-        if (kind === "images") {
-          void handleCanvasDropFiles(e);
-        } else {
-          handleCanvasDropNode(e, kind);
-        }
-      }}
+      {...dragHandlers}
     >
       {/* 工具栏：左侧创建，右侧工作流操作（按使用习惯分区） */}
       <div className="flex flex-wrap items-start gap-2">
@@ -1434,14 +1287,14 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           <ToolbarButton onClick={() => setShowImportModal(true)}>粘贴导入</ToolbarButton>
           <ToolbarButton
             onClick={handleCreatePrompt}
-            dragStart={handleToolbarDragStart("prompt")}
+            dragStart={(e) => startToolbarDrag(e, "prompt")}
             dragEnd={hideDropChip}
           >
             新建提示词卡片
           </ToolbarButton>
           <ToolbarButton
             onClick={handleCreateGroup}
-            dragStart={handleToolbarDragStart("group")}
+            dragStart={(e) => startToolbarDrag(e, "group")}
             dragEnd={hideDropChip}
           >
             新建图片组
@@ -1547,31 +1400,8 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           {/* 左下角控制钮：fitView 显式放宽 minZoom，节点再多也能一屏全览 */}
           <Controls fitViewOptions={{ padding: 0.15, minZoom: MIN_FIT_ZOOM, maxZoom: 2 }} />
         </ReactFlow>
-        {/* 拖拽落点示意：跟随光标的小胶囊（文件拖入 = 图片数量；工具栏拖出 = 新建类型）。
-            portal 到 body + fixed 定位，工具栏拖出时可全局跟随（不限于画布内）；
-            外层由 positionDropChip 直接写 transform（不触发 React 渲染），内层负责外观与入场动画。 */}
-        {createPortal(
-          <div
-            ref={dropChipRef}
-            data-drop-chip
-            aria-hidden
-            className="pointer-events-none fixed left-0 top-0 z-[9999] w-max will-change-transform"
-          >
-            <div
-              className={`canvas-drop-chip flex items-center gap-2 rounded-full border border-brand/40 bg-white/95 px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-md ${dropIntent ? "show" : ""}`}
-            >
-              {dropIntent === "prompt" ? (
-                <Type size={15} strokeWidth={2.5} className="text-brand" />
-              ) : dropIntent === "group" ? (
-                <Layers size={15} strokeWidth={2.5} className="text-brand" />
-              ) : (
-                <Plus size={15} strokeWidth={3} className="text-brand" />
-              )}
-              <span ref={dropChipTextRef} className="whitespace-nowrap">松开添加图片</span>
-            </div>
-          </div>,
-          document.body,
-        )}
+        {/* 拖拽落点示意（useCanvasDrop 提供：portal 到 body 跟随光标，显示图片数量/新建类型） */}
+        {dropChip}
         {/* 右键拖拽框选的选框（画布坐标转屏幕坐标定位，pointer-events-none 不挡交互） */}
         {boxRect &&
           (() => {

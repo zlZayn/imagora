@@ -345,7 +345,8 @@ def main():
         page.mouse.move(start_x, start_y)
         page.mouse.down()
         page.mouse.move(real_x, real_y, steps=10)
-        page.wait_for_timeout(150)
+        # 等足入场动画（chip-in 0.18s）+ React 提交，避免读到动画中途的 opacity
+        page.wait_for_timeout(300)
         check("真实拖拽显示落点示意", chip_opacity() == "1")
         page.mouse.up()
         page.wait_for_timeout(700)
@@ -364,7 +365,7 @@ def main():
         page.mouse.down()
         ui_x = rf_box["x"] + rf_box["width"] * 0.5
         page.mouse.move(ui_x, rf_box["y"] - 30, steps=8)
-        page.wait_for_timeout(150)
+        page.wait_for_timeout(300)
         check("拖到UI区域仍显示落点示意", chip_opacity() == "1")
         page.mouse.up()
         page.wait_for_timeout(700)
