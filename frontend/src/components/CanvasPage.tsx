@@ -52,7 +52,6 @@ import {
   collectIncomingImages,
   computeCounts,
   extractAnimClasses,
-  isImageFile,
   layoutPromptResults,
   layoutSelection,
   nodeSize,
@@ -63,6 +62,15 @@ import {
   withEnterAnim,
   workflowToCanvas,
 } from "../workflow";
+import {
+  CANVAS_DRAG_MIME,
+  countDraggedFiles,
+  dragCarriesFiles,
+  dropChipLabel,
+  extractImageFiles,
+  resolveDropIntent,
+  type CanvasDropIntent,
+} from "../canvasDrop";
 import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 import HistoryGallery from "./HistoryGallery";
 import { PromptImportModal } from "./PromptImportModal";
@@ -74,40 +82,6 @@ const FADE_DURATION = 200;
 
 /** fitView 允许的最小缩放：画布节点很多时仍能一屏全览（低于 ReactFlow minZoom 属性，仅 fitView 生效） */
 const MIN_FIT_ZOOM = 0.02;
-
-/** 工具栏统一拖拽自定义类型（dataTransfer 值 = prompt | group，落画布时据此新建对应节点） */
-const CANVAS_DRAG_MIME = "application/x-imagora-canvas";
-
-/** 落画布拖拽意图：images = 文件拖入；prompt/group = 工具栏按钮拖出 */
-type CanvasDropIntent = "images" | "prompt" | "group";
-
-/** 工具栏拖出按钮的落点示意文案（与文件拖拽同款胶囊，文案按类型区分） */
-const TOOLBAR_DRAG_LABELS: Record<"prompt" | "group", string> = {
-  prompt: "松开新建提示词卡片",
-  group: "松开新建图片组",
-};
-
-/** 拖拽事件是否携带文件（不拦截文本拖拽/内部拖拽：只有 Files 类型的拖拽才需要接管） */
-function dragHasFiles(event: { dataTransfer: DataTransfer | null }): boolean {
-  return event.dataTransfer?.types.includes("Files") ?? false;
-}
-
-/** 当前拖拽的落画布意图：文件拖入 = images；工具栏拖出 = prompt/group；其他（文本拖拽等）= null 放行 */
-function dragKindFromEvent(event: { dataTransfer: DataTransfer | null }): CanvasDropIntent | null {
-  if (dragHasFiles(event)) return "images";
-  const kind = event.dataTransfer?.getData(CANVAS_DRAG_MIME);
-  return kind === "prompt" || kind === "group" ? kind : null;
-}
-
-/** 文件拖拽落点示意文案：拖入几张文件就显示几张。
- *  注意 dragover 阶段 dataTransfer.files 为空（浏览器延迟到 drop 才填充），
- *  数量只能从 dataTransfer.items（kind === "file"）统计，与 drop 时的 isImageFile 过滤解耦。 */
-function imageDropLabel(dataTransfer: DataTransfer | null): string {
-  const count = dataTransfer
-    ? Array.from(dataTransfer.items).filter((item) => item.kind === "file").length
-    : 0;
-  return count >= 1 ? `松开添加 ${count} 张图片` : "未检测到图片";
-}
 
 /** 工具栏统一样式按钮；dragStart 存在时按钮可拖出（拖到画布松开即新建，点击仍走 onClick） */
 function ToolbarButton({
@@ -687,12 +661,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
    * 位置由 JS 直接写 fixed 元素的 transform（高频 dragover 不触发 React 渲染）；
    * intent 决定 drop 行为与图标，label 决定文案，两者只在拖拽起止等低频事件里变化。 */
 
-  /** 当前拖拽意图（含回退）：优先按 dataTransfer 类型判定，判定不到时回退 dropIntentRef——
-   *  兜底真实浏览器里 dragover 阶段 getData 偶发返回空的兼容问题（dragstart 已登记意图）。 */
-  const dropKindFromEvent = useCallback((event: { dataTransfer: DataTransfer | null }) => {
-    return dragKindFromEvent(event) ?? dropIntentRef.current;
-  }, []);
-
   /** 显示落点示意：intent 决定 drop 行为与图标，label 决定文案（图片数量 / 新建类型） */
   const showDropChip = useCallback((intent: CanvasDropIntent, label: string) => {
     dropIntentRef.current = intent;
@@ -732,11 +700,12 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     [getCreatePosition],
   );
 
-  /** 文件拖放落画布：过滤出图片 → 上传画布注册表 → 以「鼠标松开处」为落点建节点。
+  /** 文件拖放落画布：上传画布注册表 → 以「鼠标松开处」为落点建节点。
+   *  图片过滤与落点换算已由拖拽接线完成（extractImageFiles / dropPointFromEvent），
    *  批次内沿用 canvasEntriesToNodes 横向排开，与上传/导入/新建共用同一去重逻辑。 */
   const handleCanvasDropFiles = useCallback(
     async (event: { clientX: number; clientY: number; dataTransfer: DataTransfer | null }) => {
-      const files = Array.from(event.dataTransfer?.files ?? []).filter(isImageFile);
+      const files = extractImageFiles(event.dataTransfer);
       if (!files.length) {
         pushLog("未检测到图片文件，拖拽未添加任何图片");
         return;
@@ -794,7 +763,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       (event: React.DragEvent<HTMLButtonElement>) => {
         event.dataTransfer.setData(CANVAS_DRAG_MIME, kind);
         event.dataTransfer.effectAllowed = "copy";
-        showDropChip(kind, TOOLBAR_DRAG_LABELS[kind]);
+        showDropChip(kind, dropChipLabel(kind, 0));
         positionDropChip(event.clientX, event.clientY);
       },
     [positionDropChip, showDropChip],
@@ -1316,7 +1285,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
    *    计数可能残留，这里统一归零，保证下次拖拽状态干净。 */
   useEffect(() => {
     const preventFileDrop = (event: DragEvent) => {
-      if (dragHasFiles(event)) event.preventDefault();
+      if (dragCarriesFiles(event)) event.preventDefault();
     };
     const positionToolbarDrag = (event: DragEvent) => {
       if (dropIntentRef.current && dropIntentRef.current !== "images") {
@@ -1389,21 +1358,21 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       className={`flex h-[calc(100vh-130px)] flex-col gap-2 ${dropIntent ? "canvas-drop-active" : ""}`}
       onDragEnter={(e) => {
         if (modalOpen) return;
-        const kind = dropKindFromEvent(e);
+        const kind = resolveDropIntent(e, dropIntentRef.current);
         if (!kind) return;
         e.preventDefault();
         if (kind === "images") {
           dragDepthRef.current += 1;
-          showDropChip(kind, imageDropLabel(e.dataTransfer));
+          showDropChip(kind, dropChipLabel(kind, countDraggedFiles(e.dataTransfer)));
         } else {
           // 工具栏拖出：示意已由 dragstart 显示（全局跟随），这里只允许 drop 生效
-          showDropChip(kind, TOOLBAR_DRAG_LABELS[kind]);
+          showDropChip(kind, dropChipLabel(kind, 0));
         }
         positionDropChip(e.clientX, e.clientY);
       }}
       onDragOver={(e) => {
         if (modalOpen) return;
-        const kind = dropKindFromEvent(e);
+        const kind = resolveDropIntent(e, dropIntentRef.current);
         if (!kind) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "copy";
@@ -1412,7 +1381,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       onDragLeave={(e) => {
         if (modalOpen) return;
         // 只对文件拖拽做计数平衡：离开工作区即隐藏示意；工具栏拖出示意全局跟随，不在这里隐藏
-        if (dropKindFromEvent(e) === "images") {
+        if (resolveDropIntent(e, dropIntentRef.current) === "images") {
           dragDepthRef.current -= 1;
           if (dragDepthRef.current <= 0) {
             dragDepthRef.current = 0;
@@ -1422,7 +1391,7 @@ export default function CanvasPage({ config }: CanvasPageProps) {
       }}
       onDrop={(e) => {
         if (modalOpen) return;
-        const kind = dropKindFromEvent(e);
+        const kind = resolveDropIntent(e, dropIntentRef.current);
         if (!kind) return;
         e.preventDefault();
         dragDepthRef.current = 0;
