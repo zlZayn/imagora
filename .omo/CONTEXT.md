@@ -15,8 +15,10 @@
 - **已知坑（已修复）**：dragover 阶段 `dataTransfer.files` 为空 → 数量从 `dataTransfer.items`（kind==="file"）统计；drop 前先判定拖拽意图，文本/无关拖拽放行（输入框原生行为不受影响）
 - **可拖出按钮悬浮暗示**：grab 光标 + 品牌色呼吸光晕 + 右侧拖拽图标（`.btn-draggable`，index.css）
 - **UI 微调**：工具栏按钮顺序（上传图片 · 粘贴导入 · 新建卡片 · 新建图片组 | 右侧不变）；底部帮助文字精简
+- **画布光标四态统一**（index.css）：空白 = 十字准星（品牌色加号）· 节点悬浮 = 四向移动 · 节点拖拽/画布平移 = 四向+实心中心 · 连线悬浮 = 经典箭头；节点内输入框 text / 按钮 pointer 不被覆盖
+- **自动整理入口收敛**：工具栏按钮移除，仅选中后画布右上角操作栏出现（局部三段式重排选中）；`handleAutoLayout` 收敛为仅选中（全局分支删除，避免死代码），README 同步
 - 顺带修复 pre-existing 债：`handleHistoryImport` 依赖缺 `getCreatePosition`（eslint warning）、E2E 文件 ruff（UP009/F401/PEP701）、ARCHITECTURE 9.2 编号重复
-- 文档同步：README（入口 bullet）、ARCHITECTURE（5.4 / 5.6 / 8.3 / 9.2 新增 3/4 条 / 10.1 用例数 76→78 / 10.2 / 11.2）
+- 文档同步：README（入口 bullet / 自动整理）、ARCHITECTURE（5.4 / 5.6 / 8.3 / 9.2 新增 3/4 条 / 10.1 用例数 76→78 / 10.2 / 11.2）
 
 ## 已完成的代码改动（本轮）
 

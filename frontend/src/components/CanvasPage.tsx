@@ -44,7 +44,6 @@ import type {
 } from "../types";
 import {
   autoConnect,
-  autoLayout,
   buildGroupNode,
   buildImageNode,
   buildPromptNode,
@@ -952,22 +951,14 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     pushLog("全部运行完成");
   }, [pushLog, runNodeInternal, waitCanvasIdle]);
 
-  /** 自动整理：有选中节点时只整理选中的（局部三段式，其余原位）；否则全局三段式布局。整理后自适应居中 */
+  /** 自动整理（仅选中）：入口只在画布右上角选中操作栏（选中 ≥1 节点后出现），
+   *  局部三段式重排选中节点，其余原位；无选中直接不处理（按钮不存在，无需兜底）。整理后自适应居中 */
   const handleAutoLayout = useCallback(() => {
-    const current = nodesRef.current;
-    if (!current.length) {
-      pushLog("画布为空，无需整理");
-      return;
-    }
     const selected = selectedIdsRef.current;
+    if (!selected.size) return;
     recordHistory();
-    if (selected.size > 0) {
-      setNodes(layoutSelection(current, edgesRef.current, selected));
-      pushLog(`已整理 ${selected.size} 个选中节点`);
-    } else {
-      setNodes(autoLayout(current, edgesRef.current));
-      pushLog(`已整理 ${current.length} 个节点`);
-    }
+    setNodes(layoutSelection(nodesRef.current, edgesRef.current, selected));
+    pushLog(`已整理 ${selected.size} 个选中节点`);
     fitCanvasToContent();
   }, [fitCanvasToContent, recordHistory, setNodes, pushLog]);
 
@@ -1306,7 +1297,6 @@ export default function CanvasPage({ config }: CanvasPageProps) {
           <ToolbarButton onClick={() => setShowHistory(true)}>生成历史</ToolbarButton>
           <ToolbarButton onClick={handleUndo} disabled={!historyRef.current.canUndo()}>撤销</ToolbarButton>
           <ToolbarButton onClick={handleRestore} disabled={!historyRef.current.canRestore()}>恢复</ToolbarButton>
-          <ToolbarButton onClick={handleAutoLayout}>自动整理</ToolbarButton>
           <ToolbarButton onClick={handleAutoConnect}>自动连线</ToolbarButton>
           <ToolbarButton onClick={() => void handleRunAll()} disabled={runningAll}>
             {runningAll ? "运行中..." : "全部运行"}
