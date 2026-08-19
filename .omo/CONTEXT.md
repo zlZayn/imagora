@@ -17,6 +17,8 @@
 - **UI 微调**：工具栏按钮顺序（上传图片 · 粘贴导入 · 新建卡片 · 新建图片组 | 右侧不变）；底部帮助文字精简
 - **画布光标四态统一**（index.css）：空白 = 十字准星（品牌色加号）· 节点悬浮 = 四向移动 · 节点拖拽/画布平移 = 四向+实心中心 · 连线悬浮 = 经典箭头；节点内输入框 text / 按钮 pointer 不被覆盖
 - **自动整理入口收敛**：工具栏按钮移除，仅选中后画布右上角操作栏出现（局部三段式重排选中）；`handleAutoLayout` 收敛为仅选中（全局分支删除，避免死代码），README 同步
+- **上传/粘贴自动过滤非图片**：经典表单 UploadZone 与画布 handleUpload/handleReplaceFile 统一走 `isImageFile`（与拖拽同判定），全非图时给出明确提示
+- **连线 hover 亮起**：0.1s 延迟后变主题色加粗（复用 edge-highlight 视觉）；延迟只写在 `:hover` 规则（进入延迟、离开立即回退）；以人工验证为准，不做 E2E（合成悬停时序脆弱）
 - 顺带修复 pre-existing 债：`handleHistoryImport` 依赖缺 `getCreatePosition`（eslint warning）、E2E 文件 ruff（UP009/F401/PEP701）、ARCHITECTURE 9.2 编号重复
 - 文档同步：README（入口 bullet / 自动整理）、ARCHITECTURE（5.4 / 5.6 / 8.3 / 9.2 新增 3/4 条 / 10.1 用例数 76→78 / 10.2 / 11.2）
 
@@ -29,8 +31,9 @@
 | `frontend/src/canvasDrop.ts` | 拖拽纯函数模块：`CANVAS_DRAG_MIME` / `CanvasDropIntent` / `resolveDropIntent`（含 fallback 回退）/ `dragCarriesFiles` / `countDraggedFiles` / `extractImageFiles` / `dropChipLabel` |
 | `frontend/src/canvasDrop.test.ts` | 11 用例（桩 dataTransfer，只依赖类型契约） |
 | `frontend/src/useCanvasDrop.tsx` | 拖拽接线 hook：落点示意（显隐/定位/文案）、意图解析、window 守卫、工作区四事件；节点构建回调上抛 |
-| `frontend/src/index.css` | 画布光标（细十字+品牌色加号）；落点示意（chip-in）；`.btn-draggable` 悬浮暗示；文件拖拽切 `copy` 光标 |
-| `frontend/src/components/CanvasPage.tsx` | 瘦身 ~200 行：拖拽接线移入 useCanvasDrop；`handleDropFiles`/`handleDropNode` 只负责建节点 |
+| `frontend/src/index.css` | 画布光标（细十字+品牌色加号）；落点示意（chip-in）；`.btn-draggable` 悬浮暗示；文件拖拽切 `copy` 光标；连线 hover 0.1s 亮起（复用 edge-highlight 视觉） |
+| `frontend/src/components/CanvasPage.tsx` | 瘦身 ~200 行：拖拽接线移入 useCanvasDrop；`handleDropFiles`/`handleDropNode` 只负责建节点；handleUpload/handleReplaceFile 过滤非图片 |
+| `frontend/src/components/UploadZone.tsx` | 粘贴/拖拽/选择统一 `isImageFile` 过滤非图片，全非图时提示 |
 | `frontend/e2e/verify_canvas.py` | 第 8-11 节：文件拖拽 / 工具栏拖出 / 真实鼠标 DnD / 拖到 UI 区域落点夹紧；真实拖拽断言等待加长到 300ms 防动画时序 flake |
 | `README.md` / `ARCHITECTURE.md` / `.omo/CONTEXT.md` | 用户视角 + 架构决策（2.3 模块表 / 5.4 / 10.1 用例数）+ 交接记录 |
 

@@ -284,7 +284,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 8.4 视觉与动效
 
 - **动画类统一收敛**在 `index.css`，组件只引用类名不写内联动画；只动 transform/opacity（GPU 合成），缓动统一 easeOutQuint；`prefers-reduced-motion` 时全部降级瞬时。
-- **transition 约束**：只作用于 border-color/box-shadow/opacity，**禁用 `transition-all`**——否则 textarea 拉伸等交互被尺寸插值拖慢（曾误判为性能问题，实为 CSS 插值）。
+- **transition 约束**：只作用于 border-color/box-shadow/opacity，**禁用 `transition-all`**——否则 textarea 拉伸等交互被尺寸插值拖慢（曾误判为性能问题，实为 CSS 插值）。唯一例外：连线路径的 `stroke/stroke-width` 过渡（hover 亮起延迟，见 9.4 第 2 条）。
 - **画布节点动画**：作用在内层 `.node-pop`（外层 `.react-flow__node` 是定位 transform，不可位移）；动画类是运行时标记，保存/加载时剥离，不持久化。
 - **动效与浮层堆叠**：transform 动画（fill both）让元素成为 stacking context，含浮层的卡片需 `relative` + 更高 z-index 才能盖过后续卡片。
 - **窗口主题色**：accent.ts 按窗口编号黄金角取色，运行时覆盖 `--color-brand`；favicon 同算法动态生成——多开一眼可辨；`--color-brand` 默认值是中性 slate 兜底（JS 加载前生效）。
@@ -328,6 +328,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 9.4 CSS 与动效
 
 1. **transition-all 拖慢拖拽类交互**。规范：transition 只含 border-color/box-shadow/opacity。
+2. **连线 hover 亮起的延迟方向**。现象：想「悬停 0.1s 后才亮起」但用 base 规则的 transition-delay 导致**离开也延迟**（松手后还亮着）。规范：延迟只写在 `:hover` 规则里（`transition-delay: 0.1s`），base 规则只放属性与时长——进入延迟、离开立即回退；transition 只含 stroke/stroke-width（animated 边的 dasharray 动画不受影响）。该效果以人工验证为准，不做 E2E（合成悬停时序脆弱）。
 2. **transform 动画锁死 hover**。现象：hover 效果失效。规范：入场动画只动 opacity 的场景不用 fill both 的 transform；overflow-hidden 会裁剪悬浮操作栏/下拉面板——提示词卡片用 min-w-0 + truncate 防撑宽，不用 overflow-hidden。
 3. **浮层被后续卡片盖住**。规范：含浮层的卡片加 relative + 更高 z-index。
 

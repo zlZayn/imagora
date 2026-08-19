@@ -51,6 +51,7 @@ import {
   collectIncomingImages,
   computeCounts,
   extractAnimClasses,
+  isImageFile,
   layoutPromptResults,
   layoutSelection,
   nodeSize,
@@ -419,10 +420,16 @@ export default function CanvasPage({ config }: CanvasPageProps) {
   }, [highlightId, edges, applyHighlight]);
 
   /* ---------------- 工具栏：上传 / 导入目录 / 保存 / 加载 ---------------- */
+  /** 上传本地图片到画布（视口中心定位；自动过滤非图片，与拖拽/经典表单同一 isImageFile 判定） */
   const handleUpload = async (files: FileList | null) => {
     if (!files?.length) return;
+    const incoming = Array.from(files).filter(isImageFile);
+    if (!incoming.length) {
+      pushLog("未检测到图片文件，上传未添加任何图片");
+      return;
+    }
     try {
-      const { images } = await canvasUpload(Array.from(files));
+      const { images } = await canvasUpload(incoming);
       recordHistory();
       // 新图放在画布视口中心（与新建卡片同约定），避免落在视口外/左上角
       const origin = getCreatePosition();
@@ -513,14 +520,20 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     replaceInputRef.current?.click();
   }, []);
 
-  /** 替换文件落地：上传新图并更新该图片节点数据（旧文件保留，避免破坏其他引用/已存工作流） */
+  /** 替换文件落地：上传新图并更新该图片节点数据（旧文件保留，避免破坏其他引用/已存工作流）；
+   *  单张替换同样按 isImageFile 过滤（与上传/拖拽同一判定）。 */
   const handleReplaceFile = useCallback(
     async (files: FileList | null) => {
       const nodeId = pendingReplaceRef.current;
       pendingReplaceRef.current = null;
       if (!nodeId || !files?.length) return;
+      const incoming = Array.from(files).filter(isImageFile);
+      if (!incoming.length) {
+        pushLog("替换失败：未检测到图片文件");
+        return;
+      }
       try {
-        const { images } = await canvasUpload(Array.from(files).slice(0, 1));
+        const { images } = await canvasUpload(incoming.slice(0, 1));
         if (!images.length) {
           pushLog("替换失败：上传未返回图片");
           return;

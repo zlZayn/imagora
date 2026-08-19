@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { deleteRef, uploadRefs } from "../api";
 import { formatBytes } from "../format";
+import { isImageFile } from "../workflow";
 import type { RefItem } from "../types";
 
 interface UploadZoneProps {
@@ -37,10 +38,15 @@ export default function UploadZone({ refs, onChange }: UploadZoneProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 添加并上传：先本地占位（synced=false）即时显示，上传成功后替换为服务端元信息 */
+  /** 添加并上传：先本地占位（synced=false）即时显示，上传成功后替换为服务端元信息。
+   *  自动过滤非图片文件（粘贴/拖拽/选择统一入口，isImageFile 与画布同判定）。 */
   const addFiles = async (list: FileList | null) => {
     if (!list || !list.length) return;
-    const incoming = Array.from(list);
+    const incoming = Array.from(list).filter(isImageFile);
+    if (!incoming.length) {
+      setUploadError("未检测到图片文件，未添加任何图片");
+      return;
+    }
     const placeholders: RefItem[] = incoming.map((file) => ({
       id: "",
       path: "",

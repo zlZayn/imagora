@@ -290,6 +290,17 @@ body {
   stroke: var(--color-brand) !important;
   stroke-width: 3 !important;
 }
+/* 直接悬停连线：0.1s 延迟后亮起（与 node 核验的 edge-highlight 同款视觉）。
+   延迟只在「进入 hover」方向生效（写在 :hover 规则里），离开时立即回退不拖沓。
+   只过渡 stroke/stroke-width 两个属性，不动 dasharray 动画（animated 边不受影响）。 */
+.react-flow__edge .react-flow__edge-path {
+  transition: stroke 0.25s ease, stroke-width 0.25s ease;
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--color-brand);
+  stroke-width: 3;
+  transition-delay: 0.1s;
+}
 .react-flow__node.node-related .panel-card,
 .react-flow__node.node-related .node-pop,
 .react-flow__node .panel-card.node-selected,
