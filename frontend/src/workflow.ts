@@ -8,6 +8,18 @@ import type {
 /** 批量导入图片节点时的错开间距（避免互相重叠） */
 const IMAGE_STEP = 260;
 
+/* ---------------- 文件识别：拖拽/粘贴/选择共用同一判定，保证各入口行为一致 ---------------- */
+
+/** 常见图片扩展名（MIME 缺失时兜底识别；与后端 core/canvas.py IMAGE_EXTENSIONS 对齐） */
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|bmp)$/i;
+
+/** 判断 File 是否为图片：优先按 MIME（image/*），MIME 缺失（部分系统拖拽/粘贴不给类型）时按扩展名兜底。
+ *  拖拽进来的非图片文件（如 .txt）在此被过滤，只把图片交给上传接口。 */
+export function isImageFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  return IMAGE_EXT_RE.test(file.name);
+}
+
 /* ---------------- 新建节点落点：视口中心 + 连续创建阶梯错开 ----------------
  * 纯函数：与上次落点相近（视口基本没动）时每次 +CREATE_STAGGER_STEP，
  * 否则回到视口中心。不依赖节点总数——节点一多按总数取模偏移会越偏越远（历史 bug）。 */
@@ -73,6 +85,35 @@ export function buildImageNode(
       refCount: 0,
       absPath: entry.absPath,
     },
+  };
+}
+
+/** 从参数构建单个提示词节点（点击居中新建 / 工具栏拖放新建共用同一构建，默认参数由调用方提供） */
+export function buildPromptNode(
+  position: { x: number; y: number },
+  params: { size: string; quality: string; outputDir: string },
+): WorkflowNode {
+  return {
+    id: `prompt-${Date.now()}`,
+    type: "prompt",
+    position,
+    data: {
+      prompt: "",
+      size: params.size,
+      quality: params.quality,
+      outputDir: params.outputDir,
+      status: "idle" as const,
+    },
+  };
+}
+
+/** 从参数构建单个图片组节点（点击居中新建 / 工具栏拖放新建共用同一构建） */
+export function buildGroupNode(position: { x: number; y: number }): WorkflowNode {
+  return {
+    id: `group-${Date.now()}`,
+    type: "group",
+    position,
+    data: { name: "图片组", imageCount: 0, totalSize: 0 },
   };
 }
 

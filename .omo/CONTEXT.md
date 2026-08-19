@@ -2,117 +2,52 @@
 
 > 维护约定：本文件随工作进展持续更新，记录跨会话交接所需的关键事实——当前工作、架构决策、验证状态、已知问题。交接时先读这里。
 
-## 当前工作（2026-08-13，动态配置系统）
+## 当前工作（2026-08-13，画布拖拽添加：文件多图 + 工具栏按钮拖出）
 
-**多 profile 配置方案已完成并全量验证通过（后端 126 用例 / 前端 73 / ruff 零告警 / 服务实测），已提交推送。**
+**画布「拖拽添加」已统一：前端 tsc / lint / build 全绿、78 用例通过，E2E 26/26 PASS。**
 
-- `config.json`（git 跟踪）：多 profile（wanwu 完整 + other 示例），`default_profile` 为公共默认
-- `core/config.py`：分层加载（环境变量/.env > profiles[ACTIVE_PROFILE] > default_profile > 内置默认）；纯函数 `resolve_profile_config` / `unknown_profile_keys`（白名单校验防 typo）；`get_api_key()` 按 `API_KEY_<PROFILE>` → `API_KEY` → `AIWANWU_API_KEY` 跟随切换，旧写法零改动
-- `server.py`：`/api/config` 返回 baseUrl / defaultModel / activeProfile
-- 前端：`types.ts` 补三个可选字段；标题栏新增「profile · 模型」徽章，切换后一眼确认生效
-- `.env.example` / README（「切换中转站」章节）/ ARCHITECTURE（4.4 配置加载层 / API 表 / 防错清单条目）同步
+- **文件拖拽多图**：拖本地图片（可多张）到画布任意位置松开即添加；**落点 = 鼠标松开处**（首个图片左上角，多图从落点向右排开 IMAGE_STEP=260）
+- **工具栏按钮拖出**：新建提示词卡片 / 新建图片组可拖到画布任意位置松开即建（点击仍自动居中）；dataTransfer 自定义类型 `application/x-imagora-canvas`（值 prompt/group）；节点构建走 `workflow.ts:buildPromptNode/buildGroupNode`（与点击新建同一构建，默认参数收敛为 `promptNodeDefaults`）
+- **落点示意统一**：跟随光标的小胶囊（portal 到 body + fixed，工具栏拖出可全局跟随），图标/文案按意图区分（图片数量 / 「松开新建提示词卡片」等）；位置由 JS 直接写 transform（高频 dragover 不触发 React 渲染）；胶囊偏移光标 22/28px（避免被拖拽虚影遮挡）
+- **拖放接管整个工作区**（页面根，含工具栏/帮助栏）：UI 上不再出现浏览器禁止标志；落点在画布外夹紧到画布边缘（`dropPointFromEvent`）；意图判定带 `dropIntentRef` 回退（真实浏览器 dragover 阶段 getData 偶发为空）；弹窗打开时暂停接管
+- **已知坑（已修复）**：dragover 阶段 `dataTransfer.files` 为空 → 数量从 `dataTransfer.items`（kind==="file"）统计；drop 前先判定拖拽意图，文本/无关拖拽放行（输入框原生行为不受影响）
+- **可拖出按钮悬浮暗示**：grab 光标 + 品牌色呼吸光晕 + 右侧拖拽图标（`.btn-draggable`，index.css）
+- **UI 微调**：工具栏按钮顺序（上传图片 · 粘贴导入 · 新建卡片 · 新建图片组 | 右侧不变）；底部帮助文字精简
+- 顺带修复 pre-existing 债：`handleHistoryImport` 依赖缺 `getCreatePosition`（eslint warning）、E2E 文件 ruff（UP009/F401/PEP701）、ARCHITECTURE 9.2 编号重复
+- 文档同步：README（入口 bullet）、ARCHITECTURE（5.4 / 5.6 / 8.3 / 9.2 新增 3/4 条 / 10.1 用例数 76→78 / 10.2 / 11.2）
 
-> 技术债扫描（全库）：代码级零债（无 TODO/ts-ignore、pyflakes 零告警、严格 tsconfig、依赖全部在用、3 处 eslint-disable 均有正当注释）；唯一发现 ARCHITECTURE 测试表数字漂移（113→126、缺 test_core_tasks/server_tasks 两行、config 4→14）已修复；pytest-asyncio 是环境残留非项目依赖，无需声明。
-> 文档质量：README 已按「克制、清晰、必要信息」标准收敛——画布章节删实现细节（双层守卫/registryId/存储路径/动效数值），key 示例与 .env.example 统一为 API_KEY_WANWU，多开章节去重。
+## 已完成的代码改动（本轮）
 
-## 方案讨论记录
+| 文件 | 内容 |
+|---|---|
+| `frontend/src/workflow.ts` | `isImageFile`（MIME + 扩展名兜底）；`buildPromptNode` / `buildGroupNode`（点击/拖放共用构建） |
+| `frontend/src/workflow.test.ts` | `isImageFile` 3 用例 + 节点构建器 2 用例（78 总计，原 73） |
+| `frontend/src/index.css` | 画布光标重设计（细十字 + 白描边 + 中心品牌色加号）；落点示意（chip-in）；`.btn-draggable` 悬浮暗示（呼吸光晕 + 拖拽图标）；文件拖拽切 `copy` 光标 |
+| `frontend/src/components/CanvasPage.tsx` | 落点示意统一机制（showDropChip/hideDropChip/positionDropChip，portal + transform 直写）；文件 + 工具栏拖拽四事件；`dropPointFromEvent` / `handleCanvasDropFiles` / `handleCanvasDropNode` / `handleToolbarDragStart`；ToolbarButton 支持 dragStart/dragEnd |
+| `frontend/e2e/verify_canvas.py` | 第 8 节（文件拖拽）+ 第 9 节（工具栏拖出）：示意显隐/数量/跟随、落点精确、多图排开、非图片过滤、按钮拖起即显示、松开即建 |
 
-### 用户需求
+## 历史工作（已提交，仅备忘）
 
-换中转站时不想改代码，想通过配置文件切换。
+- 多 profile 动态配置（config.json + core/config.py + /api/config 返回 baseUrl/defaultModel/activeProfile）：详情见 git 历史与 ARCHITECTURE 4.4、README「切换中转站」
+- 上一轮技术债扫描结论：代码级零债（无 TODO/ts-ignore、pyflakes 零告警、严格 tsconfig、eslint-disable 均有正当注释）
 
-### 讨论过程
-
-1. **初始方案**：`config.json` 存一套配置，改文件 + 重启切换
-2. **用户追问**：`.env` 和 `config.json` 怎么合作？换中转站岂不是要动态多配置？
-3. **用户提议**：`config.json` 存多种配置（profiles），`.env` 只填一个作为选择开关
-
-### 当前方案（待确认）
-
-**多 profile 方案：**
-
-```json
-// config.json
-{
-  "default_profile": "wanwu",
-  "profiles": {
-    "wanwu": {
-      "base_url": "https://2api.aiwanwu.cc",
-      "default_model": "gpt-image-2",
-      "size_options": [...],
-      "quality_options": ["low", "medium", "high"],
-      "ratios": {...}
-    },
-    "other": {
-      "base_url": "https://other-api.com",
-      "default_model": "dall-e-3",
-      "size_options": [...]
-    }
-  }
-}
-```
-
-```bash
-# .env
-AIWANWU_API_KEY=sk-xxx
-ACTIVE_PROFILE=wanwu
-```
-
-**core/config.py 加载逻辑：**
-1. 读 `.env` 拿 `ACTIVE_PROFILE`
-2. 读 `config.json` 拿 `profiles[ACTIVE_PROFILE]`
-3. 没设 `ACTIVE_PROFILE` → 用 `default_profile`
-4. profile 里缺字段 → fallback 内置默认值
-
-**切换方式：** 改 `.env` 的 `ACTIVE_PROFILE=other`，重启服务。不改代码，不改 `config.json`。
-
-### 待确认
-
-- [ ] 用户确认这个方案
-- [ ] 确认后更新 plan 文档和已改代码
-
-## 已完成的代码改动
-
-| 文件 | 状态 | 内容 |
-|---|---|---|
-| `config.json` | 已完成 | 多 profile 结构（wanwu + other），default_profile 为公共默认 |
-| `core/config.py` | 已完成 | 多 profile 分层加载 + 纯函数 resolve + 白名单校验 + Key 跟随 profile |
-| `core/api.py` | 已完成 | import API_PATHS + URL 拼接改用 API_PATHS |
-| `server.py` | 已完成 | /api/config 新增 baseUrl/defaultModel/activeProfile 返回 |
-
-## 未完成的工作
-
-全部完成（见上）。后续增强方向（非阻塞）：前端可进一步把 baseUrl 展示为可点击复制；多 profile 切换热生效（当前需重启）。
-
-## 设计原则
-
-- `config.py` 导出的变量名不变，下游零影响（main.py, core/batch.py, core/canvas.py 等不改）
-- `config.json` 缺失时用内置默认值，不报错
-- JSON 格式错误时 fallback 默认值 + 打印警告
-- `.env` 管密钥（不 git 跟踪），`config.json` 管公开配置（git 跟踪）
-- 多 profile 方案：`.env` 的 `ACTIVE_PROFILE` 选一个 profile 加载
-
-## 相关文件
-
-- `D:\网店实习\Imagora\.omo\plans\dynamic-config.md` — 详细计划文档（单 profile 版本，待更新为多 profile）
-- `D:\网店实习\Imagora\core\config.py` — 配置加载层
-- `D:\网店实习\Imagora\core\api.py` — API 调用层
-- `D:\网店实习\Imagora\server.py` — HTTP 服务层
-- `D:\网店实习\Imagora\frontend\src\types.ts` — 前端类型定义
-
-## 已知问题
-
-- `server.py:583` LSP 报 "Argument missing for parameter id" 是**误报**（`GenerationTask.id` 有 `default_factory`），pre-existing，非本次范围，勿修
-
-## 验证状态
+## 验证状态（本轮）
 
 | 检查 | 结果 |
 |---|---|
-| 后端测试 | 126 passed（原 113 + 新增 13 个多 profile 用例；沙箱需 --basetemp 规避 tmp_path 权限） |
-| ruff check | 零告警 |
-| 前端 tsc / lint / test / build | 全绿（73 用例） |
-| 服务实测 | /api/config 返回 baseUrl/defaultModel/activeProfile；ACTIVE_PROFILE 切换后 BASE_URL/模型随 profile 变化 |
+| 前端 tsc / build | 通过 |
+| 前端 lint | 零告警 |
+| 前端 test | 78 passed（原 73 + 5） |
+| 后端 ruff | `uv run ruff check .` 零告警 |
+| E2E verify_canvas.py | **31/31 PASS**（含真实鼠标拖拽 3 条：原生 HTML5 DnD 管线 + 拖到 UI 区域落点夹紧画布顶边）；venv 已装 playwright + chromium headless |
+
+> E2E 运行方式：起服务（`.venv\Scripts\python.exe -m main ui --no-browser --port 7860`）后另开终端 `.venv\Scripts\python.exe frontend\e2e\verify_canvas.py`。拖拽断言用 DataTransfer + DragEvent 模拟（文件内容用 `crypto.getRandomValues` 防注册表去重影响重复运行）。
+
+## 已知问题
+
+- `server.py:583` LSP 报 "Argument missing for parameter id" 是**误报**（`GenerationTask.id` 有 `default_factory`），pre-existing，勿修
+- E2E 已用 Playwright 真实鼠标事件覆盖工具栏按钮的原生 HTML5 DnD；文件拖拽仍以合成 `DataTransfer` 模拟（OS 文件拖拽无法在 headless 复现），Windows 资源管理器拖文件建议人工体验一次
 
 ## 下一步
 
-- 无阻塞项。可选：热生效（监听 config.json 变更自动重载，需评估复杂度）；为 `API_PATHS` 补 profile 级差异测试。
+- 可选增强（非阻塞）：画布 Ctrl+V 粘贴图片（经典表单已有该能力，画布暂未接）；落点示意文案 i18n

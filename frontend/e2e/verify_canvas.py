@@ -1,7 +1,9 @@
-# -*- coding: utf-8 -*-
 """画布核心交互回归（E2E，Playwright）
 
-覆盖：新建/上传落点在视口中心、视口不突变、右键菜单屏蔽、预览打开/点击空白关闭。
+覆盖：新建/上传落点在视口中心、视口不突变、右键菜单屏蔽、预览打开/点击空白关闭、
+文件拖拽添加（落点示意跟随光标与数量、落点精确、多图批次排开、非图片过滤）、
+工具栏按钮拖出新建（提示词卡片 / 图片组，示意文案与全局跟随、松开即建）、
+真实鼠标拖拽（原生 HTML5 DnD 管线）、拖到 UI 区域松开落点夹紧画布顶边。
 
 前置：本地服务已启动（uv run python -m main ui --port 7860），且已安装：
   pip install playwright && playwright install chromium
@@ -9,7 +11,6 @@
 运行：python frontend/e2e/verify_canvas.py
 """
 import base64
-import glob
 import os
 import sys
 import tempfile
@@ -85,9 +86,9 @@ def main():
         if before and after and pos:
             dx = abs(pos["x"] - before["centerX"]); dy = abs(pos["y"] - before["centerY"])
             check("新建提示词卡片=视口中心", dx < 2 and dy < 2,
-                  f"node=({pos["x"]:.1f},{pos["y"]:.1f}) center=({before["centerX"]:.1f},{before["centerY"]:.1f})")
+                  f"node=({pos['x']:.1f},{pos['y']:.1f}) center=({before['centerX']:.1f},{before['centerY']:.1f})")
             check("新建后视口不突变", abs(after["zoom"] - before["zoom"]) < 0.01,
-                  f"zoom {before["zoom"]:.3f}->{after["zoom"]:.3f}")
+                  f"zoom {before['zoom']:.3f}->{after['zoom']:.3f}")
         else:
             check("新建提示词卡片=视口中心", False, f"before={before} after={after} pos={pos}")
 
@@ -99,7 +100,7 @@ def main():
         if gpos and center2:
             dx = abs(gpos["x"] - center2["centerX"]); dy = abs(gpos["y"] - center2["centerY"])
             check("新建图片组在中心附近(阶梯<=40px)", dx < 40 and dy < 40,
-                  f"node=({gpos["x"]:.1f},{gpos["y"]:.1f}) center=({center2["centerX"]:.1f},{center2["centerY"]:.1f})")
+                  f"node=({gpos['x']:.1f},{gpos['y']:.1f}) center=({center2['centerX']:.1f},{center2['centerY']:.1f})")
         else:
             check("新建图片组在中心附近", False, f"gpos={gpos}")
 
@@ -114,9 +115,9 @@ def main():
         if ipos and center3:
             dx = abs(ipos["x"] - center3["centerX"]); dy = abs(ipos["y"] - center3["centerY"])
             check("上传图片在中心附近(阶梯<=80px)", dx < 80 and dy < 80,
-                  f"node=({ipos["x"]:.1f},{ipos["y"]:.1f}) center=({center3["centerX"]:.1f},{center3["centerY"]:.1f})")
+                  f"node=({ipos['x']:.1f},{ipos['y']:.1f}) center=({center3['centerX']:.1f},{center3['centerY']:.1f})")
             check("上传后视口不突变", abs(center3["zoom"] - center2["zoom"]) < 0.01,
-                  f"zoom {center2["zoom"]:.3f}->{center3["zoom"]:.3f}")
+                  f"zoom {center2['zoom']:.3f}->{center3['zoom']:.3f}")
         else:
             check("上传图片在中心附近", False, f"ipos={ipos} center={center3}")
 
@@ -171,6 +172,208 @@ def main():
             page.mouse.click(round(geom["x"] + geom["w"] + 20), round(geom["y"] + geom["h"] / 2))
             page.wait_for_timeout(400)
             check("放大后点击图片边缘空白关闭", page.locator("img[data-zoom-image]").count() == 0)
+
+        # 8. 文件拖拽添加：落点示意跟随光标并显示数量，松开后图片落在鼠标松开处
+        #    用 DataTransfer + DragEvent 在画布上模拟系统文件拖拽（dragenter 触发落点示意）
+        def node_positions(type_):
+            return page.evaluate("""(type_) => {
+              const nodes = document.querySelectorAll(".react-flow__node-" + type_);
+              return Array.from(nodes).map((n) => {
+                const m = new DOMMatrix(getComputedStyle(n).transform);
+                return { x: m.e, y: m.f };
+              });
+            }""", type_)
+
+        def image_positions():
+            return node_positions("image")
+
+        def screen_to_flow(x, y):
+            return page.evaluate("""({ x, y }) => {
+              const rf = document.querySelector(".react-flow");
+              const vp = document.querySelector(".react-flow__viewport");
+              const rect = rf.getBoundingClientRect();
+              const m = new DOMMatrix(getComputedStyle(vp).transform);
+              return { x: (x - rect.left - m.e) / m.a, y: (y - rect.top - m.f) / m.a };
+            }""", {"x": x, "y": y})
+
+        def dispatch_drag(x, y, event_type, files_js=None, mime_value=None):
+            """在画布上派发拖拽事件：files_js 传文件表达式列表（文件拖拽），mime_value 传画布自定义类型值（工具栏拖出）"""
+            page.evaluate("""({ x, y, event_type, files_js, mime_value }) => {
+              const dt = new DataTransfer();
+              if (files_js) for (const expr of files_js) dt.items.add(eval(expr));
+              if (mime_value) dt.setData("application/x-imagora-canvas", mime_value);
+              dt.effectAllowed = "copy";
+              const target = document.querySelector(".react-flow");
+              target.dispatchEvent(new DragEvent(event_type, {
+                bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y,
+              }));
+            }""", {"x": x, "y": y, "event_type": event_type, "files_js": files_js, "mime_value": mime_value})
+
+        def dragstart_button(button_name, mime_value, x, y):
+            """工具栏按钮 dragstart：在按钮上派发（自定义类型携带 prompt/group）"""
+            page.evaluate("""({ button_name, mime_value, x, y }) => {
+              const dt = new DataTransfer();
+              dt.setData("application/x-imagora-canvas", mime_value);
+              dt.effectAllowed = "copy";
+              const btn = Array.from(document.querySelectorAll("button"))
+                .find((b) => b.textContent.trim() === button_name);
+              if (!btn) throw new Error("button not found: " + button_name);
+              btn.dispatchEvent(new DragEvent("dragstart", {
+                bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y,
+              }));
+            }""", {"button_name": button_name, "mime_value": mime_value, "x": x, "y": y})
+
+        def chip_opacity():
+            return page.evaluate("""() => {
+              const chip = document.querySelector("[data-drop-chip] .canvas-drop-chip");
+              return chip ? getComputedStyle(chip).opacity : "missing";
+            }""")
+
+        rf_box = page.locator(".react-flow").first.bounding_box()
+        before_img_count = len(image_positions())
+        chip = page.locator("[data-drop-chip]")
+        one_img = [
+            "new File([crypto.getRandomValues(new Uint8Array(8))], 'drop-1.png', { type: 'image/png' })",
+        ]
+
+        # 8a. 拖入（dragenter）→ 落点示意出现：显示图片数量，且跟随光标（transform 直接写 DOM）
+        p1_x = rf_box["x"] + rf_box["width"] * 0.62
+        p1_y = rf_box["y"] + rf_box["height"] * 0.55
+        dispatch_drag(p1_x, p1_y, "dragenter", files_js=one_img)
+        dispatch_drag(p1_x, p1_y, "dragover", files_js=one_img)
+        page.wait_for_timeout(250)
+        check("拖入图片显示落点示意", chip.count() == 1 and chip_opacity() == "1")
+        check("落点示意显示图片数量", page.get_by_text("松开添加 1 张图片", exact=True).count() == 1)
+
+        # 光标移到另一处 → 示意跟随（光标右下方 22/28px）
+        p2_x = rf_box["x"] + rf_box["width"] * 0.5
+        p2_y = rf_box["y"] + rf_box["height"] * 0.68
+        dispatch_drag(p2_x, p2_y, "dragover", files_js=one_img)
+        page.wait_for_timeout(150)
+        chip_box = chip.bounding_box()
+        check("落点示意跟随光标", chip_box is not None
+              and abs(chip_box["x"] - (p2_x + 22)) < 4 and abs(chip_box["y"] - (p2_y + 28)) < 4,
+              f"chip=({chip_box['x']:.1f},{chip_box['y']:.1f}) expect≈({p2_x + 22:.1f},{p2_y + 28:.1f})")
+
+        # 8b. 松开：单张图片落在鼠标松开处（首个图片左上角 = 松开点换算的 flow 坐标）
+        #    文件内容每次运行随机（crypto.getRandomValues），避免注册表内容去重导致重复运行不产生新节点
+        dispatch_drag(p2_x, p2_y, "drop", files_js=one_img)
+        page.wait_for_timeout(1500)
+        check("松开后落点示意消失", chip_opacity() == "0")
+        expected = screen_to_flow(p2_x, p2_y)
+        positions = image_positions()
+        hit = [p for p in positions if abs(p["x"] - expected["x"]) < 3 and abs(p["y"] - expected["y"]) < 3]
+        check("拖放图片落在鼠标松开处", len(positions) == before_img_count + 1 and len(hit) == 1,
+              f"expected=({expected['x']:.1f},{expected['y']:.1f}) positions={positions}")
+
+        # 8c. 一次拖入多张（内容随机 → 两个节点）：示意显示 2 张，落点后第二张向右错开 260px（IMAGE_STEP）
+        before2 = image_positions()
+        drop_x2 = rf_box["x"] + rf_box["width"] * 0.35
+        drop_y2 = rf_box["y"] + rf_box["height"] * 0.7
+        two_files = [
+            "new File([crypto.getRandomValues(new Uint8Array(8))], 'drop-a.png', { type: 'image/png' })",
+            "new File([crypto.getRandomValues(new Uint8Array(8))], 'drop-b.png', { type: 'image/png' })",
+        ]
+        dispatch_drag(drop_x2, drop_y2, "dragenter", files_js=two_files)
+        page.wait_for_timeout(200)
+        check("落点示意显示多张数量", page.get_by_text("松开添加 2 张图片", exact=True).count() == 1)
+        dispatch_drag(drop_x2, drop_y2, "drop", files_js=two_files)
+        page.wait_for_timeout(1500)
+        expected2 = screen_to_flow(drop_x2, drop_y2)
+        positions2 = image_positions()
+        new_positions = [p for p in positions2 if p not in before2]
+        first_hit = [p for p in new_positions
+                     if abs(p["x"] - expected2["x"]) < 3 and abs(p["y"] - expected2["y"]) < 3]
+        second_hit = [p for p in new_positions
+                      if abs(p["x"] - (expected2["x"] + 260)) < 3 and abs(p["y"] - expected2["y"]) < 3]
+        check("一次拖入多张图片", len(new_positions) == 2,
+              f"new={new_positions}")
+        check("多图批次从落点向右排开", len(first_hit) == 1 and len(second_hit) == 1,
+              f"expected2=({expected2['x']:.1f},{expected2['y']:.1f}) new={new_positions}")
+
+        # 8d. 拖入非图片文件：不添加节点（isImageFile 过滤），画布数量不变
+        before3 = len(image_positions())
+        dispatch_drag(rf_box["x"] + rf_box["width"] * 0.2, rf_box["y"] + rf_box["height"] * 0.3,
+                      "drop", files_js=[
+                          "new File([new TextEncoder().encode('hello')], 'notes.txt', { type: 'text/plain' })",
+                      ])
+        page.wait_for_timeout(1200)
+        check("拖入非图片文件被过滤", len(image_positions()) == before3)
+
+        # 9. 工具栏按钮拖出：新建提示词卡片 / 新建图片组可拖到画布松开即建（点击自动居中仍保留）
+        # 9a. 拖起按钮 → 落点示意立即出现（portal 全局跟随，未进画布就显示）+ 文案正确
+        before_prompts = len(node_positions("prompt"))
+        toolbar_x = rf_box["x"] + 120
+        toolbar_y = rf_box["y"] - 70
+        dragstart_button("新建提示词卡片", "prompt", toolbar_x, toolbar_y)
+        page.wait_for_timeout(250)
+        check("拖起新建按钮显示落点示意", chip_opacity() == "1")
+        check("新建按钮示意文案正确", page.get_by_text("松开新建提示词卡片", exact=True).count() == 1)
+
+        # 9b. 拖到画布松开 → 提示词卡片落在鼠标松开处
+        drop_x3 = rf_box["x"] + rf_box["width"] * 0.42
+        drop_y3 = rf_box["y"] + rf_box["height"] * 0.42
+        dispatch_drag(drop_x3, drop_y3, "dragover", mime_value="prompt")
+        page.wait_for_timeout(150)
+        dispatch_drag(drop_x3, drop_y3, "drop", mime_value="prompt")
+        page.wait_for_timeout(700)
+        check("拖放新建提示词卡片后示意消失", chip_opacity() == "0")
+        expected3 = screen_to_flow(drop_x3, drop_y3)
+        prompt_positions = node_positions("prompt")
+        hit_p = [p for p in prompt_positions if abs(p["x"] - expected3["x"]) < 3 and abs(p["y"] - expected3["y"]) < 3]
+        check("拖放提示词卡片落在鼠标处", len(prompt_positions) == before_prompts + 1 and len(hit_p) == 1,
+              f"expected=({expected3['x']:.1f},{expected3['y']:.1f}) prompts={prompt_positions}")
+
+        # 9c. 图片组按钮同样：拖起显示示意 → 拖到画布松开即建
+        before_groups = len(node_positions("group"))
+        dragstart_button("新建图片组", "group", toolbar_x, toolbar_y)
+        page.wait_for_timeout(200)
+        check("拖起图片组按钮显示示意", page.get_by_text("松开新建图片组", exact=True).count() == 1)
+        dispatch_drag(drop_x3, drop_y3, "drop", mime_value="group")
+        page.wait_for_timeout(700)
+        check("拖放新建图片组后示意消失", chip_opacity() == "0")
+        check("拖放图片组节点已创建", len(node_positions("group")) == before_groups + 1)
+
+        # 10. 真实鼠标拖拽（Playwright 原生 input → 浏览器 HTML5 DnD，非合成事件）：
+        #     工具栏按钮拖到画布松开即建，验证真实浏览器拖拽管线（dataTransfer/落点）可用
+        before_real = len(node_positions("prompt"))
+        btn_box = page.get_by_role("button", name="新建提示词卡片").bounding_box()
+        start_x = btn_box["x"] + btn_box["width"] / 2
+        start_y = btn_box["y"] + btn_box["height"] / 2
+        real_x = rf_box["x"] + rf_box["width"] * 0.3
+        real_y = rf_box["y"] + rf_box["height"] * 0.5
+        page.mouse.move(start_x, start_y)
+        page.mouse.down()
+        page.mouse.move(real_x, real_y, steps=10)
+        page.wait_for_timeout(150)
+        check("真实拖拽显示落点示意", chip_opacity() == "1")
+        page.mouse.up()
+        page.wait_for_timeout(700)
+        check("真实拖拽松开后示意消失", chip_opacity() == "0")
+        real_expected = screen_to_flow(real_x, real_y)
+        real_prompts = node_positions("prompt")
+        hit_r = [p for p in real_prompts
+                 if abs(p["x"] - real_expected["x"]) < 3 and abs(p["y"] - real_expected["y"]) < 3]
+        check("真实拖拽新建提示词卡片", len(real_prompts) == before_real + 1 and len(hit_r) == 1,
+              f"expected=({real_expected['x']:.1f},{real_expected['y']:.1f}) prompts={real_prompts}")
+
+        # 11. 拖到工具栏上方（UI 区域）松开：不出现禁止标志（工作区整体接管），落点夹紧到画布顶边
+        before_top = len(node_positions("group"))
+        gb = page.get_by_role("button", name="新建图片组").bounding_box()
+        page.mouse.move(gb["x"] + gb["width"] / 2, gb["y"] + gb["height"] / 2)
+        page.mouse.down()
+        ui_x = rf_box["x"] + rf_box["width"] * 0.5
+        page.mouse.move(ui_x, rf_box["y"] - 30, steps=8)
+        page.wait_for_timeout(150)
+        check("拖到UI区域仍显示落点示意", chip_opacity() == "1")
+        page.mouse.up()
+        page.wait_for_timeout(700)
+        top_expected = screen_to_flow(ui_x, rf_box["y"] + 1)  # 夹紧到画布顶边
+        top_groups = node_positions("group")
+        hit_g = [p for p in top_groups
+                 if abs(p["x"] - top_expected["x"]) < 3 and abs(p["y"] - top_expected["y"]) < 3]
+        check("拖到UI区域松开=落点夹紧画布顶边", len(top_groups) == before_top + 1 and len(hit_g) == 1,
+              f"expected≈({top_expected['x']:.1f},{top_expected['y']:.1f}) groups={top_groups}")
 
         browser.close()
 

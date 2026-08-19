@@ -159,6 +159,9 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 5.4 画布交互层
 
+- **拖拽添加（文件 / 工具栏按钮，共用同一落点示意）**：拖本地图片（可多张）到画布任意位置松开即添加，或把「新建提示词卡片 / 新建图片组」按钮拖出到画布松开即建（点击仍自动居中）。落点 = **鼠标松开处**（`screenToFlowPosition` 换算），批次内沿用 `canvasEntriesToNodes` 横向排开；文件走 `isImageFile` 过滤 + `POST /api/canvas/upload`，工具栏拖走自定义 dataTransfer 类型（`application/x-imagora-canvas`，值 prompt/group），节点用 `workflow.ts:buildPromptNode/buildGroupNode`（与点击新建同一构建）。
+  - **落点示意**：跟随光标的小胶囊（portal 到 body + fixed 定位，工具栏拖出可全局跟随），图标/文案按意图区分（图片数量 / 「松开新建提示词卡片」等）；位置由 JS 直接写外层 transform（高频 dragover 不触发 React 渲染）、数量从 `dataTransfer.items`（kind==="file"）统计——**dragover 阶段 `dataTransfer.files` 为空**（浏览器延迟到 drop 才填充）；拖入时画布切系统 `copy` 光标（`.canvas-drop-active`）。
+  - **防护**：dragenter/leave 计数平衡防闪烁（仅文件拖拽）；拖放接管挂在**整个工作区**（含工具栏/帮助栏），UI 上不出现浏览器禁止标志，落点在画布外先夹紧到画布边缘（`dropPointFromEvent`）；意图判定带 `dropIntentRef` 回退（真实浏览器 dragover 阶段 getData 偶发为空）；窗口级只拦截携带 Files 的拖拽（防落画布外触发浏览器打开文件导航）；`dragend`/失焦复位拖拽状态；drop 前先判定意图，文本/其他拖拽**放行**（输入框原生行为不受影响）；弹窗打开时暂停接管。
 - **右键拖拽框选**：右键按下→拖拽→松开，起点/终点用 `screenToFlowPosition` 换算，松开时按「节点完全包含于选框」落定选中；`mouseup` 挂 window（画布外松开也生效）。
 - **右键菜单屏蔽**：window 捕获层**无状态**屏蔽非输入区 contextmenu（文本框/输入框保留原生菜单），不依赖任何时序标志。
 - **选中操作栏**：任意选中 ≥1 个节点后右上角出现——运行所选（只跑提示词卡片）/ 自动整理（局部重排）/ 设置输出路径 / 删除所选。样式为**半透明毛玻璃**（bg-white/50 + backdrop-blur，悬停变实），选中操作时基本不遮挡画布内容。
@@ -174,7 +177,10 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 5.6 新建节点定位
 
-所有创建入口（上传/历史导入/新建卡片/图片组/契约导入）统一以**当前视口中心**为落点：`getCreatePosition` 用 `screenToFlowPosition(容器中心)` 换算；连续创建由 `workflow.ts:staggerCreatePosition`（纯函数）阶梯错开（每次 +30px，视口移动后回到中心）。位置策略只允许存在这一处，任何入口不得自带偏移。
+节点落点只有两个来源，任何入口不得自带偏移：
+
+1. **视口中心（自动定位）**：所有创建入口（上传/历史导入/新建卡片/图片组/契约导入）统一以当前视口中心为落点：`getCreatePosition` 用 `screenToFlowPosition(容器中心)` 换算；连续创建由 `workflow.ts:staggerCreatePosition`（纯函数）阶梯错开（每次 +30px，视口移动后回到中心）。
+2. **拖拽落点（用户指定）**：文件或工具栏按钮（新建卡片/图片组）拖到画布松开的位置就是用户指定的画布坐标，直接 `screenToFlowPosition(松开点)` 落点，**不经** `getCreatePosition`；文件批次内多图仍由 `canvasEntriesToNodes` 从落点横向排开，节点构建走 `buildPromptNode/buildGroupNode`（与点击新建同一构建）。
 
 ## 6. 关键数据流
 
@@ -267,8 +273,10 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 8.3 界面与交互
 
+- **拖拽落点即用户指定坐标**：文件/工具栏按钮拖到哪节点就放在哪（首个图片左上角 = 鼠标松开处的画布坐标，多图从落点向右排开），不做重新居中——所见即所放；落点是唯一不经视口中心定位的创建来源（见 5.6）。
+- **落点示意是纯 DOM 特效**：跟随光标的小胶囊（portal 到 body 的 fixed 元素），位置由 JS 直接写 transform——高频 dragover 移动不触发 React 渲染，只有拖拽起止等低频事件才改状态；文案/图标按意图区分（文件数量 / 新建类型），与画布光标同款品牌色加号图形，风格统一。
 - **一屏全览**：不用 ReactFlow 初始 `fitView` prop——空画布时它会被 React Flow 延迟到「第一个节点出现」才执行，导致新建/上传后视口突然放大跳动（已实测复现）。统一走 `fitCanvasToContent()`（自动整理/加载工作流/恢复存档后调用），`minZoom` 放宽到 0.05，fitView 显式允许缩到 0.02，节点再多也能全览。
-- **自定义光标**：画布空白区域用高对比十字准星 SVG data-URI 光标，平移切抓手——空白画布上不丢失鼠标。
+- **自定义光标**：画布空白区域用高对比十字准星 SVG data-URI 光标（细十字 + 白描边 + 中心白底品牌色加号，与拖拽落点示意同款图形，风格统一），平移切抓手；文件拖拽悬停时切系统 `copy` 光标；可拖出按钮（新建卡片/图片组）悬浮时给 grab 光标 + 品牌色呼吸光晕 + 拖拽图标（`.btn-draggable`）——拖入时可放感明确、可拖出暗示明显。
 - **预览弹窗**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。
 - **选中操作栏**：选中 ≥1 个节点即出现「运行所选/自动整理/设置输出路径/删除所选」，运行与设路径只作用于提示词卡片。
 
@@ -302,9 +310,12 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 9.2 事件与时序
 
 1. **contextmenu 时序标志漏网**。现象：右键拖出画布松开仍弹浏览器菜单。根因：Windows 上 contextmenu 在右键**松开后**才触发，mouseup 提前清除屏蔽标志。规范：**无状态屏蔽**——window 捕获层一律屏蔽非输入区 contextmenu，不做按下/松开标志。测试：E2E 断言拖出画布松开零泄漏。
-2. **pointer capture 重定向 click**。现象：预览弹窗点击关闭误判/失效。根因：放大态拖拽的 setPointerCapture 会把 click target 重定向到容器。规范：关闭判定用 pointerdown 的**真实按下元素**；放大态区分点击与拖拽用位移阈值（>5px 才算拖拽），未移动且按在空白 = 点击关闭。测试：E2E「放大后点图片边缘空白关闭」。
-3. **拦截型交互吞掉点击**。现象：容器 stopPropagation 后点击无处可去。规范：任何拦截 pointerdown 的交互必须自证「点击 vs 拖拽」，并在两种缩放态下都可关闭。
-4. **全局监听器残留**。现象：卸载后仍触发 setState。规范：effect 内注册的 window 监听必须成对 removeEventListener 清理。
+2. **拖拽落点示意状态残留**。现象：文件拖出浏览器窗口或按 Esc 取消后，画布拖拽落点示意（跟随光标的小胶囊）卡住不消失。根因：没有 drop 事件触发复位，dragenter/leave 计数悬空。规范：window 层 `dragend`/`blur` 统一复位拖拽状态（计数归零 + 关示意）；文件拖拽 dragenter/leave 用计数平衡（子元素间移动成对触发）；工具栏拖出示意全局跟随，离开画布不隐藏、由 `dragend` 清理；示意位置走直接写 DOM 的 transform，**不经 React 状态**（高频 dragover 不渲染）。测试：E2E 断言拖入显示示意（含数量）、dragover 跟随光标、drop 后示意消失、拖起按钮即显示。
+3. **dragover 阶段 `dataTransfer.files` 为空**。现象：拖入图片时落点示意一直显示「未检测到图片」。根因：浏览器延迟到 drop 才填充 `files`（dragover 中为空列表）。规范：拖拽中的文件**数量**用 `dataTransfer.items`（kind === "file"）统计，`files` 只在 drop 时读取并做 `isImageFile` 过滤。测试：E2E 断言拖入时示意显示正确数量。
+4. **drop 前先判定拖拽意图**。现象：文本拖进提示词输入框被容器 drop 拦截（preventDefault 后文字丢不进）。规范：drop/dragover 先按 `dataTransfer` 类型判定（文件 / 画布自定义类型），**无关拖拽一律放行**，只接管「文件」与「工具栏按钮」两类。测试：E2E 拖入非图片文件不产生节点。
+5. **pointer capture 重定向 click**。现象：预览弹窗点击关闭误判/失效。根因：放大态拖拽的 setPointerCapture 会把 click target 重定向到容器。规范：关闭判定用 pointerdown 的**真实按下元素**；放大态区分点击与拖拽用位移阈值（>5px 才算拖拽），未移动且按在空白 = 点击关闭。测试：E2E「放大后点图片边缘空白关闭」。
+6. **拦截型交互吞掉点击**。现象：容器 stopPropagation 后点击无处可去。规范：任何拦截 pointerdown 的交互必须自证「点击 vs 拖拽」，并在两种缩放态下都可关闭。
+7. **全局监听器残留**。现象：卸载后仍触发 setState。规范：effect 内注册的 window 监听必须成对 removeEventListener 清理。
 
 ### 9.3 状态与引用
 
@@ -336,7 +347,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-后端 `uv run pytest`（126 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，73 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
+后端 `uv run pytest`（126 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，78 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -351,7 +362,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_core_tasks.py` | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
 | `tests/test_server_tasks.py` | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
 | `tests/test_main_process.py` | 4 | 端口探测 / 祖先链回溯 |
-| `frontend/src/workflow.test.ts` | 31 | 自动布局 / 局部整理不漂移 / 动画类 / 连线约束 / 入边收集 / 落点阶梯 |
+| `frontend/src/workflow.test.ts` | 36 | 自动布局 / 局部整理不漂移 / 动画类 / 连线约束 / 入边收集 / 落点阶梯 / 图片文件识别 / 节点构建器（提示词/图片组） |
 | `frontend/src/promptContract.test.ts` | 19 | 契约解析容错 / 尺寸映射 / 建卡 |
 | `frontend/src/previewZoom.test.ts` | 5 | 缩放范围 / 平移夹紧 |
 | `frontend/src/canvasHistory.test.ts` | 2 | 撤销 / 恢复 / 新分支清空 |
@@ -362,7 +373,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.2 端到端（E2E）
 
-`frontend/e2e/verify_canvas.py`（Playwright，自包含测试图，需服务已启动）：新建/上传居中（精确到像素）、视口不突变、右键菜单屏蔽（拖出画布 + 单击）、预览打开与点击空白关闭（含放大态）。改画布交互后必须跑通它再加 E2E 断言。
+`frontend/e2e/verify_canvas.py`（Playwright，自包含测试图，需服务已启动）：新建/上传居中（精确到像素）、视口不突变、右键菜单屏蔽（拖出画布 + 单击）、预览打开与点击空白关闭（含放大态）、文件拖拽添加（落点示意跟随光标与数量 / 落点精确 / 多图批次排开 / 非图片过滤）、工具栏按钮拖出新建（提示词卡片 / 图片组，示意文案与全局跟随、松开即建）。改画布交互后必须跑通它再加 E2E 断言。
 
 ### 10.3 未覆盖
 
@@ -379,8 +390,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 11.2 改画布交互的检查清单
 
-- 动没动「新建节点落点」？只允许走 `getCreatePosition`。
-- 动没动右键/点击/拖拽？对照 9.2 防错清单，E2E 必须覆盖放大/未放大两种状态。
+- 动没动「新建节点落点」？自动定位只允许走 `getCreatePosition`；拖拽落点是用户指定坐标，直接换算松开点，两处均不得自带偏移（见 5.6）。
+- 动没动右键/点击/拖拽？对照 9.2 防错清单（拖拽类先对照 2/3/4 条），E2E 必须覆盖放大/未放大两种状态；文件拖拽与工具栏拖出加新交互须补 E2E（落点位置 + 多图批次排开 + 按钮拖起即显示示意）。
 - 动没动节点动画/样式？对照 9.1、9.4，动画类记得保存/加载剥离。
 - 动没动 fitView/缩放？对照 9.1 第 1 条，别用初始 fitView prop。
 - 动没动任务状态？对照 9.3，双层守卫和映射清理不能丢。

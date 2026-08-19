@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoLayout, collectIncomingImages, extractAnimClasses, layoutPromptResults, layoutSelection, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoConnect, autoLayout, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, layoutPromptResults, layoutSelection, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -504,5 +504,54 @@ describe("create position stagger", () => {
     const result = staggerCreatePosition(center, last);
     expect(Math.abs(result.position.x - center.x)).toBeLessThanOrEqual(60);
     expect(Math.abs(result.position.y - center.y)).toBeLessThanOrEqual(60);
+  });
+});
+
+describe("image file detection", () => {
+  const file = (name: string, type: string) => new File([""], name, { type });
+
+  it("accepts files with an image MIME type", () => {
+    expect(isImageFile(file("photo.png", "image/png"))).toBe(true);
+    expect(isImageFile(file("photo", "image/webp"))).toBe(true);
+  });
+
+  it("falls back to the extension when the MIME type is missing", () => {
+    // 部分系统拖拽/粘贴不携带 MIME 类型，此时按扩展名兜底识别
+    expect(isImageFile(file("photo.JPG", ""))).toBe(true);
+    expect(isImageFile(file("photo.jpeg", ""))).toBe(true);
+    expect(isImageFile(file("photo.webp", ""))).toBe(true);
+    expect(isImageFile(file("photo.gif", ""))).toBe(true);
+    expect(isImageFile(file("photo.bmp", ""))).toBe(true);
+  });
+
+  it("rejects non-image files even with a MIME-like type", () => {
+    expect(isImageFile(file("notes.txt", "text/plain"))).toBe(false);
+    expect(isImageFile(file("notes.txt", ""))).toBe(false);
+    expect(isImageFile(file("archive.png.zip", "application/zip"))).toBe(false);
+  });
+});
+
+describe("canvas node builders", () => {
+  it("builds a prompt node with the given defaults at the position", () => {
+    const node = buildPromptNode(
+      { x: 10, y: 20 },
+      { size: "1024x1024", quality: "high", outputDir: "output" },
+    );
+    expect(node.type).toBe("prompt");
+    expect(node.position).toEqual({ x: 10, y: 20 });
+    expect(node.data).toMatchObject({
+      prompt: "",
+      size: "1024x1024",
+      quality: "high",
+      outputDir: "output",
+      status: "idle",
+    });
+  });
+
+  it("builds a group node at the position with default counters", () => {
+    const node = buildGroupNode({ x: 30, y: 40 });
+    expect(node.type).toBe("group");
+    expect(node.position).toEqual({ x: 30, y: 40 });
+    expect(node.data).toMatchObject({ name: "图片组", imageCount: 0, totalSize: 0 });
   });
 });
