@@ -87,7 +87,7 @@ export interface GenerateParams {
 }
 
 /** 画布图片注册表条目（/api/canvas/* 返回；registry entry + absPath/url 供生成引用与显示） */
-export interface CanvasImageEntry {
+export interface AssetEntry {
   id: string;
   relPath: string;
   absPath: string;

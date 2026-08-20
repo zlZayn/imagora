@@ -1,6 +1,6 @@
 import type {
   AppConfig,
-  CanvasImageEntry,
+  AssetEntry,
   GenerateParams,
   GenerationTaskStatus,
   GenerationTaskSnapshot,
@@ -118,12 +118,12 @@ export async function cancelTask(taskId: string): Promise<{ ok: boolean }> {
 /* ---------------- 画布工作流（无限画布：图片节点 + 提示词节点） ---------------- */
 
 /** 画布：上传本地图片（multipart），服务端复制进 output/.canvas/ 并登记 registry */
-export async function canvasUpload(files: File[]): Promise<{ images: CanvasImageEntry[] }> {
+export async function canvasUpload(files: File[]): Promise<{ images: AssetEntry[] }> {
   const formData = new FormData();
   for (const file of files) {
     formData.append("images", file);
   }
-  return requestJson<{ images: CanvasImageEntry[] }>("/api/canvas/upload", {
+  return requestJson<{ images: AssetEntry[] }>("/api/canvas/upload", {
     method: "POST",
     body: formData,
   });
@@ -132,7 +132,7 @@ export async function canvasUpload(files: File[]): Promise<{ images: CanvasImage
 /** 画布：从输出目录导入图片（目录递归 / 单文件），复制进 .canvas 并登记 */
 export async function canvasImport(
   paths: string[],
-): Promise<{ imported: CanvasImageEntry[]; skipped: { path: string; reason: string }[] }> {
+): Promise<{ imported: AssetEntry[]; skipped: { path: string; reason: string }[] }> {
   return requestJson("/api/canvas/import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -241,7 +241,7 @@ export async function generationHistory(params: {
 }
 
 export async function importHistoryAsset(path: string): Promise<{
-  imported: CanvasImageEntry[];
+  imported: AssetEntry[];
   skipped: { path: string; reason: string }[];
 }> {
   return requestJson("/api/history/import", {

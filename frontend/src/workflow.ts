@@ -1,5 +1,5 @@
 import type {
-  CanvasImageEntry,
+  AssetEntry,
   CanvasPromptNodeData,
   WorkflowEdge,
   WorkflowNode,
@@ -69,7 +69,7 @@ export function withEnterAnim(node: WorkflowNode, index: number): WorkflowNode {
 
 /** 从注册表条目构建单个画布图片节点（url 由后端统一提供，与 node.data.url 同约定） */
 export function buildImageNode(
-  entry: CanvasImageEntry,
+  entry: AssetEntry,
   position: { x: number; y: number },
 ): WorkflowNode {
   return {
@@ -122,7 +122,7 @@ export function buildGroupNode(position: { x: number; y: number }): WorkflowNode
  *  批次内按 IMAGE_STEP 横向排开。origin 由调用方负责错开（getCreatePosition 记忆阶梯），
  *  这里不再按节点数叠加偏移，避免"上传/新建越偏越远"的漂移。 */
 export function canvasEntriesToNodes(
-  entries: CanvasImageEntry[],
+  entries: AssetEntry[],
   existing: WorkflowNode[],
   origin?: { x: number; y: number },
 ): WorkflowNode[] {
