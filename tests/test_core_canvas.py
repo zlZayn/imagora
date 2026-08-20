@@ -30,9 +30,9 @@ def _write_png(path: Path, content: bytes = b"\x89PNG-fake") -> Path:
 
 
 def _must(entry):
-    """register_file 返回 dict|None，if-guard 收窄为 dict（basic 模式 assert 不缩小）"""
+    """register_asset 返回 dict|None，if-guard 收窄为 dict（basic 模式 assert 不缩小）"""
     if entry is None:
-        pytest.fail("register_file 返回 None")
+        pytest.fail("register_asset 返回 None")
     return entry
 
 
@@ -41,7 +41,7 @@ def test_register_and_load(canvas_env):
 
     content = b"\x89PNG-fake"
     src = _write_png(canvas_env / "a.png", content)
-    entry = _must(canvas.register_file(str(src), "a.png"))
+    entry = _must(canvas.register_asset(str(src), "a.png"))
     assert entry is not None
     assert entry["id"] == hashlib.sha1(content).hexdigest()[:12]  # 内容 sha1 前缀
     assert entry["name"] == "a.png"
@@ -60,22 +60,22 @@ def test_register_and_load(canvas_env):
 def test_register_dedup_same_content(canvas_env):
     src1 = _write_png(canvas_env / "a.png", b"same")
     src2 = _write_png(canvas_env / "b.png", b"same")
-    e1 = _must(canvas.register_file(str(src1), "a.png"))
-    e2 = _must(canvas.register_file(str(src2), "b.png"))
+    e1 = _must(canvas.register_asset(str(src1), "a.png"))
+    e2 = _must(canvas.register_asset(str(src2), "b.png"))
     assert e1["id"] == e2["id"]
     canv_files = list((canvas_env / ".canvas").glob("canv_*"))
     assert len(canv_files) == 1  # 同内容只一个文件
 
 
 def test_register_different_content(canvas_env):
-    e1 = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"one")), "a.png"))
-    e2 = _must(canvas.register_file(str(_write_png(canvas_env / "b.png", b"two")), "b.png"))
+    e1 = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"one")), "a.png"))
+    e2 = _must(canvas.register_asset(str(_write_png(canvas_env / "b.png", b"two")), "b.png"))
     assert e1["id"] != e2["id"]
     assert len(list((canvas_env / ".canvas").glob("canv_*"))) == 2
 
 
 def test_register_nonexistent(canvas_env):
-    assert canvas.register_file(str(canvas_env / "nope.png"), "nope.png") is None
+    assert canvas.register_asset(str(canvas_env / "nope.png"), "nope.png") is None
 
 
 def test_registry_corrupt_returns_empty(canvas_env):
@@ -86,7 +86,7 @@ def test_registry_corrupt_returns_empty(canvas_env):
 
 def test_registry_writes_v2_wrapper_and_loads_v1_bare(canvas_env):
     """v2 落盘是 {schemaVersion, images} 包装；v1 裸 dict 老清单仍可读（兼容升级前数据）"""
-    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"v2-wrap")), "a.png"))
+    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"v2-wrap")), "a.png"))
     raw = json.loads((canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8"))
     assert raw["schemaVersion"] == 2
     assert isinstance(raw["images"], dict) and raw["images"][entry["id"]]["name"] == "a.png"
@@ -102,7 +102,7 @@ def test_import_directory_recursive(canvas_env):
     _write_png(canvas_env / "win1" / "x.png")
     _write_png(canvas_env / "win1" / "sub" / "y.jpg", b"\xff\xd8fake")
     (canvas_env / "win1" / "readme.txt").write_text("no", encoding="utf-8")
-    result = canvas.import_images([str(canvas_env / "win1")])
+    result = canvas.import_assets([str(canvas_env / "win1")])
     assert len(result["imported"]) == 2  # txt 不导入
     assert result["skipped"] == []
     assert all(e["relPath"].startswith(".canvas/canv_") for e in result["imported"])
@@ -110,7 +110,7 @@ def test_import_directory_recursive(canvas_env):
 
 def test_import_single_file(canvas_env):
     src = _write_png(canvas_env / "single.png")
-    result = canvas.import_images([str(src)])
+    result = canvas.import_assets([str(src)])
     assert len(result["imported"]) == 1
     assert result["imported"][0]["name"] == "single.png"
 
@@ -118,14 +118,14 @@ def test_import_single_file(canvas_env):
 def test_import_outside_output_rejected(canvas_env, tmp_path_factory):
     outside = tmp_path_factory.mktemp("outside")
     src = _write_png(outside / "evil.png")
-    result = canvas.import_images([str(src)])
+    result = canvas.import_assets([str(src)])
     assert result["imported"] == []
     assert result["skipped"][0]["path"] == str(src)
     assert "不在输出目录内" in result["skipped"][0]["reason"]
 
 
 def test_import_missing_path_skipped(canvas_env):
-    result = canvas.import_images([str(canvas_env / "ghost.png")])
+    result = canvas.import_assets([str(canvas_env / "ghost.png")])
     assert result["imported"] == []
     assert len(result["skipped"]) == 1  # 不抛异常
 
@@ -133,28 +133,28 @@ def test_import_missing_path_skipped(canvas_env):
 def test_import_non_image_file_skipped(canvas_env):
     txt = canvas_env / "notes.txt"
     txt.write_text("hi", encoding="utf-8")
-    result = canvas.import_images([str(txt)])
+    result = canvas.import_assets([str(txt)])
     assert result["imported"] == []
     assert len(result["skipped"]) == 1
 
 
-def test_delete_image(canvas_env):
-    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png")), "a.png"))
-    assert canvas.delete_image(entry["id"]) is True
+def test_delete_asset(canvas_env):
+    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png")), "a.png"))
+    assert canvas.delete_asset(entry["id"]) is True
     assert entry["id"] not in canvas.load_registry()
     assert not (canvas_env / entry["relPath"]).exists()
-    assert canvas.delete_image(entry["id"]) is False  # 再删返回 False
+    assert canvas.delete_asset(entry["id"]) is False  # 再删返回 False
 
 
 def test_delete_missing_file_tolerant(canvas_env):
-    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png")), "a.png"))
+    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png")), "a.png"))
     (canvas_env / entry["relPath"]).unlink()  # 外部删了文件
-    assert canvas.delete_image(entry["id"]) is True  # 注册表移除仍成功，不抛
+    assert canvas.delete_asset(entry["id"]) is True  # 注册表移除仍成功，不抛
 
 
-def test_list_images_with_abs_path(canvas_env):
-    canvas.register_file(str(_write_png(canvas_env / "a.png")), "a.png")
-    images = canvas.list_images()
+def test_list_assets_with_abs_path(canvas_env):
+    canvas.register_asset(str(_write_png(canvas_env / "a.png")), "a.png")
+    images = canvas.list_assets()
     assert len(images) == 1
     assert os.path.normpath(images[0]["absPath"]) == os.path.normpath(
         str(canvas_env / images[0]["relPath"])
@@ -176,7 +176,7 @@ def test_safe_ref_path_allowlist(canvas_env):
 
 def test_workflow_save_strips_derived_image_paths(canvas_env):
     """工作流落盘时图片节点只存 registryId + 元数据，剥离派生路径 url/absPath（不修改入参）"""
-    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"wf-strip")), "a.png"))
+    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"wf-strip")), "a.png"))
     node = {
         "id": f"img-{entry['id']}",
         "type": "image",
@@ -206,7 +206,7 @@ def test_workflow_save_strips_derived_image_paths(canvas_env):
 
 def test_workflow_load_resolves_paths_from_registry(canvas_env):
     """旧格式存档（含过期绝对路径）加载时按 registryId 实时重建 url/absPath，自愈"""
-    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"wf-resolve")), "a.png"))
+    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"wf-resolve")), "a.png"))
     old_node = {
         "id": f"img-{entry['id']}",
         "type": "image",
@@ -239,7 +239,7 @@ def test_workflow_load_resolves_paths_from_registry(canvas_env):
 
 def test_recovery_save_normalizes_image_nodes(canvas_env):
     """恢复快照与手动工作流同规则：图片节点不落派生路径"""
-    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"rec-strip")), "a.png"))
+    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"rec-strip")), "a.png"))
     node = {
         "id": f"img-{entry['id']}",
         "type": "image",
@@ -299,9 +299,9 @@ def test_recovery_snapshots_rotate_and_latest_skips_corrupt(canvas_env, monkeypa
 
 def test_register_kind_source_key(canvas_env):
     """新注册条目携带可选来源标签 kind/sourceKey；缺省 kind='canvas'"""
-    e1 = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"kind-d")), "a.png"))
+    e1 = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"kind-d")), "a.png"))
     assert e1["kind"] == "canvas"
-    e2 = _must(canvas.register_file(
+    e2 = _must(canvas.register_asset(
         str(_write_png(canvas_env / "b.png", b"kind-r")), "b.png", kind="result", source_key="sub-1",
     ))
     assert e2["kind"] == "result"
@@ -316,8 +316,8 @@ def test_register_dedup_keeps_first_kind(canvas_env):
     content = b"samekind"
     src1 = _write_png(canvas_env / "a.png", content)
     src2 = _write_png(canvas_env / "b.png", content)
-    e1 = _must(canvas.register_file(str(src1), "a.png", kind="canvas"))
-    e2 = _must(canvas.register_file(str(src2), "b.png", kind="result", source_key="sub-2"))
+    e1 = _must(canvas.register_asset(str(src1), "a.png", kind="canvas"))
+    e2 = _must(canvas.register_asset(str(src2), "b.png", kind="result", source_key="sub-2"))
     assert e1["id"] == e2["id"]
     stored = canvas.load_registry()[e1["id"]]
     assert stored["kind"] == "canvas"  # 首次来源保留
@@ -325,7 +325,7 @@ def test_register_dedup_keeps_first_kind(canvas_env):
 
 
 def test_resolve_asset(canvas_env):
-    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"resolve")), "a.png"))
+    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"resolve")), "a.png"))
     got = canvas.resolve_asset(entry["id"])
     assert got is not None
     assert got["absPath"] == str(canvas_env / ".canvas" / f"canv_{entry['id']}.png")
@@ -335,21 +335,21 @@ def test_resolve_asset(canvas_env):
     assert canvas.resolve_asset(entry["id"]) is None  # 文件已删 → missing 语义
 
 
-def test_list_images_kind_filter(canvas_env):
-    _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"fi-c")), "a.png", kind="canvas"))
-    _must(canvas.register_file(str(_write_png(canvas_env / "b.png", b"fi-r")), "b.png", kind="result"))
-    assert len(canvas.list_images()) == 2
-    assert {i["kind"] for i in canvas.list_images(kind="canvas")} == {"canvas"}
-    assert {i["kind"] for i in canvas.list_images(kind="result")} == {"result"}
+def test_list_assets_kind_filter(canvas_env):
+    _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"fi-c")), "a.png", kind="canvas"))
+    _must(canvas.register_asset(str(_write_png(canvas_env / "b.png", b"fi-r")), "b.png", kind="result"))
+    assert len(canvas.list_assets()) == 2
+    assert {i["kind"] for i in canvas.list_assets(kind="canvas")} == {"canvas"}
+    assert {i["kind"] for i in canvas.list_assets(kind="result")} == {"result"}
     # 缺 kind 的旧条目在精确过滤时被排除
     (canvas_env / ".canvas" / "registry.json").write_text(
         json.dumps({"schemaVersion": 2, "images": {"old": {"id": "old", "relPath": ".canvas/x.png"}}}),
         encoding="utf-8",
     )
-    assert all(i["id"] != "old" for i in canvas.list_images(kind="canvas"))
+    assert all(i["id"] != "old" for i in canvas.list_assets(kind="canvas"))
 
 def _register_asset(env, name, content, kind="canvas", source_key=None):
-    return _must(canvas.register_file(str(_write_png(env / name, content)), name,
+    return _must(canvas.register_asset(str(_write_png(env / name, content)), name,
                                         kind=kind, source_key=source_key))
 
 

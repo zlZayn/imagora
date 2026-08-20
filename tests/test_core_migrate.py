@@ -31,7 +31,7 @@ def _register_png(env, name="a.png"):
     (env / ".canvas").mkdir(parents=True, exist_ok=True)
     src = env / name
     src.write_bytes(PNG_BYTES + name.encode())
-    entry = canvas.register_file(str(src), name)
+    entry = canvas.register_asset(str(src), name)
     assert entry is not None
     return entry
 

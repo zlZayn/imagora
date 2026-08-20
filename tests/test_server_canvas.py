@@ -236,10 +236,10 @@ def test_import_submission_whole_graph(canvas_env):
     from core import canvas as canvas_mod
     src_in = canvas_env / "in.png"
     src_in.write_bytes(b"sub-in-route")
-    entry_in = canvas_mod.register_file(str(src_in), "in.png", kind="ref", source_key="sub-x")
+    entry_in = canvas_mod.register_asset(str(src_in), "in.png", kind="ref", source_key="sub-x")
     src_res = canvas_env / "res.png"
     src_res.write_bytes(b"sub-res-route")
-    entry_res = canvas_mod.register_file(str(src_res), "res.png", kind="result", source_key="sub-x")
+    entry_res = canvas_mod.register_asset(str(src_res), "res.png", kind="result", source_key="sub-x")
     assert canvas_mod.submission_save("sub-x", "p", {"size": "1", "quality": "h", "outputDir": "o"},
                                      [entry_in], [entry_res])["ok"] is True
     got = canvas_import_submission({"submissionId": "sub-x"})

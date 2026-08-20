@@ -263,7 +263,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | POST | `/api/canvas/image/delete` | { id } | { ok }（注册表移除 + 尽力删文件） |
 | GET | `/api/health/details` | 无 | { ok, checks, issues[] }（启动自检，不泄漏配置） |
 | GET | `/api/history` | ?limit=&query=&status= | { items }（仅给仍存在的图片附加预览 URL） |
-| POST | `/api/history/import` | { path } | { imported, skipped }（只接受日志中真实存在的路径；服务端函数名 import_history_asset，旧名 canvas_history_import 为别名） |
+| POST | `/api/history/import` | { path } | { imported, skipped }（只接受日志中真实存在的路径；服务端函数名 import_history_asset） |
 | POST | `/api/canvas/workflow/save` | { name, nodes, edges } | { ok, path }（图片节点归一化：只存 registryId+元数据） |
 | GET | `/api/canvas/workflow/list` | 无 | { workflows[ name, modified ] }（按修改时间倒序） |
 | GET | `/api/canvas/workflow/load` | ?name= | { name, nodes, edges, missing }（按 registry 实时解析，缺失进 missing） |

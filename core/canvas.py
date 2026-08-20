@@ -324,7 +324,7 @@ def _strip_derived_node_paths(nodes: list) -> list:
     """落盘前归一化：图片节点只保留 registryId + 元数据，剥离派生路径（url/absPath）。
 
     返回新列表（不修改入参）：非图片节点原样引用，图片节点复制 data 后剔除
-    url/absPath——保证磁盘工作流是规范数据，加载时由 resolve_image_node_paths 重建。
+    url/absPath——保证磁盘工作流是规范数据，加载时由 _resolve_image_node_paths 重建。
     """
     normalized: list = []
     for node in nodes:
@@ -343,8 +343,8 @@ def _strip_derived_node_paths(nodes: list) -> list:
 def workflow_save(name: str, nodes: list, edges: list) -> dict:
     """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json，version 2）。
 
-    图片节点落盘前归一化（strip_derived_node_paths）：只存 registryId + 元数据，
-    不存派生路径 url/absPath——加载时由 resolve_image_node_paths 实时重建，
+    图片节点落盘前归一化（_strip_derived_node_paths）：只存 registryId + 元数据，
+    不存派生路径 url/absPath——加载时由 _resolve_image_node_paths 实时重建，
     项目目录改名/移动后旧存档依然可恢复。原子写（先临时文件再替换），多窗口不会写坏。
     返回 {"ok": True, "path"} 或 {"ok": False, "error"}。
     """
@@ -392,7 +392,7 @@ def workflow_list() -> list[dict]:
 def workflow_load(name: str) -> dict:
     """加载工作流 JSON：校验版本（v1/v2 均支持）、按 registryId 实时解析图片节点路径。
 
-    图片节点经 resolve_image_node_paths 统一解析（registry → relPath → absPath/url，
+    图片节点经 _resolve_image_node_paths 统一解析（registry → relPath → absPath/url，
     不信任存档里的旧绝对路径）；registry 缺失或文件不存在的 registryId 进 missing
     （节点保持无路径，前端占位标红）。未知版本明确拒绝（不按错误结构解析未来格式）。
     返回 {"ok": True, "name", "nodes", "edges", "missing"} 或 {"ok": False, "error"}。
@@ -441,7 +441,7 @@ def submission_save(
     """把一次经典生成落成一份提交图快照（复用工作流格式，kind='submission'）。
 
     结构：可选图片组节点收拢输入参考图 → 提示词卡片 → 结果图节点；连线组→提示词→结果。
-    图片节点只存 registryId + 元数据（url/absPath 由加载时 resolve_image_node_paths 重建）。
+    图片节点只存 registryId + 元数据（url/absPath 由加载时 _resolve_image_node_paths 重建）。
     写 output/submissions/<submission_id>.json，原子写；失败返回 {"ok":False,"error"}。
     """
     if not _safe_submission_id(submission_id):
@@ -599,7 +599,7 @@ def recovery_save(nodes: list, edges: list) -> dict:
 def recovery_latest() -> dict:
     """读取最近一份可用恢复快照；损坏文件自动跳过。
 
-    图片节点同样经 resolve_image_node_paths 实时解析（同 workflow_load 规则）。
+    图片节点同样经 _resolve_image_node_paths 实时解析（同 workflow_load 规则）。
     """
     for path in _recovery_paths():
         try:
@@ -622,15 +622,3 @@ def recovery_latest() -> dict:
             "missing": _resolve_image_node_paths(nodes),
         }
     return {"ok": False, "empty": True}
-
-
-# ---------- 兼容别名（命名统一过渡层，全绿后删除） ----------
-_resolve_image_nodes = _resolve_image_node_paths
-_normalize_workflow_nodes = _strip_derived_node_paths
-register_file = register_asset
-import_images = import_assets
-delete_image = delete_asset
-list_images = list_assets
-resolve_image_node_paths = _resolve_image_node_paths
-strip_derived_node_paths = _strip_derived_node_paths
-CANVAS_DIR = ASSET_DIR

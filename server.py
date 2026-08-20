@@ -289,7 +289,7 @@ def import_history_asset(body: dict):
     }
     if requested not in recorded_paths or not os.path.isfile(requested):
         return {"imported": [], "skipped": [{"path": requested, "reason": "不是可用的历史输出"}]}
-    entry = canvas.register_file(requested, os.path.basename(requested))
+    entry = canvas.register_asset(requested, os.path.basename(requested))
     return {
         "imported": [entry] if entry else [],
         "skipped": [] if entry else [{"path": requested, "reason": "导入失败"}],
@@ -353,7 +353,7 @@ def canvas_upload(images: list[UploadFile] = File(default=[])):
             tmp.write(image.file.read())
             tmp_path = tmp.name
         try:
-            entry = canvas.register_file(tmp_path, image.filename or "image")
+            entry = canvas.register_asset(tmp_path, image.filename or "image")
             if entry:
                 entries.append(entry)
         finally:
@@ -371,20 +371,20 @@ def canvas_import(body: dict):
     路径必须落在 output 根内（realpath 前缀校验防穿越）；校验失败逐条进 skipped。
     """
     paths = [str(p) for p in body.get("paths", [])]
-    return canvas.import_images(paths)
+    return canvas.import_assets(paths)
 
 
 @app.get("/api/canvas/images")
 def canvas_images():
     """画布图片全量（每条含 absPath，生成时 ref_paths 引用）"""
-    return {"images": canvas.list_images()}
+    return {"images": canvas.list_assets()}
 
 
 @app.post("/api/canvas/image/delete")
 def canvas_image_delete(body: dict):
     """删除画布图片（注册表移除 + 尽力删文件；文件不存在容忍）"""
     img_id = str(body.get("id", ""))
-    return {"ok": canvas.delete_image(img_id)}
+    return {"ok": canvas.delete_asset(img_id)}
 
 
 @app.post("/api/canvas/workflow/save")
@@ -602,7 +602,7 @@ def _persist_submission(task: GenerationTask) -> dict | None:
     seen_input: set[str] = set()
     for rb in task.ref_bases:
         try:
-            entry = canvas.register_file(rb, Path(rb).name, kind="ref", source_key=task.submission_id)
+            entry = canvas.register_asset(rb, Path(rb).name, kind="ref", source_key=task.submission_id)
         except Exception:
             entry = None
         if entry and entry["id"] not in seen_input:
@@ -618,7 +618,7 @@ def _persist_submission(task: GenerationTask) -> dict | None:
         if not dest or not os.path.isfile(dest):
             continue
         try:
-            entry = canvas.register_file(dest, os.path.basename(dest), kind="result", source_key=task.submission_id)
+            entry = canvas.register_asset(dest, os.path.basename(dest), kind="result", source_key=task.submission_id)
         except Exception:
             entry = None
         if entry and entry["id"] not in seen_result:
@@ -779,5 +779,3 @@ else:
             status_code=503,
         )
 
-# 兼容别名：旧函数名（历史/前端引用陈旧名称时仍可用），新名统一为 import_history_asset
-canvas_history_import = import_history_asset

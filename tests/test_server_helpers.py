@@ -182,7 +182,7 @@ def test_generation_history_route_adds_existing_image_url(monkeypatch, tmp_path)
 
 def test_history_import_only_accepts_recorded_existing_output(monkeypatch, tmp_path):
     """历史导入只允许日志中存在的输出文件，不能变成任意路径读取接口。"""
-    from server import canvas_history_import
+    from server import import_history_asset
 
     recorded = tmp_path / "recorded.png"
     recorded.write_bytes(b"png")
@@ -191,12 +191,12 @@ def test_history_import_only_accepts_recorded_existing_output(monkeypatch, tmp_p
     monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
         {"output": str(recorded)},
     ])
-    monkeypatch.setattr("server.canvas.register_file", lambda path, name: {
+    monkeypatch.setattr("server.canvas.register_asset", lambda path, name: {
         "id": "abc", "absPath": path, "name": name,
     })
 
-    accepted = canvas_history_import({"path": str(recorded)})
-    rejected = canvas_history_import({"path": str(outside)})
+    accepted = import_history_asset({"path": str(recorded)})
+    rejected = import_history_asset({"path": str(outside)})
 
     assert accepted["imported"][0]["id"] == "abc"
     assert rejected["imported"] == []

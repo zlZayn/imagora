@@ -250,6 +250,3 @@ export async function importHistoryAsset(path: string): Promise<{
     body: JSON.stringify({ path }),
   });
 }
-
-/** 兼容别名：旧名（陈旧引用）仍可用 */
-export const historyCanvasImport = importHistoryAsset;
