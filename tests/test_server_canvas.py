@@ -30,17 +30,9 @@ from server import (
 
 
 @pytest.fixture
-def canvas_env(tmp_path, monkeypatch):
-    """把 core.canvas 的目录常量注入 tmp_path，避免污染真实 output/.canvas 与 output/workflows"""
-    from core import canvas
-
-    monkeypatch.setattr(canvas, "DEFAULT_OUTPUT_DIR", str(tmp_path))
-    monkeypatch.setattr(canvas, "ASSET_DIR", str(tmp_path / ".canvas"))
-    monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
-    monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
-    monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)
-    monkeypatch.setattr(canvas, "SUBMISSIONS_DIR", str(tmp_path / "submissions"), raising=False)
-    return tmp_path
+def canvas_env(asset_iso):
+    """统一隔离输出目录到 tmp_path（共享夹具 asset_iso，见 tests/conftest.py）"""
+    return asset_iso
 
 
 def _make_upload(name: str, content: bytes = b"fake-canvas-png") -> UploadFile:

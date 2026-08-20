@@ -18,13 +18,8 @@ PNG_BYTES = (
 
 
 @pytest.fixture
-def canvas_env(tmp_path, monkeypatch):
-    monkeypatch.setattr(canvas, "DEFAULT_OUTPUT_DIR", str(tmp_path))
-    monkeypatch.setattr(canvas, "ASSET_DIR", str(tmp_path / ".canvas"))
-    monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
-    monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
-    monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)
-    return tmp_path
+def canvas_env(asset_iso):
+    return asset_iso
 
 
 def _register_png(env, name="a.png"):
@@ -217,9 +212,11 @@ def test_relocate_asset_dir_moves_and_rewrites_relpath(tmp_path, monkeypatch):
     reg = {"schemaVersion": 2, "images": {"aabb": {
         "id": "aabb", "relPath": ".canvas/canv_aabb.png", "name": "a.png", "kind": "canvas"}}}
     (legacy / "registry.json").write_text(json.dumps(reg), encoding="utf-8")
-    monkeypatch.setattr(canvas, "ASSET_DIR", str(new))
-    monkeypatch.setattr(canvas, "REGISTRY_FILE", str(new / "registry.json"))
-    monkeypatch.setattr(canvas, "LEGACY_ASSET_DIR", str(legacy), raising=False)
+    from core import registry
+    for mod in (canvas, registry):
+        monkeypatch.setattr(mod, "ASSET_DIR", str(new))
+        monkeypatch.setattr(mod, "REGISTRY_FILE", str(new / "registry.json"))
+        monkeypatch.setattr(mod, "LEGACY_ASSET_DIR", str(legacy), raising=False)
 
     plan = migrate.relocate_asset_dir(apply=False)
     assert plan["action"] == "ready" and plan["files"] == 1

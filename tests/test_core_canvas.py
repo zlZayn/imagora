@@ -12,15 +12,9 @@ from core import canvas
 
 
 @pytest.fixture
-def canvas_env(tmp_path, monkeypatch):
-    """把画布目录注入 tmp_path（模块常量需一并覆盖，DEFAULT_OUTPUT_DIR 不联动 CANVAS_DIR）"""
-    monkeypatch.setattr(canvas, "DEFAULT_OUTPUT_DIR", str(tmp_path))
-    monkeypatch.setattr(canvas, "ASSET_DIR", str(tmp_path / ".canvas"))
-    monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
-    monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
-    monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)
-    monkeypatch.setattr(canvas, "SUBMISSIONS_DIR", str(tmp_path / "submissions"), raising=False)
-    return tmp_path
+def canvas_env(asset_iso):
+    """统一隔离输出目录到 tmp_path（共享夹具 asset_iso，见 tests/conftest.py）"""
+    return asset_iso
 
 
 def _write_png(path: Path, content: bytes = b"\x89PNG-fake") -> Path:
@@ -284,7 +278,8 @@ def test_recovery_snapshots_never_overwrite_named_workflow(canvas_env):
 
 def test_recovery_snapshots_rotate_and_latest_skips_corrupt(canvas_env, monkeypatch):
     """恢复目录只保留上限数量，最新文件损坏时回退到最近可读快照。"""
-    monkeypatch.setattr(canvas, "RECOVERY_LIMIT", 2, raising=False)
+    from core import graphstore
+    monkeypatch.setattr(graphstore, "RECOVERY_LIMIT", 2, raising=False)
     first = canvas.recovery_save([{"id": "first"}], [])
     canvas.recovery_save([{"id": "second"}], [])
     latest = canvas.recovery_save([{"id": "third"}], [])
