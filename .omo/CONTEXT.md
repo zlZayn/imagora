@@ -2,52 +2,45 @@
 
 > 维护约定：本文件随工作进展持续更新，记录跨会话交接所需的关键事实——当前工作、架构决策、验证状态、已知问题。交接时先读这里。
 
-## 当前工作（2026-08-13，画布存储格式版本化 v2 + 独立迁移脚本）
+## 当前工作（2026-08-20，存储统一 + 命名重构 + 目录改名，已推送 origin/main）
 
-**存储格式升级为 v2（注册表/工作流），v1/v2 兼容读取、老数据零失效；`scripts/migrate_canvas_v2.py` 一键迁移；后端 147 用例全绿。**
+后端存储全面统一为「资产（asset）语义」，目录规范名 .assets，迁移脚本可一步到最新。
 
-- **格式版本化**：注册表 v2 包装 `{schemaVersion: 2, images: {id: entry}}`（v1 裸 dict 兼容读取）；工作流 v2 = `version: 2` + `savedAt`（v1 读取兼容；未知版本明确拒绝防按错结构解析未来格式）；手动保存工作流改原子写
-- **注册表条目附可选宽高/格式**：`core/imageinfo.py` 纯标准库解析图片头（PNG/JPEG/GIF/WebP/VP8/VP8L/VP8X/BMP），失败不带字段（宽兼容）
-- **迁移脚本** `scripts/migrate_canvas_v2.py`（独立、提交远程）：纯逻辑在 `core/migrate.py`（10 单测）——默认只报告；`--apply` 才落地且先备份 `.bak-<时间戳>`、写后加载器读回校验；`--rebuild-registry` 清单缺失/损坏时按 `.canvas` 文件重建 v2；幂等、非破坏（已端到端演练验证）
+### 存储架构（今日定型）
+- core/registry.py —— 资产注册表（ASSET_DIR=.assets / register_asset / import_assets / delete_asset / list_assets / resolve_asset / image_url / safe_ref_path_allowlist），内容 sha1 去重、原子写、条目可选 kind(canvas/result/ref)+sourceKey；注册表 v2 包装 {schemaVersion:2, images:{id:entry}}（v1 裸 dict 兼容读）
+- core/graphstore.py —— 图/工作流/提交（workflow_* / submission_* / recovery_*、_resolve_image_node_paths / _strip_derived_node_paths），图片节点只存 registryId、路径由 registry.resolve_asset 实时重建
+- core/canvas.py —— 兼容 shim：星号 re-export registry+graphstore（含私有 _REGISTRY_LOCK）；from core import canvas 仍可用；无业务逻辑
+- core/pathtrust.py —— 路径白名单单一实现（match_roots），server 与 registry 共用
+- 资产库目录：output/.assets/（规范名）；存量 .canvas 已迁移
 
-> 此前画布拖拽（useCanvasDrop/canvasDrop/光标/自动整理分层/上传过滤/连线 hover）已提交，历史见 git 与旧 CONTEXT 记录。
+### 统一生成模型（画布 / 经典同一套后端存储）
+- 经典表单生成 done 时：结果图 kind=result、用到的 .refs 参考图 kind=ref 注册进 .assets，落提交图快照（output/submissions/<submissionId>.json，图片组→提示词→结果连线），账本 generation.jsonl 每行带 submissionId/inputAssetIds/outputAssetIds
+- 经典结果区「导入画布」= POST /api/canvas/import-submission 整图重建（前端 mergeSubmissionGraph 按 registryId 去重复用）
+- 画布：拖图/上传注册 kind=canvas，生成结果回流注册 kind=result 建节点并连线
 
-## 已完成的代码改动（本轮）
+### 迁移（一步到最新）
+- python scripts/migrate_canvas_v2.py --apply = v1→v2 + 回填 kind + 迁 .canvas 到 .assets（重写 relPath）+ 升工作流；默认只报告，--apply 才整目录备份+搬运+读回校验，幂等
+- --output-root 路径：指定别的输出目录（脚本会同时 patch registry/graphstore/canvas 三模块常量）
+- 安全测试已加：test_plan_or_apply_one_shot_full_upgrade（真实结构副本综合升级）+ test_migrate_script_cli_output_root_end_to_end（CLI 子进程）
+- 真实数据已迁移：363 张图在 output/.assets，resolve_asset 命中
 
-| 文件 | 内容 |
-|---|---|
-| `core/canvas.py` | 注册表 v2 包装 + v1 兼容读取；工作流 v2（savedAt）+ 版本表加载+未知版本拒绝；手动保存原子写；条目附宽高/格式 |
-| `core/imageinfo.py` | 新增：图片头解析（纯标准库，零依赖） |
-| `core/migrate.py` | 新增：v1→v2 升级 / 清单重建 / 备份→转换→校验→报告（默认只报告） |
-| `scripts/migrate_canvas_v2.py` | 新增：独立迁移脚本（--apply / --rebuild-registry / --output-root） |
-| `tests/test_core_imageinfo.py` | 新增 10 用例 |
-| `tests/test_core_migrate.py` | 新增 10 用例 |
-| `tests/test_core_canvas.py` / `test_server_canvas.py` | 适配 v2（版本断言、v1 兼容、未知版本拒绝） |
-| `ARCHITECTURE.md` / `README.md` / `.omo/CONTEXT.md` | 存储版本化 + scripts/ + 测试表 + 老档兼容说明 |
-
-## 历史工作（已提交，仅备忘）
-
-- 多 profile 动态配置（config.json + core/config.py + /api/config 返回 baseUrl/defaultModel/activeProfile）：详情见 git 历史与 ARCHITECTURE 4.4、README「切换中转站」
-- 上一轮技术债扫描结论：代码级零债（无 TODO/ts-ignore、pyflakes 零告警、严格 tsconfig、eslint-disable 均有正当注释）
+### 待办（备份未删，先勿删）
+- output/.canvas-bak-20260820-210134/（542MB，目录改名全量备份，与 .assets 同内容）
+- output/workflows/*.bak-20260820-181820（14 个 v1 旧格式工作流备份）
+- 待确认应用从 .assets 正常运行（启动看到 363 图、能生成）后，再删 542MB 备份：rm -rf output/.canvas-bak-20260820-210134；工作流 .bak 可随时删
 
 ## 验证状态（本轮）
+- 后端 pytest：166 passed（注意 pytest 需 --basetemp 指向 ASCII 路径，项目路径含中文「网店实习」会触发 tmp_path 坑；用 C:/t/imagora-pytest）
+- 前端 tsc / vitest / build：通过 / 95 passed / 成功
+- ruff：uv run ruff check . 零告警
+- E2E verify_canvas.py：需服务运行（.venv\Scripts\python.exe -m main ui --no-browser --port 7860 后另开终端执行）；本次未跑
 
-| 检查 | 结果 |
-|---|---|
-| 前端 tsc / build | 通过 |
-| 前端 lint | 零告警 |
-| 前端 test | 94 passed（原 73 + 21；含 canvasDrop 11、复杂连接分层 5） |
-| 后端 pytest | **147 passed**（原 126 + 21：imageinfo 10 / migrate 10 / canvas v2 兼容 1） |
-| 后端 ruff | `uv run ruff check .` 零告警 |
-| E2E verify_canvas.py | **31/31 PASS**（含真实鼠标拖拽、拖到 UI 区域落点夹紧）；venv 已装 playwright + chromium headless |
-
-> E2E 运行方式：起服务（`.venv\Scripts\python.exe -m main ui --no-browser --port 7860`）后另开终端 `.venv\Scripts\python.exe frontend\e2e\verify_canvas.py`。拖拽断言用 DataTransfer + DragEvent 模拟（文件内容用 `crypto.getRandomValues` 防注册表去重影响重复运行）。
-
-## 已知问题
-
-- `server.py:583` LSP 报 "Argument missing for parameter id" 是**误报**（`GenerationTask.id` 有 `default_factory`），pre-existing，勿修
-- E2E 已用 Playwright 真实鼠标事件覆盖工具栏按钮的原生 HTML5 DnD；文件拖拽仍以合成 `DataTransfer` 模拟（OS 文件拖拽无法在 headless 复现），Windows 资源管理器拖文件建议人工体验一次
+## 已知问题/注意
+- server.py LSP 报「Argument missing for parameter id」是误报（GenerationTask.id 有 default_factory），pre-existing，勿修
+- pytest tmp：--basetemp=C:/t/imagora-pytest（ASCII）
+- 前端 dist/ 已构建（git 忽略）
 
 ## 下一步
-
-- 可选增强（非阻塞）：画布 Ctrl+V 粘贴图片（经典表单已有该能力，画布暂未接）；落点示意文案 i18n
+- 删 542MB 备份前先启动一次应用确认 .assets 正常（见「待办」）
+- 可选（未做，低优先）：/api/canvas/* 端点与 CanvasPage 等画布功能名保持 canvas（正确域标签，不建议再改）；注册表 JSON 键 images 为数据格式键（保留）
+- 历史（8-13 v1→v2 迁移雏形）已并入；更早画布交互/多 profile 见 git 历史
