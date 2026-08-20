@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoLayout, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, layoutPromptResults, layoutSelection, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoConnect, autoLayout, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, layoutPromptResults, layoutSelection, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -633,5 +633,46 @@ describe("canvas node builders", () => {
     expect(node.type).toBe("group");
     expect(node.position).toEqual({ x: 30, y: 40 });
     expect(node.data).toMatchObject({ name: "图片组", imageCount: 0, totalSize: 0 });
+  });
+});
+
+describe("mergeSubmissionGraph", () => {
+  const subPrompt: WorkflowNode = {
+    id: "prompt-sub-1", type: "prompt", position: { x: 0, y: 0 },
+    data: { prompt: "p", size: "s", quality: "q", outputDir: "o", status: "idle" },
+  } as WorkflowNode;
+  const subImg: WorkflowNode = {
+    id: "img-aaa", type: "image", position: { x: 0, y: 0 },
+    data: { registryId: "aaa", name: "aaa.png", size: 1, ext: "png", refCount: 0 },
+  } as WorkflowNode;
+  const subResult: WorkflowNode = {
+    id: "img-bbb", type: "image", position: { x: 0, y: 0 },
+    data: { registryId: "bbb", name: "bbb.png", size: 1, ext: "png", refCount: 0 },
+  } as WorkflowNode;
+  const subEdges: WorkflowEdge[] = [
+    { id: "prompt-sub-1->img-bbb", source: "prompt-sub-1", target: "img-bbb" },
+  ];
+
+  it("appends new nodes, maps edges, and reuses image nodes already present", () => {
+    // 画布已存在同 registryId 的图片节点 bbb
+    const existingImg: WorkflowNode = {
+      id: "img-bbb", type: "image", position: { x: 0, y: 0 },
+      data: { registryId: "bbb", name: "old.png", size: 1, ext: "png", refCount: 0 },
+    } as WorkflowNode;
+    const existingEdges: WorkflowEdge[] = [];
+    const out = mergeSubmissionGraph([subPrompt, subImg, subResult], subEdges, [existingImg], existingEdges, "sub-1");
+    // 已有 bbb 复用，不新增；新增 prompt + aaa
+    const imageIds = out.nodes.filter((n) => n.type === "image").map((n) => n.data.registryId);
+    expect(imageIds).toContain("bbb");
+    expect(imageIds).toContain("aaa");
+    const bbbCount = out.nodes.filter((n) => n.type === "image" && n.data.registryId === "bbb").length;
+    expect(bbbCount).toBe(1); // 去重
+    // prompt 用命名空间 id
+    const promptIds = out.nodes.filter((n) => n.type === "prompt").map((n) => n.id);
+    expect(promptIds).toEqual(["prompt-sub-1-import-sub-1"]);
+    // 边映射到复用/新增节点，源为实际落点
+    const edge = out.edges.find((e) => e.target === "img-bbb")!;
+    expect(edge).toBeTruthy();
+    expect(edge.source).toBe("prompt-sub-1-import-sub-1");
   });
 });

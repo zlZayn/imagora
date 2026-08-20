@@ -68,6 +68,8 @@ export interface GenerationTaskSnapshot {
   totalCost?: number;
   error?: string | null;
   cancelRequested?: boolean;
+  /** 稳定提交 id（落盘提交图快照，经典结果可整图导入画布） */
+  submissionId?: string;
 }
 
 /** 生成请求参数 */

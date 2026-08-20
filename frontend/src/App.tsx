@@ -155,6 +155,10 @@ useEffect(() => {
   const outputDirTimerRef = useRef<number | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [results, setResults] = useState<ResultItem[]>([]);
+  /** 最近一次成功生成的提交 id（后端落盘提交图快照，可整图导入画布） */
+  const [lastSubmissionId, setLastSubmissionId] = useState<string | null>(null);
+  /** 待导入画布的提交 id（传给 CanvasPage 触发整图导入，完成后清空） */
+  const [pendingSubmissionImport, setPendingSubmissionImport] = useState<string | null>(null);
   const [healthIssues, setHealthIssues] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -239,6 +243,7 @@ useEffect(() => {
       } else if (view.status === "done") {
         setTaskStatus("done");
         setResults(view.results ?? []);
+        setLastSubmissionId(view.submissionId ?? null);
         setLogs([
           ...(view.messages ?? []),
           `总用时 ${((Date.now() - startedAtRef.current) / 1000).toFixed(1)} 秒`,
@@ -284,6 +289,17 @@ useEffect(() => {
       setTaskStatus(null);
       setLogs([`提交失败：${errMessage(err)}`]);
     }
+  };
+
+  /** 把最近一次经典提交整图导入画布：切到画布模式并下发 importSubmissionId */
+  const handleImportToCanvas = () => {
+    if (!lastSubmissionId) {
+      setLogs(["当前结果无提交快照（旧历史不完整），无法整图导入"]);
+      return;
+    }
+    setPendingSubmissionImport(lastSubmissionId);
+    setCanvasMounted(true);
+    switchMode("canvas");
   };
 
   /** 生成中（排队或执行）时禁用表单操作 */
@@ -358,7 +374,11 @@ useEffect(() => {
       {/* 无限画布：首次进入后保持挂载，切换模式仅显隐（内容保留，退出窗口才清空） */}
       {canvasMounted && config && (
         <div className={mode === "canvas" ? "block" : "hidden"}>
-          <CanvasPage config={config} />
+          <CanvasPage
+            config={config}
+            importSubmissionId={pendingSubmissionImport}
+            onSubmissionImported={() => setPendingSubmissionImport(null)}
+          />
         </div>
       )}
       {/* 经典表单：始终挂载（状态在 App），按模式显隐 */}
@@ -450,6 +470,14 @@ useEffect(() => {
 
         {/* 右栏：结果画廊 */}
         <section className="panel-card enter-up enter-delay-3 min-h-[560px]">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="field-label mb-0">生成结果</span>
+            {lastSubmissionId && (
+              <button type="button" onClick={handleImportToCanvas} className="btn-ghost text-xs">
+                导入画布
+              </button>
+            )}
+          </div>
           <Gallery items={results} />
         </section>
       </main>

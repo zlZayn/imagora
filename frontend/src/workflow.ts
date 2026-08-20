@@ -577,3 +577,53 @@ export function layoutSelection(
   const positioned = new Map(arranged.map((node) => [node.id, node]));
   return nodes.map((node) => positioned.get(node.id) ?? node);
 }
+
+/** 把一次提交图快照合并进现有画布（Phase B 统一导入，纯函数不改入参）。
+ *  图片节点按 registryId 去重复用现有节点；提示词/图片组节点用提交命名空间 id 追加；
+ *  边按实际落点映射。落点压在现有内容下方，横向排开。 */
+export function mergeSubmissionGraph(
+  subNodes: WorkflowNode[],
+  subEdges: WorkflowEdge[],
+  existing: WorkflowNode[],
+  existingEdges: WorkflowEdge[],
+  submissionId: string,
+): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  const idMap = new Map<string, string>();
+  const seenRegistry = new Set<string>();
+  const added: WorkflowNode[] = [];
+  for (const n of existing) {
+    if (n.type === "image") seenRegistry.add(n.data.registryId);
+  }
+  const maxY = existing.reduce((m, n) => Math.max(m, n.position.y), 0);
+  const baseX = existing.length ? existing.reduce((m, n) => Math.min(m, n.position.x), 0) : 0;
+  let col = 0;
+  for (const n of subNodes) {
+    if (n.type === "image") {
+      const rid = n.data.registryId;
+      const reused = existing.find((x) => x.type === "image" && x.data.registryId === rid);
+      if (reused) {
+        idMap.set(n.id, reused.id);
+        continue;
+      }
+      if (seenRegistry.has(rid)) continue;
+      seenRegistry.add(rid);
+      const newId = `img-${rid}`;
+      idMap.set(n.id, newId);
+      added.push({ ...n, id: newId, position: { x: baseX + col * 40, y: maxY + 80 } });
+      col += 1;
+    } else {
+      const newId = `${n.id}-import-${submissionId}`;
+      idMap.set(n.id, newId);
+      added.push({ ...n, id: newId, position: { x: baseX + col * 40, y: maxY + 80 } });
+      col += 1;
+    }
+  }
+  const edges: WorkflowEdge[] = [];
+  for (const e of subEdges) {
+    const source = idMap.get(e.source);
+    const target = idMap.get(e.target);
+    if (!source || !target) continue;
+    edges.push({ ...e, id: `${source}->${target}`, source, target });
+  }
+  return { nodes: [...existing, ...added], edges: [...existingEdges, ...edges] };
+}

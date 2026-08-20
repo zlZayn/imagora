@@ -26,6 +26,7 @@ import { GripVertical } from "lucide-react";
 import {
   canvasUpload,
   historyCanvasImport,
+  importSubmission,
   selectFolder,
   workflowList,
   workflowLoad,
@@ -54,6 +55,7 @@ import {
   isImageFile,
   layoutPromptResults,
   layoutSelection,
+  mergeSubmissionGraph,
   nodeSize,
   staggerCreatePosition,
   stripAnimClasses,
@@ -131,9 +133,16 @@ function CanvasLog({ logs }: { logs: { id: number; text: string }[] }) {
 
 interface CanvasPageProps {
   config: AppConfig;
+  /** 待整图导入画布的提交 id（经典结果导入触发；导入完成后回调清空） */
+  importSubmissionId?: string | null;
+  onSubmissionImported?: () => void;
 }
 
-export default function CanvasPage({ config }: CanvasPageProps) {
+export default function CanvasPage({
+  config,
+  importSubmissionId,
+  onSubmissionImported,
+}: CanvasPageProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   /** 画布容器引用：把实时 zoom 写入 --canvas-zoom CSS 变量（连接点绝对大小用） */
@@ -255,6 +264,33 @@ export default function CanvasPage({ config }: CanvasPageProps) {
     onRestore: restoreCanvas,
     onLog: pushLog,
   });
+
+  /* 经典结果整图导入：收到 importSubmissionId 时拉取提交快照并合并进画布（去重复用图片节点） */
+  useEffect(() => {
+    if (!importSubmissionId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const sub = await importSubmission(importSubmissionId);
+        if (cancelled) return;
+        recordHistory();
+        const merged = mergeSubmissionGraph(
+          sub.nodes, sub.edges, nodesRef.current, edgesRef.current, importSubmissionId,
+        );
+        setNodes(merged.nodes);
+        setEdges(merged.edges);
+        fitCanvasToContent();
+        pushLog(`已导入提交 ${importSubmissionId}（${sub.nodes.length} 节点）到画布`);
+      } catch (err) {
+        pushLog(`导入画布失败：${errMessage(err)}`);
+      } finally {
+        if (!cancelled) onSubmissionImported?.();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fitCanvasToContent, importSubmissionId, onSubmissionImported, pushLog, recordHistory, setEdges, setNodes]);
 
   /* 卸载时清理未到期的删除动画定时器，避免卸载后 setState 泄漏 */
   useEffect(() => {

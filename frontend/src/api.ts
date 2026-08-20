@@ -201,6 +201,17 @@ export async function recoveryLatest(): Promise<RecoverySnapshotResponse> {
   return requestJson("/api/canvas/recovery/latest");
 }
 
+/** 经典提交整图导入画布：按 submissionId 取提交图快照（图片路径已实时解析，缺失进 missing） */
+export async function importSubmission(
+  submissionId: string,
+): Promise<{ name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[]; missing: string[] }> {
+  return requestJson("/api/canvas/import-submission", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ submissionId }),
+  });
+}
+
 export interface GenerationHistoryItem {
   time?: string;
   mode?: string;
