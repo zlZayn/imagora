@@ -440,7 +440,11 @@ def _atomic_write_workflow_backup(path: str, payload: dict) -> str:
 
 
 def migrate_workflows(apply: bool = False) -> dict:
-    """工作流一步升级到最新：逐文件 v1→v2（备份+校验）。返回 {workflows:[...], summary}。"""
+    """工作流一步升级到最新：逐文件 v1→v2（备份+校验）。返回 {workflows:[...], summary}。
+
+    summary 同时统计 ready（dry-run 时检测到的待升级 v1）和 upgraded（apply 后实际升级），
+    让 dry-run 报告也能显示"待升级 N"，不误报为 0。
+    """
     wf_reports = []
     for path in workflow_files():
         wf_reports.append(upgrade_workflow(path, apply))
@@ -448,6 +452,7 @@ def migrate_workflows(apply: bool = False) -> dict:
         "workflows": wf_reports,
         "summary": {
             "v1_remaining": sum(1 for r in wf_reports if r.get("version") == 1),
+            "ready": sum(1 for r in wf_reports if r.get("action") == "upgrade-ready"),
             "upgraded": sum(1 for r in wf_reports if r.get("action") == "upgraded"),
             "noop": sum(1 for r in wf_reports if r.get("action") == "noop"),
             "corrupt": sum(1 for r in wf_reports if r.get("action") == "skip-corrupt"),

@@ -116,6 +116,70 @@ def test_rebuild_registry_from_files(canvas_env):
     assert restored["width"] == 100 and restored["height"] == 200
 
 
+def _setup_split_dirs(tmp_path, monkeypatch):
+    """还原生产布局：ASSET_DIR=.assets、LEGACY_ASSET_DIR=.canvas（两目录分开）。
+
+    conftest 的 asset_iso 把两者都设为 .canvas（让旧用例不依赖 relocate），本用例
+    要测 pending-relocate 必须 .assets 不存在但 .canvas 有清单，故覆盖回去。
+    """
+    asset_dir = str(tmp_path / ".assets")
+    reg_file = str(tmp_path / ".assets" / "registry.json")
+    legacy_dir = str(tmp_path / ".canvas")
+    for mod in (registry, canvas):
+        monkeypatch.setattr(mod, "ASSET_DIR", asset_dir)
+        monkeypatch.setattr(mod, "REGISTRY_FILE", reg_file)
+        monkeypatch.setattr(mod, "LEGACY_ASSET_DIR", legacy_dir, raising=False)
+    return tmp_path
+
+
+def _write_legacy_v1(env, img_id="abc123"):
+    """在 LEGACY_ASSET_DIR 下手工构造 v1 裸清单 + 一个 canv_*.png（不调 register_asset，
+    register_asset 会写到 ASSET_DIR=.assets，与测试意图相悖）。"""
+    legacy = env / ".canvas"
+    legacy.mkdir(parents=True, exist_ok=True)
+    png = PNG_BYTES + img_id.encode()
+    (legacy / f"canv_{img_id}.png").write_bytes(png)
+    (legacy / "registry.json").write_text(json.dumps({
+        img_id: {
+            "id": img_id,
+            "relPath": f".canvas/canv_{img_id}.png",
+            "name": f"canv_{img_id}.png",
+            "size": len(png),
+            "ext": "png",
+            "createdAt": "2026-08-19 22:30:00",
+        }
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    return img_id
+
+
+def test_upgrade_reports_pending_relocate_when_legacy_has_v1(canvas_env, monkeypatch):
+    """dry-run：.canvas/registry.json 是 v1 裸清单但还没搬到 .assets 时，
+    upgrade_registry 应返回 'pending-relocate' 提示待迁后升级，避免误报 missing/noop。"""
+    _setup_split_dirs(canvas_env, monkeypatch)
+    _write_legacy_v1(canvas_env)
+    # .assets 不存在（没搬过），主路径 detect 返回 missing；upgrade 应去 legacy 探测
+    assert not (canvas_env / ".assets").exists()
+    report = registry.upgrade_registry(apply=False)
+    assert report["registry"]["state"] == "v1"
+    assert report["action"] == "pending-relocate"
+    assert report["entries"] == 1
+    # dry-run 不写任何文件
+    assert not (canvas_env / ".assets").exists()
+    assert (canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8").startswith("{")
+
+
+def test_upgrade_pending_relocate_clears_after_apply(canvas_env, monkeypatch):
+    """apply 后 .canvas 搬到 .assets，pending-relocate 消失，再 dry-run 显示 v2/noop。"""
+    _setup_split_dirs(canvas_env, monkeypatch)
+    img_id = _write_legacy_v1(canvas_env)
+    assert registry.upgrade_registry(apply=False)["action"] == "pending-relocate"
+    # 一步 apply（relocate 把 .canvas 搬到 .assets，legacy 下的清单随之就位）
+    registry.migrate(apply=True)
+    assert registry.upgrade_registry(apply=False)["action"] == "none"
+    raw = json.loads((canvas_env / ".assets" / "registry.json").read_text(encoding="utf-8"))
+    assert raw["schemaVersion"] == 2 and raw["images"][img_id]["kind"] == "canvas"
+
+
 # ---------- 工作流：升级 v1->v2 ----------
 
 def test_workflow_upgrade_plan_and_apply(canvas_env):
@@ -123,10 +187,13 @@ def test_workflow_upgrade_plan_and_apply(canvas_env):
     wf.write_text(json.dumps({"version": 1, "name": "old", "nodes": [{"id": "n1"}], "edges": []}), encoding="utf-8")
     report = graphstore.migrate_workflows()
     assert report["workflows"][0]["action"] == "upgrade-ready"
+    # dry-run summary 同时报 ready，让 scripts/migrate.py 能在 dry-run 时显示"待升级 N"
+    assert report["summary"]["ready"] == 1 and report["summary"]["upgraded"] == 0
     assert wf.read_bytes().startswith(b'{"version": 1')
     report = graphstore.migrate_workflows(apply=True)
     upgraded = report["workflows"][0]
     assert upgraded["action"] == "upgraded"
+    assert report["summary"]["upgraded"] == 1 and report["summary"]["ready"] == 0
     raw = json.loads(wf.read_text(encoding="utf-8"))
     assert raw["version"] == 2 and raw["savedAt"]
     assert os.path.isfile(upgraded["backup"])
