@@ -182,6 +182,18 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
   - 指定 output 根：追加 `--output-root 路径`
 - **重建原理**：`rebuild_registry` 扫描 `.canvas/` 下 `canv_<sha1[:12]>.<ext>` 文件——id/relPath/name 由文件名还原，size 实测、宽高/格式用 `imageinfo` 探测、createdAt 取文件 mtime；canvas 工作流按"编号"引用图片，编号不丢则老存档全部可恢复。**限制**：重建后条目 name 为系统名（原始上传名未单独持久化，无法还原）。
 - 图片注册表：`output/.canvas/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式（`imageinfo` 头部探测）；`.canvas` 永不自动清理（区别于 `.refs` 的 24h 清理）。
+
+#### 画布图片的注册入口（谁进 `.canvas/`）
+
+| 入口 | 是否进 `.canvas/` 注册 | 说明 |
+| --- | --- | --- |
+| 画布拖拽本地图片 / 工具栏「上传图片」 | ✅ | `POST /api/canvas/upload`，复制 + 登记，同内容去重 |
+| 画布「历史导入」/「导入目录」 | ✅ | `history/import` / `canvas/import`，同样复制 + 登记 |
+| 生成结果回流 | ✅ | done 快照按 registryId 去重后复制 + 登记（见 6.5） |
+| 图片节点「替换」 | ✅ | 新图登记；旧图文件保留（避免破坏其他引用/已存工作流） |
+| 经典表单上传区参考图 | ❌ | 只落 `output/.refs/`（24h 临时中转），不进 `.canvas/`；仅当后续导入画布/结果回流才登记 |
+
+> `.canvas/` 与 `.refs/`：前者是画布长期图库（永不清理、工作流按编号引用、损坏可重建）；后者是参考图临时缓存（添加即落盘供继承/生成引用，启动清 24h 孤儿，无引用计数）。
 - 工作流文件：version 2 JSON（v1 兼容读取）存 `output/workflows/`，含 `savedAt` 元信息；图片节点**只持久化 registryId + 元数据**，url/absPath 由加载时按注册表实时重建——项目改名/移动后旧存档自愈；注册表缺失的 id 进 `missing`（前端标红「图片缺失」并阻止带缺图运行）。
 - 恢复快照：独立于手动工作流，自动保存（防抖 1.5s）+ 挂载询问恢复。
 
