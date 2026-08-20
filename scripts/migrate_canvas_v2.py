@@ -21,11 +21,22 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import canvas as canvas_mod
+from core import graphstore
 from core import migrate
+from core import registry
 
 
 def _print_report(report: dict) -> None:
     print(f"模式：{'落地(apply，含备份与校验)' if report['apply'] else '只报告（不写文件）'}")
+    rel = report.get("relocate", {})
+    if rel.get("action") == "noop":
+        print("[目录] 资产目录已是 .assets，无需改名")
+    elif rel.get("action") == "nothing":
+        print(f"[目录] 无存量 .canvas，无需改名（{rel.get('reason')}）")
+    elif rel.get("action") == "ready":
+        print(f"[目录] 待把 .canvas 迁到 .assets（{rel.get('files')} 个文件，加 --apply 执行）")
+    elif rel.get("action") == "moved":
+        print(f"[目录] 已迁 .canvas -> .assets（{rel.get('files')} 文件），备份: {rel.get('backup')}，注册表 {rel.get('entries')} 条")
     am = report.get("asset_meta", {})
     if am.get("action") == "noop":
         print(f"[来源标签] 全部条目已带 kind（{am['asset_meta']['count']} 条，无需回填）")
@@ -82,24 +93,26 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.output_root:
+        root = os.path.abspath(args.output_root)
         old = canvas_mod.DEFAULT_OUTPUT_DIR
-        canvas_mod.DEFAULT_OUTPUT_DIR = os.path.abspath(args.output_root)
-        canvas_mod.ASSET_DIR = os.path.join(canvas_mod.DEFAULT_OUTPUT_DIR, ".assets")
-        canvas_mod.REGISTRY_FILE = os.path.join(canvas_mod.ASSET_DIR, "registry.json")
-        canvas_mod.LEGACY_ASSET_DIR = os.path.join(canvas_mod.DEFAULT_OUTPUT_DIR, ".canvas")
-        canvas_mod.WORKFLOWS_DIR = os.path.join(canvas_mod.DEFAULT_OUTPUT_DIR, "workflows")
-        canvas_mod.RECOVERY_DIR = os.path.join(canvas_mod.WORKFLOWS_DIR, ".recovery")
+        # 拆分后同时 patch registry / graphstore / canvas(shim) 三模块目录常量，避免读到默认输出目录
+        for mod in (registry, graphstore, canvas_mod):
+            mod.DEFAULT_OUTPUT_DIR = root
+        for mod in (registry, canvas_mod):
+            mod.ASSET_DIR = os.path.join(root, ".assets")
+            mod.REGISTRY_FILE = os.path.join(mod.ASSET_DIR, "registry.json")
+            mod.LEGACY_ASSET_DIR = os.path.join(root, ".canvas")
+        for mod in (graphstore, canvas_mod):
+            mod.WORKFLOWS_DIR = os.path.join(root, "workflows")
+            mod.RECOVERY_DIR = os.path.join(mod.WORKFLOWS_DIR, ".recovery")
         importlib.reload(migrate)  # 让迁移模块读取更新后的常量
-        if old == canvas_mod.DEFAULT_OUTPUT_DIR:
-            print(f"output 根不变：{old}", file=sys.stderr)
+        if old == root:
+            print(f"output 根不变：{root}", file=sys.stderr)
 
     report = migrate.plan_or_apply(
         apply=args.apply, rebuild=args.rebuild_registry, backfill=not args.skip_meta_backfill,
     )
     _print_report(report)
-    if args.rename_asset_dir:
-        reloc = migrate.relocate_asset_dir(args.apply)
-        print(f"[目录改名] action={reloc.get('action')} files={reloc.get('files')} backup={reloc.get('backup')}")
     return 0
 
 

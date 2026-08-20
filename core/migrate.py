@@ -287,12 +287,16 @@ def upgrade_workflow(path: str, apply: bool) -> dict:
 # ---------------- 汇总 ----------------
 
 def plan_or_apply(apply: bool = False, rebuild: bool = False, backfill: bool = True) -> dict:
-    """全量迁移入口：registry（升级或重建）+ 来源标签回填 + 全部工作流。
+    """全量迁移入口：registry（升级或重建）+ 来源标签回填 + 目录改名（路径变更）+ 全部工作流。
 
-    默认（apply=False）只报告每项将做什么；apply=True 才备份→转换→校验。
-    backfill=False 完全跳过来源标签回填（含副作用）。
+    一条命令从最早格式一步到最新：默认（apply=False）只报告每项将做什么；
+    apply=True 才备份→转换→校验（含 relocate_asset_dir 把存量 .canvas 迁到规范名 .assets）。
+    backfill=False 完全跳过来源标签回填。
     """
     report: dict = {"apply": apply}
+    # 顺序关键：先搬目录（.canvas -> .assets 重写 relPath、归一格式 v2），
+    # 再升级/回填注册表（读 .assets），最后升级工作流——否则存量还留在 .canvas 时升级会读到空。
+    report["relocate"] = relocate_asset_dir(apply)
     if rebuild:
         report["registry"] = rebuild_registry(apply)
     else:

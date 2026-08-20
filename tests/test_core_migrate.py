@@ -229,3 +229,96 @@ def test_relocate_asset_dir_moves_and_rewrites_relpath(tmp_path, monkeypatch):
     raw = json.loads((new / "registry.json").read_text(encoding="utf-8"))
     assert raw["images"]["aabb"]["relPath"] == ".assets/canv_aabb.png"
     assert migrate.relocate_asset_dir(apply=True)["action"] in ("noop", "nothing")
+
+
+def test_plan_or_apply_one_shot_full_upgrade(tmp_path, monkeypatch):
+    """一步到最新综合安全测试：存量 .canvas（含 registry/图/工作流 v1）--apply 一次到位。
+
+    验证：报告不写文件；apply 先迁 .canvas->.assets、重写 relPath、回填 kind、升级工作流、
+    备份存在、resolve_asset 命中、幂等无数据丢失。
+    """
+    from core import graphstore, registry
+
+    legacy = tmp_path / ".canvas"
+    new = tmp_path / ".assets"
+    legacy.mkdir(parents=True, exist_ok=True)
+    (legacy / "canv_abc123.png").write_bytes(b"img")
+    # v2 注册表但缺 kind、relPath 用 .canvas/（模拟真实存量）
+    reg = {"schemaVersion": 2, "images": {"abc123": {
+        "id": "abc123", "relPath": ".canvas/canv_abc123.png", "name": "a.png"}}}
+    (legacy / "registry.json").write_text(json.dumps(reg), encoding="utf-8")
+    wf = tmp_path / "workflows"
+    wf.mkdir(parents=True, exist_ok=True)
+    (wf / "old.json").write_text(json.dumps({"version": 1, "name": "old", "nodes": [], "edges": []}), encoding="utf-8")
+    # 构造独立隔离：registry/graphstore 目录常量指向本 tmp（重载迁移模块读最新常量）
+    for mod in (registry, canvas):
+        monkeypatch.setattr(mod, "DEFAULT_OUTPUT_DIR", str(tmp_path))
+        monkeypatch.setattr(mod, "ASSET_DIR", str(new))
+        monkeypatch.setattr(mod, "REGISTRY_FILE", str(new / "registry.json"))
+        monkeypatch.setattr(mod, "LEGACY_ASSET_DIR", str(legacy), raising=False)
+    monkeypatch.setattr(graphstore, "DEFAULT_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setattr(graphstore, "WORKFLOWS_DIR", str(wf))
+    monkeypatch.setattr(graphstore, "RECOVERY_DIR", str(wf / ".recovery"), raising=False)
+    monkeypatch.setattr(canvas, "DEFAULT_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(wf))
+    monkeypatch.setattr(canvas, "RECOVERY_DIR", str(wf / ".recovery"), raising=False)
+
+    # 1) 报告模式不得写任何文件
+    report = migrate.plan_or_apply()
+    assert report["relocate"]["action"] == "ready"
+    assert not new.exists() and legacy.is_dir()
+    assert json.loads((wf / "old.json").read_text(encoding="utf-8"))["version"] == 1
+
+    # 2) apply 一步到位
+    report = migrate.plan_or_apply(apply=True)
+    assert report["relocate"]["action"] == "moved"
+    assert report["relocate"]["backup"] and os.path.isdir(report["relocate"]["backup"])
+    assert new.is_dir() and not legacy.exists()
+    assert (new / "canv_abc123.png").exists()          # 文件未丢
+    raw = json.loads((new / "registry.json").read_text(encoding="utf-8"))
+    e = raw["images"]["abc123"]
+    assert e["relPath"] == ".assets/canv_abc123.png"    # 路径已改
+    assert e["kind"] == "canvas"                        # kind 已回填
+    assert json.loads((wf / "old.json").read_text(encoding="utf-8"))["version"] == 2  # 工作流已升级
+    assert registry.resolve_asset("abc123") is not None  # 加载器能从 .assets 解析
+
+    # 3) 幂等：再跑一次无副作用、无数据丢失
+    before = sorted(os.listdir(new))
+    report2 = migrate.plan_or_apply(apply=True)
+    assert sorted(os.listdir(new)) == before
+    assert registry.load_registry()["abc123"]["relPath"] == ".assets/canv_abc123.png"
+
+
+def test_migrate_script_cli_output_root_end_to_end(tmp_path):
+    """真实 CLI 子进程端到端安全测试：--output-root + --apply 一步到最新。
+
+    验证脚本在拆分后对 registry/graphstore/canvas 三模块的目录 patch 生效，
+    且报告不写、apply 搬目录+改路径+升工作流、不碰仓库默认 output。
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = tmp_path
+    legacy = root / ".canvas"
+    legacy.mkdir(parents=True, exist_ok=True)
+    (legacy / "canv_cli123.png").write_bytes(b"img")
+    (legacy / "registry.json").write_text(json.dumps({"schemaVersion": 2, "images": {"cli123": {
+        "id": "cli123", "relPath": ".canvas/canv_cli123.png", "name": "c.png"}}}), encoding="utf-8")
+    wf = root / "workflows"; wf.mkdir(parents=True, exist_ok=True)
+    (wf / "old.json").write_text(json.dumps({"version": 1, "name": "old", "nodes": [], "edges": []}), encoding="utf-8")
+
+    script = str(Path(__file__).resolve().parent.parent / "scripts" / "migrate_canvas_v2.py")
+
+    r0 = subprocess.run([sys.executable, script, "--output-root", str(root)], capture_output=True, text=True)
+    assert r0.returncode == 0, r0.stderr
+    assert not (root / ".assets").exists()          # 报告不写
+    assert legacy.is_dir()
+
+    r1 = subprocess.run([sys.executable, script, "--output-root", str(root), "--apply"], capture_output=True, text=True)
+    assert r1.returncode == 0, r1.stderr
+    assert (root / ".assets" / "canv_cli123.png").exists()
+    assert not legacy.exists()                       # 已迁移
+    reg = json.loads((root / ".assets" / "registry.json").read_text(encoding="utf-8"))
+    assert reg["images"]["cli123"]["relPath"] == ".assets/canv_cli123.png"
+    assert json.loads((wf / "old.json").read_text(encoding="utf-8"))["version"] == 2
