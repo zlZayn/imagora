@@ -28,7 +28,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 - 端口唯一真相源：服务是否在跑、进程是谁，一律以 `netstat` 探测端口监听者为准，不信任任何落盘状态文件。
 - 任务管线唯一：经典表单与画布共用同一个 `TaskManager`，全局并发上限对所有窗口统一生效。
-- 图片三源归一：本地上传 / 输出目录导入 / 生成结果回流，最终都复制进 `output/.canvas/` 注册表管理。
+- 图片三源归一：本地上传 / 输出目录导入 / 生成结果回流，最终都复制进 `output/.assets/` 注册表管理。
 - 单 worker 启动：uvicorn 不得传 `--workers`，否则任务并发上限翻倍、窗口计数器错乱。
 - 前端静态资源 no-cache：中间件统一 `Cache-Control: no-cache`，本地迭代改完前端刷新即生效。
 
@@ -43,24 +43,26 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `启动生图工作台.cmd` | 开发环境双击入口：构建检查 → 起服务 → 开窗 → 进入交互菜单 |
 | `config.json` | 公开配置（git 跟踪）：多 profile（中转站/模型/尺寸/质量/ratios），`default_profile` 指定公共默认 |
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块 |
-| `core/pathtrust.py` | 路径白名单统一实现（`.refs`/`.canvas` 双根 + 单根），供 canvas 与 server 复用 |
+| `core/pathtrust.py` | 路径白名单统一实现（`.refs`/`.assets` 双根 + 单根），供 canvas 与 server 复用 |
 | `output/…/submissions/` | 经典提交图快照（复用工作流格式，kind='submission'），提供整图导入画布 |
 | `frontend/` | React SPA（见 2.3） |
 | `scripts/` | 独立运维脚本：`migrate_canvas_v2.py`（画布存储 v1→v2 迁移，默认只报告、`--apply` 才落盘） |
 | `tests/` | 后端 pytest（164 用例，纯函数 + 路由，不调上游） |
 | `docs/` | `prompt-contract.md`：提示词契约模板（发给多模态模型的输出格式规范） |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
-| `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.canvas` 画布图片与注册表、`workflows` 工作流 |
+| `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流 |
 
 ### 2.2 后端 core/ 模块
 
 - `config.py` —— 配置中心：API Key、BASE_URL、尺寸/质量选项、RATIOS、默认参数。**全后端唯一配置源**，其他模块从这里读，不自行读环境变量。
 - `api.py` —— 上游请求封装：`generate_image`（文生图/图生图一次请求）、尺寸解析、错误格式化。依赖 config 与 console。
 - `tasks.py` —— 异步任务管线：`TaskManager` 提交登记、线程池并发执行、快照查询、取消、TTL 清理。
-- `canvas.py` —— 统一存储模块：资产注册表（`ASSET_DIR`/`register_asset`/`list_assets`/`delete_asset`/`import_assets`/`resolve_asset`，内容去重、原子写、可选来源标签 kind/sourceKey）、图/工作流存储（`workflow_*`/`submission_*`/`recovery_*`、`_resolve_image_node_paths`/`_strip_derived_node_paths`）。命名语义：`asset/资产`=被持久化的图，`canvas`=前端编排视图，模块 docstring 已说明。
+- `registry.py` —— 资产注册表（`ASSET_DIR`/`register_asset`/`import_assets`/`delete_asset`/`list_assets`/`resolve_asset`/`image_url`，内容去重、原子写、可选来源标签 kind/sourceKey）。命名语义：`asset/资产`=被持久化的图，`canvas`=前端编排视图。
+- `graphstore.py` —— 图/工作流存储（`workflow_*`/`submission_*`/`recovery_*`、`_resolve_image_node_paths`/`_strip_derived_node_paths`、原子写），图片节点只存 registryId、路径由 `registry.resolve_asset` 重建。
+- `canvas.py` —— 兼容 shim：保留旧模块名（`from core import canvas`）星号 re-export registry+graphstore（含私有 `_REGISTRY_LOCK`），供 server/migrate/旧引用过渡，无业务逻辑。
 - `pathtrust.py` —— 路径白名单单一实现（match_roots），`canvas.safe_ref_path_allowlist` 与 `server.safe_ref_path` 共同委托，消除重复与跨盘误判。
 - `imageinfo.py` —— 图片头解析（PNG/JPEG/GIF/WebP/BMP 宽高/格式），纯标准库零依赖；供注册表 v2 元数据与迁移工具。
-- `migrate.py` —— 画布存储迁移：v1→v2 升级、损坏清单按 `.canvas` 文件重建、可选来源标签 kind 回填（backfill_asset_meta）、备份→转换→校验→报告（默认只报告、非破坏）。依赖 canvas 与 imageinfo。
+- `migrate.py` —— 画布存储迁移：v1→v2 升级、损坏清单按 `.assets` 文件重建、可选来源标签 kind 回填（backfill_asset_meta）、备份→转换→校验→报告（默认只报告、非破坏）。依赖 canvas 与 imageinfo。
 - `history.py` —— 生成历史 JSONL 读取。依赖 logging 的日志目录常量，无 HTTP。
 - `logging.py` —— 生成日志统一写入（线程锁串行追加），UI/批量/CLI 三路共用。
 - `console.py` —— rich 终端输出（成功/失败/信息配色、进度条、面板），无业务依赖，可被任意模块引用。
@@ -78,7 +80,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 ### 2.4 依赖规则
 
-后端：`main.py` / `server.py` / `core/batch.py` 调用 `core/api.py`；`core/api.py` 依赖 `core/config.py` 与 `core/console.py`；`core/canvas.py` 与 `core/history.py` 是纯逻辑模块（无 HTTP），由 server 路由薄层调用；`core/tasks.py` 是任务管线，server 的 `/api/generate` 只做校验与登记；`main.py` 的 `menu` 子命令通过 HTTP 接口（`/api/status`、`/api/window/next`）感知服务状态。
+后端：`main.py` / `server.py` / `core/batch.py` 调用 `core/api.py`；`core/api.py` 依赖 `core/config.py` 与 `core/console.py`；`core/registry.py` / `core/graphstore.py`（及兼容 shim `core/canvas.py`）与 `core/history.py` 是纯逻辑模块（无 HTTP），由 server 路由薄层调用；`core/tasks.py` 是任务管线，server 的 `/api/generate` 只做校验与登记；`main.py` 的 `menu` 子命令通过 HTTP 接口（`/api/status`、`/api/window/next`）感知服务状态。
 
 前端：`CanvasPage.tsx` 编排一切画布行为；节点组件（`CanvasNodes.tsx`）只负责展示与上抛事件，不持有画布状态；纯函数模块零依赖、可独立单测。
 
@@ -125,7 +127,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 ### 4.3 路径与安全
 
-参考图路径白名单：`/api/generate` 的 `ref_paths` 只接受 `output/.refs/` 与 `output/.canvas/` 两个目录内的路径（逐根 commonpath 校验，跨盘 root 单独捕获不误伤），防路径穿越；与 `images` multipart 互斥、`ref_paths` 优先——图生图不二次上传大图。
+参考图路径白名单：`/api/generate` 的 `ref_paths` 只接受 `output/.refs/` 与 `output/.assets/` 两个目录内的路径（逐根 commonpath 校验，跨盘 root 单独捕获不误伤），防路径穿越；与 `images` multipart 互斥、`ref_paths` 优先——图生图不二次上传大图。
 
 ### 4.4 配置加载层
 
@@ -184,21 +186,21 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
   - 清单缺失/损坏按文件重建：`python scripts/migrate_canvas_v2.py --apply --rebuild-registry`
   - 回填可选来源标签 kind：`python scripts/migrate_canvas_v2.py --apply`（默认已含；`--skip-meta-backfill` 跳过）
   - 指定 output 根：追加 `--output-root 路径`
-- **重建原理**：`rebuild_registry` 扫描 `.canvas/` 下 `canv_<sha1[:12]>.<ext>` 文件——id/relPath/name 由文件名还原，size 实测、宽高/格式用 `imageinfo` 探测、createdAt 取文件 mtime；canvas 工作流按"编号"引用图片，编号不丢则老存档全部可恢复。**限制**：重建后条目 name 为系统名（原始上传名未单独持久化，无法还原）。
-- 资产注册表（代码层统称**资产 / ASSET_DIR / register_asset 系**，语义=全项目统一图库）：`output/.canvas/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式与**可选来源标签** `kind`（canvas/result/ref）+`sourceKey`；均缺省可读、仅首次登记写入、同内容去重不覆盖来源；永不自动清理。**磁盘目录沿用存量名 `.canvas`**（工作流/提交快照只存 registryId、不存目录名，改名仅需搬文件 + 改注册表 relPath 前缀，可用 `migrate --rename-asset-dir`，默认不做以免动真实数据）。解析入口单一收敛为 `resolve_asset(id)`。
+- **重建原理**：`rebuild_registry` 扫描 `.assets/` 下 `canv_<sha1[:12]>.<ext>` 文件——id/relPath/name 由文件名还原，size 实测、宽高/格式用 `imageinfo` 探测、createdAt 取文件 mtime；canvas 工作流按"编号"引用图片，编号不丢则老存档全部可恢复。**限制**：重建后条目 name 为系统名（原始上传名未单独持久化，无法还原）。
+- 资产注册表（代码层统称**资产 / ASSET_DIR / register_asset 系**，语义=全项目统一图库）：`output/.assets/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式与**可选来源标签** `kind`（canvas/result/ref）+`sourceKey`；均缺省可读、仅首次登记写入、同内容去重不覆盖来源；永不自动清理。**磁盘目录规范名 `.assets`（存量 `.canvas` 已由迁移一步迁入并备份 `.canvas-bak-<ts>`）**（工作流/提交快照只存 registryId、不存目录名，改名仅需搬文件 + 改注册表 relPath 前缀，迁移工具（`migrate_canvas_v2.py --apply`）已内置该改名步骤）。解析入口单一收敛为 `resolve_asset(id)`。
 
-#### 画布图片的注册入口（谁进 `.canvas/`）
+#### 画布图片的注册入口（谁进 `.assets/`）
 
-| 入口 | 是否进 `.canvas/` 注册 | 说明 |
+| 入口 | 是否进 `.assets/` 注册 | 说明 |
 | --- | --- | --- |
 | 画布拖拽本地图片 / 工具栏「上传图片」 | ✅ | `POST /api/canvas/upload`，复制 + 登记，同内容去重 |
 | 画布「历史导入」/「导入目录」 | ✅ | `history/import` / `canvas/import`，同样复制 + 登记 |
 | 生成结果回流 | ✅ | done 快照按 registryId 去重后复制 + 登记（见 6.5） |
 | 图片节点「替换」 | ✅ | 新图登记；旧图文件保留（避免破坏其他引用/已存工作流） |
-| 经典表单上传区参考图 | ⚠️ 按需晋升 | 添加时只落 `output/.refs/`（24h 临时中转，不进 `.canvas/`）；**生成成功后**该次用到的 `.refs` 参考图晋升为 `kind='ref'` 复制进 `.canvas/`（原 `.refs` 文件不动、24h 清理照旧） |
-| 经典表单生成结果 | ✅ | 生成成功后结果图 `kind='result'` 复制进 `.canvas/` 并登记，同时落一份**提交图快照**（`output/submissions/`，kind='submission'，组→提示词→结果连线），账本带 submissionId/资产 id；经典结果区「导入画布」= 整图重建（见 6.5） |
+| 经典表单上传区参考图 | ⚠️ 按需晋升 | 添加时只落 `output/.refs/`（24h 临时中转，不进 `.assets/`）；**生成成功后**该次用到的 `.refs` 参考图晋升为 `kind='ref'` 复制进 `.assets/`（原 `.refs` 文件不动、24h 清理照旧） |
+| 经典表单生成结果 | ✅ | 生成成功后结果图 `kind='result'` 复制进 `.assets/` 并登记，同时落一份**提交图快照**（`output/submissions/`，kind='submission'，组→提示词→结果连线），账本带 submissionId/资产 id；经典结果区「导入画布」= 整图重建（见 6.5） |
 
-> `.canvas/` 与 `.refs/`：前者是画布长期图库（永不清理、工作流按编号引用、损坏可重建）；后者是参考图临时缓存（添加即落盘供继承/生成引用，启动清 24h 孤儿，无引用计数）。统一原则：**只要在系统里「出现且被保留」的图都进 `.canvas/` 注册表**（画布拖入、生成结果、晋升的参考图），`.refs` 仅是不确定是否要保留时的 24h 暂存。
+> `.assets/` 与 `.refs/`：前者是画布长期图库（永不清理、工作流按编号引用、损坏可重建）；后者是参考图临时缓存（添加即落盘供继承/生成引用，启动清 24h 孤儿，无引用计数）。统一原则：**只要在系统里「出现且被保留」的图都进 `.assets/` 注册表**（画布拖入、生成结果、晋升的参考图），`.refs` 仅是不确定是否要保留时的 24h 暂存。
 - 工作流文件：version 2 JSON（v1 兼容读取）存 `output/workflows/`，含 `savedAt` 元信息；图片节点**只持久化 registryId + 元数据**，url/absPath 由加载时按注册表实时重建——项目改名/移动后旧存档自愈；注册表缺失的 id 进 `missing`（前端标红「图片缺失」并阻止带缺图运行）。
 - 提交图快照：`output/submissions/`，与工作流同 schema（kind='submission'），经典生成自动落盘，提供「整图导入画布」（图片组→提示词→结果连线一次还原）；解析统一走 `resolve_asset`。
 - 恢复快照：独立于手动工作流，自动保存（防抖 1.5s）+ 挂载询问恢复。
@@ -219,7 +221,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 3. `POST /api/generate` 提交即返回 `{taskId, status}`；前端 `useGenerationTask` 每 2s 轮询快照（竞态防护 + elapsed 本地计时，终态停止）。
 4. 服务端线程池执行 `generate_image`（多参考图一次请求）→ 解码 b64 写入输出目录 → 写回 results/messages/total_cost。
 5. 快照 `url=/api/image?path=` 回显（附带 fileSize/ext）；经典表单进画廊，画布按节点映射驱动状态灯并在 done 时**结果回流**（见 6.5）。
-6. **经典结果落盘（旁路，失败不影响生成）**：done 时 `run_generation` 把成功结果图 `kind='result'`、本次 `.refs` 参考图 `kind='ref'` 注册进 `.canvas/`，并落一份提交图快照（`output/submissions/<submissionId>.json`）；账本该行带 `submissionId/inputAssetIds/outputAssetIds`。经典结果区「导入画布」= 整图重建到画布（图片组→提示词→结果连线）。
+6. **经典结果落盘（旁路，失败不影响生成）**：done 时 `run_generation` 把成功结果图 `kind='result'`、本次 `.refs` 参考图 `kind='ref'` 注册进 `.assets/`，并落一份提交图快照（`output/submissions/<submissionId>.json`）；账本该行带 `submissionId/inputAssetIds/outputAssetIds`。经典结果区「导入画布」= 整图重建到画布（图片组→提示词→结果连线）。
 
 ### 6.2 批量生成（命令行）
 
@@ -257,7 +259,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | GET | `/api/tasks/{task_id}` | 无 | 快照（queued → running → done/failed，可 cancelled；终态保留 10 分钟，超时 404） |
 | POST | `/api/tasks/{task_id}/cancel` | 无 | { ok }（排队立即取消；运行中跑完当前张丢弃结果） |
 | GET | `/api/image` | ?path= | 图片文件（FileResponse） |
-| POST | `/api/canvas/upload` | multipart：images | { images[ entry ] }（复制进 `.canvas/` 并登记，同内容去重） |
+| POST | `/api/canvas/upload` | multipart：images | { images[ entry ] }（复制进 `.assets/` 并登记，同内容去重） |
 | POST | `/api/canvas/import` | { paths } | { imported, skipped[{path,reason}] }（目录递归，路径须在 output 根内） |
 | GET | `/api/canvas/images` | 无 | { images[entry+absPath] } |
 | POST | `/api/canvas/image/delete` | { id } | { ok }（注册表移除 + 尽力删文件） |
