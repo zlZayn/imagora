@@ -26,6 +26,15 @@ from core import migrate
 
 def _print_report(report: dict) -> None:
     print(f"模式：{'落地(apply，含备份与校验)' if report['apply'] else '只报告（不写文件）'}")
+    am = report.get("asset_meta", {})
+    if am.get("action") == "noop":
+        print(f"[来源标签] 全部条目已带 kind（{am['asset_meta']['count']} 条，无需回填）")
+    elif am.get("action") == "backfill-ready":
+        print(f"[来源标签] {am['backfilled']} 条缺 kind → 待回填 canvas（加 --apply 执行）")
+    elif am.get("action") == "backfilled":
+        print(f"[来源标签] 已回填 {am['backfilled']} 条 kind=canvas，备份: {am['backup']}")
+    elif am.get("action") == "none":
+        print(f"[来源标签] 注册表不可迁移，跳过（{am.get('asset_meta', {}).get('state')}）")
     reg = report["registry"]
     if reg.get("action") == "none":
         print(f"[注册表] {reg['registry']['state']}（{reg['registry']['count']} 条，无需迁移）")
@@ -67,6 +76,7 @@ def main() -> int:
     )
     parser.add_argument("--apply", action="store_true", help="落地迁移（先备份 .bak-<时间戳>，校验通过才保留）")
     parser.add_argument("--rebuild-registry", action="store_true", help="清单缺失/损坏时按图片文件重建 v2 清单")
+    parser.add_argument("--skip-meta-backfill", action="store_true", help="跳过来源标签(kind)回填")
     parser.add_argument("--output-root", default=None, help="output 根目录（默认取配置 DEFAULT_OUTPUT_DIR）")
     args = parser.parse_args()
 
@@ -81,7 +91,9 @@ def main() -> int:
         if old == canvas_mod.DEFAULT_OUTPUT_DIR:
             print(f"output 根不变：{old}", file=sys.stderr)
 
-    report = migrate.plan_or_apply(apply=args.apply, rebuild=args.rebuild_registry)
+    report = migrate.plan_or_apply(
+        apply=args.apply, rebuild=args.rebuild_registry, backfill=not args.skip_meta_backfill,
+    )
     _print_report(report)
     return 0
 

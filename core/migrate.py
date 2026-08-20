@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""画布存储迁移：v1 老格式 → v2 新格式，以及损坏清单按文件重建。
+"""画布存储迁移：v1 老格式 → v2 新格式、损坏清单按文件重建、可选来源标签回填。
 
 纯逻辑（无 HTTP、无交互），供 scripts/migrate_canvas_v2.py 独立脚本调用；单测见 test_core_migrate.py。
 
@@ -8,6 +8,8 @@
   - apply_* 才落盘：先备份旧文件为 <path>.bak-<时间戳>，写 v2 后用 core.canvas 的加载器
     读回校验（条目/节点数一致），任一步失败不替换；迁移后旧格式仍可被程序读取（v1/v2 兼容）。
   - 幂等：已是 v2 的文件跳过，重复执行结果不变。
+  - backfill_asset_meta：给缺可选来源标签（kind）的旧条目补 kind='canvas'（不 bump schemaVersion，
+    可选字段旧读取器本就忽略）；same report-first / backup / verify 语义。
 """
 import json
 import os
@@ -55,9 +57,15 @@ def detect_registry() -> dict:
     if not isinstance(data, dict):
         return {"state": "corrupt", "count": 0}
     if isinstance(data.get("images"), dict):
-        return {"state": "v2", "count": len(data["images"])}
+        return {
+            "state": "v2", "count": len(data["images"]),
+            "kind_missing": sum(1 for e in data["images"].values() if not isinstance(e, dict) or "kind" not in e),
+        }
     if "schemaVersion" not in data:
-        return {"state": "v1", "count": len(data)}
+        return {
+            "state": "v1", "count": len(data),
+            "kind_missing": sum(1 for e in data.values() if not isinstance(e, dict) or "kind" not in e),
+        }
     return {"state": "corrupt", "count": 0}
 
 
@@ -151,6 +159,42 @@ def rebuild_registry(apply: bool) -> dict:
     return {"action": "rebuilt", "restored": len(entries)}
 
 
+def backfill_asset_meta(apply: bool) -> dict:
+    """给缺可选来源标签（kind）的旧条目补 kind='canvas'（幂等、只加不改结构）。
+
+    现有注册表条目本质都是画布来源，补标签仅为后续按来源过滤/追溯用，不影响读取；
+    不 bump schemaVersion（可选字段旧读取器忽略）。默认只报告待补数量；apply 才
+    备份 + 写 + 用加载器读回校验（条目数一致才算成功）。
+    """
+    state = detect_registry()
+    if state.get("state") not in ("v1", "v2"):
+        return {"asset_meta": state, "action": "none", "backup": None}
+    missing = state.get("kind_missing", 0)
+    if missing == 0:
+        return {"asset_meta": state, "action": "noop", "backfilled": 0}
+    if not apply:
+        return {"asset_meta": state, "action": "backfill-ready", "backfilled": missing}
+    with canvas._REGISTRY_LOCK:
+        entries = canvas.load_registry()
+        filled = 0
+        for img_id, entry in entries.items():
+            if isinstance(entry, dict) and "kind" not in entry:
+                entries[img_id] = {**entry, "kind": "canvas"}
+                filled += 1
+        if filled == 0:
+            return {"asset_meta": detect_registry(), "action": "noop", "backfilled": 0}
+        payload = {"schemaVersion": canvas.REGISTRY_SCHEMA_VERSION, "images": entries}
+        backup = _backup_then_write(canvas.REGISTRY_FILE, payload)
+    reloaded = canvas.load_registry()
+    ok = len(reloaded) == len(entries)
+    return {
+        "asset_meta": detect_registry(),
+        "action": "backfilled" if ok else "FAILED-VERIFY",
+        "backfilled": filled,
+        "backup": backup,
+    }
+
+
 # ---------------- workflows ----------------
 
 def workflow_files() -> list[str]:
@@ -203,16 +247,18 @@ def upgrade_workflow(path: str, apply: bool) -> dict:
 
 # ---------------- 汇总 ----------------
 
-def plan_or_apply(apply: bool = False, rebuild: bool = False) -> dict:
-    """全量迁移入口：registry（升级或重建）+ 全部工作流。
+def plan_or_apply(apply: bool = False, rebuild: bool = False, backfill: bool = True) -> dict:
+    """全量迁移入口：registry（升级或重建）+ 来源标签回填 + 全部工作流。
 
     默认（apply=False）只报告每项将做什么；apply=True 才备份→转换→校验。
+    backfill=False 完全跳过来源标签回填（含副作用）。
     """
     report: dict = {"apply": apply}
     if rebuild:
         report["registry"] = rebuild_registry(apply)
     else:
         report["registry"] = upgrade_registry(apply)
+    report["asset_meta"] = backfill_asset_meta(apply) if backfill else {"action": "skipped"}
     wf_reports = []
     for path in workflow_files():
         wf_reports.append(upgrade_workflow(path, apply))

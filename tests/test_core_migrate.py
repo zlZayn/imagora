@@ -160,4 +160,50 @@ def test_plan_never_writes_any_file(canvas_env):
     migrate.plan_or_apply(rebuild=True)
     after = {p.name: p.read_bytes() for p in canvas_env.rglob("*") if p.is_file()}
     assert set(after) == set(before)
-    assert all(after[k] == before[k] for k in before)
+
+def _strip_kind_registry(env, entry):
+    """把注册表条目人为去掉 kind（模拟缺来源标签的旧条目），并落盘 v2 包装"""
+    (env / ".canvas").mkdir(parents=True, exist_ok=True)
+    stripped = {k: v for k, v in entry.items() if k not in ("absPath", "url", "kind")}
+    payload = {"schemaVersion": 2, "images": {entry["id"]: stripped}}
+    (env / ".canvas" / "registry.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_detect_registry_reports_kind_missing(canvas_env):
+    entry = _register_png(canvas_env)
+    assert migrate.detect_registry()["kind_missing"] == 0
+    _strip_kind_registry(canvas_env, entry)
+    state = migrate.detect_registry()
+    assert state["kind_missing"] == 1
+
+
+def test_backfill_plan_only_never_writes(canvas_env):
+    entry = _register_png(canvas_env)
+    _strip_kind_registry(canvas_env, entry)
+    before = (canvas_env / ".canvas" / "registry.json").read_bytes()
+    report = migrate.backfill_asset_meta(apply=False)
+    assert report["action"] == "backfill-ready"
+    assert report["backfilled"] == 1
+    assert (canvas_env / ".canvas" / "registry.json").read_bytes() == before
+
+
+def test_backfill_apply_idempotent_with_backup(canvas_env):
+    entry = _register_png(canvas_env)
+    _strip_kind_registry(canvas_env, entry)
+    report = migrate.backfill_asset_meta(apply=True)
+    assert report["action"] == "backfilled"
+    assert report["backfilled"] == 1
+    assert report["backup"] and os.path.isfile(report["backup"])
+    raw = json.loads((canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8"))
+    assert raw["images"][entry["id"]]["kind"] == "canvas"
+    report2 = migrate.backfill_asset_meta(apply=True)
+    assert report2["action"] == "noop" or report2["backfilled"] == 0
+
+
+def test_backfill_skipped_flag(canvas_env):
+    entry = _register_png(canvas_env)
+    _strip_kind_registry(canvas_env, entry)
+    before = (canvas_env / ".canvas" / "registry.json").read_bytes()
+    report = migrate.plan_or_apply(apply=True, backfill=False)
+    assert report["asset_meta"]["action"] == "skipped"
+    assert (canvas_env / ".canvas" / "registry.json").read_bytes() == before

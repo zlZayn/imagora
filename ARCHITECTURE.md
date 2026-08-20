@@ -179,9 +179,10 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
   - 查看状态（只报告）：`python scripts/migrate_canvas_v2.py`
   - 升级 v1→v2：`python scripts/migrate_canvas_v2.py --apply`
   - 清单缺失/损坏按文件重建：`python scripts/migrate_canvas_v2.py --apply --rebuild-registry`
+  - 回填可选来源标签 kind：`python scripts/migrate_canvas_v2.py --apply`（默认已含；`--skip-meta-backfill` 跳过）
   - 指定 output 根：追加 `--output-root 路径`
 - **重建原理**：`rebuild_registry` 扫描 `.canvas/` 下 `canv_<sha1[:12]>.<ext>` 文件——id/relPath/name 由文件名还原，size 实测、宽高/格式用 `imageinfo` 探测、createdAt 取文件 mtime；canvas 工作流按"编号"引用图片，编号不丢则老存档全部可恢复。**限制**：重建后条目 name 为系统名（原始上传名未单独持久化，无法还原）。
-- 图片注册表：`output/.canvas/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式（`imageinfo` 头部探测）；`.canvas` 永不自动清理（区别于 `.refs` 的 24h 清理）。
+- 图片注册表：`output/.canvas/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式（`imageinfo` 头部探测）与**可选来源标签** `kind`（canvas/result/ref 标记图片来源）+`sourceKey`（首次产生它的提交 id）；两字段均可缺省，旧条目缺失照常可读，仅首次登记写入、同内容去重不覆盖来源；`.canvas` 永不自动清理（区别于 `.refs` 的 24h 清理）。解析入口单一收敛为 `resolve_asset(id) -> {absPath,url}`（未注册/文件缺失返回 None，对应工作流 missing 语义）。
 
 #### 画布图片的注册入口（谁进 `.canvas/`）
 

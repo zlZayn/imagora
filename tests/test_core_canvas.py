@@ -295,3 +295,55 @@ def test_recovery_snapshots_rotate_and_latest_skips_corrupt(canvas_env, monkeypa
     Path(latest["path"]).write_text("{broken", encoding="utf-8")
     recovered = canvas.recovery_latest()
     assert recovered["nodes"] == [{"id": "second"}]
+
+def test_register_kind_source_key(canvas_env):
+    """新注册条目携带可选来源标签 kind/sourceKey；缺省 kind='canvas'"""
+    e1 = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"kind-d")), "a.png"))
+    assert e1["kind"] == "canvas"
+    e2 = _must(canvas.register_file(
+        str(_write_png(canvas_env / "b.png", b"kind-r")), "b.png", kind="result", source_key="sub-1",
+    ))
+    assert e2["kind"] == "result"
+    assert e2["sourceKey"] == "sub-1"
+    stored = canvas.load_registry()[e2["id"]]
+    assert stored["kind"] == "result"
+    assert stored["sourceKey"] == "sub-1"
+
+
+def test_register_dedup_keeps_first_kind(canvas_env):
+    """同内容去重：已存在条目的 kind 不被后来不同来源覆盖（内容去重语义优先）"""
+    content = b"samekind"
+    src1 = _write_png(canvas_env / "a.png", content)
+    src2 = _write_png(canvas_env / "b.png", content)
+    e1 = _must(canvas.register_file(str(src1), "a.png", kind="canvas"))
+    e2 = _must(canvas.register_file(str(src2), "b.png", kind="result", source_key="sub-2"))
+    assert e1["id"] == e2["id"]
+    stored = canvas.load_registry()[e1["id"]]
+    assert stored["kind"] == "canvas"  # 首次来源保留
+    assert "sourceKey" not in stored
+
+
+def test_resolve_asset(canvas_env):
+    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"resolve")), "a.png"))
+    got = canvas.resolve_asset(entry["id"])
+    assert got is not None
+    assert got["absPath"] == str(canvas_env / ".canvas" / f"canv_{entry['id']}.png")
+    assert got["url"].startswith("/api/image?path=")
+    assert canvas.resolve_asset("nope") is None  # 未注册
+    os.remove(got["absPath"])
+    assert canvas.resolve_asset(entry["id"]) is None  # 文件已删 → missing 语义
+
+
+def test_list_images_kind_filter(canvas_env):
+    _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"fi-c")), "a.png", kind="canvas"))
+    _must(canvas.register_file(str(_write_png(canvas_env / "b.png", b"fi-r")), "b.png", kind="result"))
+    assert len(canvas.list_images()) == 2
+    assert {i["kind"] for i in canvas.list_images(kind="canvas")} == {"canvas"}
+    assert {i["kind"] for i in canvas.list_images(kind="result")} == {"result"}
+    # 缺 kind 的旧条目在精确过滤时被排除
+    (canvas_env / ".canvas" / "registry.json").write_text(
+        json.dumps({"schemaVersion": 2, "images": {"old": {"id": "old", "relPath": ".canvas/x.png"}}}),
+        encoding="utf-8",
+    )
+    assert all(i["id"] != "old" for i in canvas.list_images(kind="canvas"))
+

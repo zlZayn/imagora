@@ -4,6 +4,9 @@
 画布引用的所有图片统一复制进 output/.canvas/（永不自动清理，区别于 .refs 24h 清理），
 以内容 sha1 去重命名并登记到 registry.json；供 server.py 路由薄层调用。
 
+注册表条目自 v2 起可附可选来源标签：kind（canvas/result/ref）标记图片来源、
+sourceKey 记录首次产生它的提交（submissionId）。两字段均可缺省，旧条目缺失照常可读。
+
 核心函数:
   register_file()              复制图片进画布并登记（同内容去重）
   import_images()              输出目录导入（目录递归 / 单文件，路径穿越校验）
@@ -70,10 +73,15 @@ def save_registry(entries: dict[str, dict]) -> None:
     os.replace(tmp, REGISTRY_FILE)
 
 
-def _entry_from_src(img_id: str, src_abs: str, original_name: str, dest_name: str) -> dict:
+def _entry_from_src(
+    img_id: str, src_abs: str, original_name: str, dest_name: str,
+    kind: str = "canvas", source_key: str | None = None,
+) -> dict:
     """由源文件构建注册表条目（id 为内容 sha1 前缀，relPath 相对 DEFAULT_OUTPUT_DIR 正斜杠）。
 
-    v2 起附带可选宽高/格式（imageinfo 头部探测，失败时不带——旧字段宽兼容）。
+    v2 起附带可选宽高/格式（imageinfo 头部探测，失败时不带——旧字段宽兼容）；
+    可选来源标签 kind（canvas/result/ref）与 sourceKey（产生它的提交 id）供追溯，
+    缺省不影响旧读取器。
     """
     entry = {
         "id": img_id,
@@ -84,7 +92,10 @@ def _entry_from_src(img_id: str, src_abs: str, original_name: str, dest_name: st
         "size": os.path.getsize(src_abs),
         "ext": Path(dest_name).suffix.lstrip("."),
         "createdAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "kind": kind,
     }
+    if source_key:
+        entry["sourceKey"] = source_key
     dims = image_dimensions(src_abs)
     if dims:
         entry.update({"width": dims["width"], "height": dims["height"], "format": dims["format"]})
@@ -99,10 +110,14 @@ def image_url(path: str) -> str:
     return f"/api/image?path={quote(path)}"
 
 
-def register_file(src_abs: str, original_name: str = "") -> dict | None:
-    """复制图片进画布并登记；同内容（同 sha1）返回已有 entry（去重：一个文件一个节点）。
+def register_file(
+    src_abs: str, original_name: str = "", kind: str = "canvas", source_key: str | None = None,
+) -> dict | None:
+    """复制图片进注册表并登记；同内容（同 sha1）返回已有 entry（去重：一个文件一个节点）。
 
     源文件不存在返回 None；目标文件名为 canv_<sha1[:12]>.<ext>。
+    kind/source_key 为可选来源标签（canvas/result/ref + 提交 id），仅首次登记时写入；
+    **已存在条目以首次来源为准，后续不同来源不覆盖**（内容去重语义优先）。
     返回条目附 absPath 与 url（registry 落盘不存两者，均由 relPath 可推导）。
     """
     if not os.path.isfile(src_abs):
@@ -121,7 +136,7 @@ def register_file(src_abs: str, original_name: str = "") -> dict | None:
         os.makedirs(CANVAS_DIR, exist_ok=True)
         with open(dest_abs, "wb") as f:
             f.write(content)
-        entry = _entry_from_src(img_id, src_abs, original_name, dest_name)
+        entry = _entry_from_src(img_id, src_abs, original_name, dest_name, kind, source_key)
         entries[img_id] = entry
         save_registry(entries)
         return {**entry, "absPath": dest_abs, "url": image_url(dest_abs)}
@@ -191,12 +206,18 @@ def delete_image(img_id: str) -> bool:
     return True
 
 
-def list_images() -> list[dict]:
-    """画布图片全量列表，每条附 absPath 与 url（生成时 ref_paths 引用 / 显示）"""
+def list_images(kind: str | None = None) -> list[dict]:
+    """资产全量列表，每条附 absPath 与 url（生成时 ref_paths 引用 / 显示）。
+
+    kind 为可选来源过滤（canvas/result/ref），None 返回全部；缺 kind 的旧条目
+    在精确过滤时被排除（不误判来源）。
+    """
     with _REGISTRY_LOCK:
         entries = load_registry()
         images = []
         for entry in entries.values():
+            if kind is not None and entry.get("kind") != kind:
+                continue
             item = dict(entry)
             abs_path = os.path.normpath(
                 os.path.join(DEFAULT_OUTPUT_DIR, entry["relPath"])
@@ -205,6 +226,22 @@ def list_images() -> list[dict]:
             item["url"] = image_url(abs_path)
             images.append(item)
         return images
+
+
+def resolve_asset(img_id: str) -> dict | None:
+    """按 registryId 解析资产的绝对路径与 URL（单一事实来源）。
+
+    注册表缺失或文件不存在返回 None（对应工作流加载的 missing 语义）；
+    路径由 registry 相对路径实时推导，项目目录改名后仍有效。
+    """
+    entries = load_registry()
+    entry = entries.get(str(img_id))
+    if not entry:
+        return None
+    abs_path = os.path.normpath(os.path.join(DEFAULT_OUTPUT_DIR, entry["relPath"]))
+    if not os.path.isfile(abs_path):
+        return None
+    return {"absPath": abs_path, "url": image_url(abs_path)}
 
 
 def safe_ref_path_allowlist(path: str, roots: list[str]) -> str | None:
@@ -273,7 +310,6 @@ def _resolve_image_nodes(nodes: list) -> list[str]:
     否则该 registryId 进 missing（节点保持无 url/absPath，前端占位标红）。
     返回 missing 列表。
     """
-    entries = load_registry()
     missing: list[str] = []
     for node in nodes:
         if not isinstance(node, dict) or node.get("type") != "image":
@@ -282,16 +318,12 @@ def _resolve_image_nodes(nodes: list) -> list[str]:
         if not isinstance(data_part, dict):
             continue
         reg_id = str(data_part.get("registryId", ""))
-        entry = entries.get(reg_id)
-        abs_path = (
-            os.path.normpath(os.path.join(DEFAULT_OUTPUT_DIR, entry["relPath"]))
-            if entry else None
-        )
-        if not abs_path or not os.path.isfile(abs_path):
+        resolved = resolve_asset(reg_id)
+        if not resolved:
             missing.append(reg_id)
             continue
-        data_part["absPath"] = abs_path
-        data_part["url"] = image_url(abs_path)
+        data_part["absPath"] = resolved["absPath"]
+        data_part["url"] = resolved["url"]
     return missing
 
 
