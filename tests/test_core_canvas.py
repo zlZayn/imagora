@@ -15,7 +15,7 @@ from core import canvas
 def canvas_env(tmp_path, monkeypatch):
     """把画布目录注入 tmp_path（模块常量需一并覆盖，DEFAULT_OUTPUT_DIR 不联动 CANVAS_DIR）"""
     monkeypatch.setattr(canvas, "DEFAULT_OUTPUT_DIR", str(tmp_path))
-    monkeypatch.setattr(canvas, "CANVAS_DIR", str(tmp_path / ".canvas"))
+    monkeypatch.setattr(canvas, "ASSET_DIR", str(tmp_path / ".canvas"))
     monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
     monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
     monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)

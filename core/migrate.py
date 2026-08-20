@@ -119,12 +119,12 @@ def rebuild_registry(apply: bool) -> dict:
     size/dims 由文件实测）。默认只报告将恢复多少张；apply 才落盘（无旧清单可备份则直接写）。"""
     candidates = []
     try:
-        for name in sorted(os.listdir(canvas.CANVAS_DIR)):
+        for name in sorted(os.listdir(canvas.ASSET_DIR)):
             if not name.startswith("canv_") or not name.endswith(tuple(canvas.IMAGE_EXTENSIONS)):
                 continue
             stem, ext = os.path.splitext(name)
             img_id = stem[len("canv_"):]
-            abs_path = os.path.normpath(os.path.join(canvas.CANVAS_DIR, name))
+            abs_path = os.path.normpath(os.path.join(canvas.ASSET_DIR, name))
             candidates.append({
                 "id": img_id,
                 "relPath": os.path.relpath(abs_path, canvas.DEFAULT_OUTPUT_DIR).replace("\\", "/"),

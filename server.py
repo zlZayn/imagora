@@ -659,9 +659,9 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
             ref_list = json.loads(ref_paths)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="参考图参数非法")
-        # 只接受 REF_DIR / CANVAS_DIR 内路径，防路径穿越（校验失败不占执行槽）
+        # 只接受 REF_DIR / ASSET_DIR 内路径，防路径穿越（校验失败不占执行槽）
         for p in ref_list:
-            safe = safe_ref_path_allowlist(p, [REF_DIR, canvas.CANVAS_DIR])
+            safe = safe_ref_path_allowlist(p, [REF_DIR, canvas.ASSET_DIR])
             if not safe or not os.path.isfile(safe):
                 raise HTTPException(status_code=400, detail=f"非法参考图路径: {p}")
             ref_bases.append(safe)

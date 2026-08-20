@@ -20,7 +20,7 @@ PNG_BYTES = (
 @pytest.fixture
 def canvas_env(tmp_path, monkeypatch):
     monkeypatch.setattr(canvas, "DEFAULT_OUTPUT_DIR", str(tmp_path))
-    monkeypatch.setattr(canvas, "CANVAS_DIR", str(tmp_path / ".canvas"))
+    monkeypatch.setattr(canvas, "ASSET_DIR", str(tmp_path / ".canvas"))
     monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
     monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
     monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)

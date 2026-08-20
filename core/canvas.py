@@ -8,10 +8,10 @@
 sourceKey 记录首次产生它的提交（submissionId）。两字段均可缺省，旧条目缺失照常可读。
 
 核心函数:
-  register_file()              复制图片进画布并登记（同内容去重）
-  import_images()              输出目录导入（目录递归 / 单文件，路径穿越校验）
-  delete_image()               删除画布图片（注册表 + 文件）
-  list_images()                画布图片全量（附 absPath/url，供生成与显示引用）
+  register_asset()              复制图片进画布并登记（同内容去重）
+  import_assets()              输出目录导入（目录递归 / 单文件，路径穿越校验）
+  delete_asset()               删除画布图片（注册表 + 文件）
+  list_assets()                画布图片全量（附 absPath/url，供生成与显示引用）
   safe_ref_path_allowlist()    路径白名单校验（.refs / .canvas 双根）
   image_url()                  图片可访问 URL 的单一构建入口
 
@@ -32,9 +32,9 @@ from core.config import DEFAULT_OUTPUT_DIR
 from core.imageinfo import image_dimensions
 
 # 画布图片目录：永不自动清理（与 .refs 24h 清理区分）
-CANVAS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".canvas")
+ASSET_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".canvas")
 # 注册表：v2 = { schemaVersion: 2, images: { id: entry } }；v1 = 裸 dict { id: entry }（兼容读取）
-REGISTRY_FILE = os.path.join(CANVAS_DIR, "registry.json")
+REGISTRY_FILE = os.path.join(ASSET_DIR, "registry.json")
 # 注册表当前 schema 版本（升级只发生在迁移脚本，运行时 v1/v2 都能读）
 REGISTRY_SCHEMA_VERSION = 2
 # 注册表读写锁：多窗口并发 import/delete 安全
@@ -65,7 +65,7 @@ def load_registry() -> dict[str, dict]:
 
 def save_registry(entries: dict[str, dict]) -> None:
     """原子写注册表（tmp 文件 + os.replace，防并发读半文件）；按当前 schema 版本落盘 v2 包装"""
-    os.makedirs(CANVAS_DIR, exist_ok=True)
+    os.makedirs(ASSET_DIR, exist_ok=True)
     payload = {"schemaVersion": REGISTRY_SCHEMA_VERSION, "images": entries}
     tmp = REGISTRY_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -86,7 +86,7 @@ def _entry_from_src(
     entry = {
         "id": img_id,
         "relPath": os.path.relpath(
-            os.path.join(CANVAS_DIR, dest_name), DEFAULT_OUTPUT_DIR
+            os.path.join(ASSET_DIR, dest_name), DEFAULT_OUTPUT_DIR
         ).replace("\\", "/"),
         "name": original_name or dest_name,
         "size": os.path.getsize(src_abs),
@@ -110,7 +110,7 @@ def image_url(path: str) -> str:
     return f"/api/image?path={quote(path)}"
 
 
-def register_file(
+def register_asset(
     src_abs: str, original_name: str = "", kind: str = "canvas", source_key: str | None = None,
 ) -> dict | None:
     """复制图片进注册表并登记；同内容（同 sha1）返回已有 entry（去重：一个文件一个节点）。
@@ -127,13 +127,13 @@ def register_file(
     img_id = hashlib.sha1(content).hexdigest()[:12]
     ext = Path(src_abs).suffix.lower().lstrip(".") or "png"
     dest_name = f"canv_{img_id}.{ext}"
-    dest_abs = os.path.normpath(os.path.join(CANVAS_DIR, dest_name))
+    dest_abs = os.path.normpath(os.path.join(ASSET_DIR, dest_name))
     with _REGISTRY_LOCK:
         entries = load_registry()
         if img_id in entries:
             entry = entries[img_id]
             return {**entry, "absPath": dest_abs, "url": image_url(dest_abs)}
-        os.makedirs(CANVAS_DIR, exist_ok=True)
+        os.makedirs(ASSET_DIR, exist_ok=True)
         with open(dest_abs, "wb") as f:
             f.write(content)
         entry = _entry_from_src(img_id, src_abs, original_name, dest_name, kind, source_key)
@@ -157,7 +157,7 @@ def _collect_image_files(path: str) -> list[str]:
     return []
 
 
-def import_images(paths: list[str]) -> dict:
+def import_assets(paths: list[str]) -> dict:
     """导入输出目录内的图片（目录递归 / 单文件）到画布注册表。
 
     每个路径必须真实存在且落在 output 根内（realpath 前缀校验防穿越）；
@@ -185,13 +185,13 @@ def import_images(paths: list[str]) -> dict:
             skipped.append({"path": p, "reason": "不存在或没有图片文件"})
             continue
         for f in files:
-            entry = register_file(f, os.path.basename(f))
+            entry = register_asset(f, os.path.basename(f))
             if entry:
                 imported.append(entry)
     return {"imported": imported, "skipped": skipped}
 
 
-def delete_image(img_id: str) -> bool:
+def delete_asset(img_id: str) -> bool:
     """删除画布图片：注册表移除 + 尽力删文件（文件不存在容忍）"""
     with _REGISTRY_LOCK:
         entries = load_registry()
@@ -206,7 +206,7 @@ def delete_image(img_id: str) -> bool:
     return True
 
 
-def list_images(kind: str | None = None) -> list[dict]:
+def list_assets(kind: str | None = None) -> list[dict]:
     """资产全量列表，每条附 absPath 与 url（生成时 ref_paths 引用 / 显示）。
 
     kind 为可选来源过滤（canvas/result/ref），None 返回全部；缺 kind 的旧条目
@@ -293,7 +293,7 @@ def _atomic_write_json(path: str, payload: dict) -> None:
             pass
 
 
-def resolve_image_node_paths(nodes: list) -> list[str]:
+def _resolve_image_node_paths(nodes: list) -> list[str]:
     """加载工作流时按 registryId 统一解析图片节点（单一事实来源）。
 
     就地更新每个图片节点 data：registry 命中且文件存在 → 重新推导当前真实
@@ -318,7 +318,7 @@ def resolve_image_node_paths(nodes: list) -> list[str]:
     return missing
 
 
-def strip_derived_node_paths(nodes: list) -> list:
+def _strip_derived_node_paths(nodes: list) -> list:
     """落盘前归一化：图片节点只保留 registryId + 元数据，剥离派生路径（url/absPath）。
 
     返回新列表（不修改入参）：非图片节点原样引用，图片节点复制 data 后剔除
@@ -356,7 +356,7 @@ def workflow_save(name: str, nodes: list, edges: list) -> dict:
             "version": WORKFLOW_VERSION,
             "name": filename,
             "savedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "nodes": strip_derived_node_paths(nodes),
+            "nodes": _strip_derived_node_paths(nodes),
             "edges": edges,
         }
         _atomic_write_json(abs_path, payload)
@@ -418,7 +418,7 @@ def workflow_load(name: str) -> dict:
         "name": str(data.get("name", "")),
         "nodes": nodes,
         "edges": edges,
-        "missing": resolve_image_node_paths(nodes),
+        "missing": _resolve_image_node_paths(nodes),
     }
 
 
@@ -503,7 +503,7 @@ def submission_save(
         "name": f"classic-{submission_id}",
         "savedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
         "meta": {"submissionId": submission_id, "sourceMode": "classic", "win": win},
-        "nodes": strip_derived_node_paths(nodes),
+        "nodes": _strip_derived_node_paths(nodes),
         "edges": edges,
     }
     try:
@@ -542,7 +542,7 @@ def submission_load(submission_id: str) -> dict:
         "name": str(data.get("name", "")),
         "nodes": nodes,
         "edges": edges,
-        "missing": resolve_image_node_paths(nodes),
+        "missing": _resolve_image_node_paths(nodes),
     }
 
 
@@ -583,7 +583,7 @@ def recovery_save(nodes: list, edges: list) -> dict:
                 "version": WORKFLOW_VERSION,
                 "name": name,
                 "savedAt": saved_at,
-                "nodes": strip_derived_node_paths(nodes),
+                "nodes": _strip_derived_node_paths(nodes),
                 "edges": edges,
             }
             os.makedirs(RECOVERY_DIR, exist_ok=True)
@@ -617,12 +617,18 @@ def recovery_latest() -> dict:
             "savedAt": str(data.get("savedAt", "")),
             "nodes": nodes,
             "edges": edges,
-            "missing": resolve_image_node_paths(nodes),
+            "missing": _resolve_image_node_paths(nodes),
         }
     return {"ok": False, "empty": True}
 
 
 # ---------- 兼容别名（命名统一过渡层，全绿后删除） ----------
-_resolve_image_nodes = resolve_image_node_paths
-_normalize_workflow_nodes = strip_derived_node_paths
-register_asset = register_file
+_resolve_image_nodes = _resolve_image_node_paths
+_normalize_workflow_nodes = _strip_derived_node_paths
+register_file = register_asset
+import_images = import_assets
+delete_image = delete_asset
+list_images = list_assets
+resolve_image_node_paths = _resolve_image_node_paths
+strip_derived_node_paths = _strip_derived_node_paths
+CANVAS_DIR = ASSET_DIR
