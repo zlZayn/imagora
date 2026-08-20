@@ -57,7 +57,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `config.py` —— 配置中心：API Key、BASE_URL、尺寸/质量选项、RATIOS、默认参数。**全后端唯一配置源**，其他模块从这里读，不自行读环境变量。
 - `api.py` —— 上游请求封装：`generate_image`（文生图/图生图一次请求）、尺寸解析、错误格式化。依赖 config 与 console。
 - `tasks.py` —— 异步任务管线：`TaskManager` 提交登记、线程池并发执行、快照查询、取消、TTL 清理。
-- `canvas.py` —— 画布存储：图片注册表（内容去重、原子写，条目可选来源标签 kind/sourceKey）、工作流 JSON 存取（v1/v2 兼容）、恢复快照、经典提交图快照（submission_save/load）+ 统一解析 `resolve_asset`。纯逻辑，无 HTTP。
+- `canvas.py` —— 统一存储模块：资产注册表（`ASSET_DIR`/`register_asset`/`list_assets`/`delete_asset`/`import_assets`/`resolve_asset`，内容去重、原子写、可选来源标签 kind/sourceKey）、图/工作流存储（`workflow_*`/`submission_*`/`recovery_*`、`_resolve_image_node_paths`/`_strip_derived_node_paths`）。命名语义：`asset/资产`=被持久化的图，`canvas`=前端编排视图，模块 docstring 已说明。
 - `pathtrust.py` —— 路径白名单单一实现（match_roots），`canvas.safe_ref_path_allowlist` 与 `server.safe_ref_path` 共同委托，消除重复与跨盘误判。
 - `imageinfo.py` —— 图片头解析（PNG/JPEG/GIF/WebP/BMP 宽高/格式），纯标准库零依赖；供注册表 v2 元数据与迁移工具。
 - `migrate.py` —— 画布存储迁移：v1→v2 升级、损坏清单按 `.canvas` 文件重建、可选来源标签 kind 回填（backfill_asset_meta）、备份→转换→校验→报告（默认只报告、非破坏）。依赖 canvas 与 imageinfo。
@@ -185,7 +185,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
   - 回填可选来源标签 kind：`python scripts/migrate_canvas_v2.py --apply`（默认已含；`--skip-meta-backfill` 跳过）
   - 指定 output 根：追加 `--output-root 路径`
 - **重建原理**：`rebuild_registry` 扫描 `.canvas/` 下 `canv_<sha1[:12]>.<ext>` 文件——id/relPath/name 由文件名还原，size 实测、宽高/格式用 `imageinfo` 探测、createdAt 取文件 mtime；canvas 工作流按"编号"引用图片，编号不丢则老存档全部可恢复。**限制**：重建后条目 name 为系统名（原始上传名未单独持久化，无法还原）。
-- 图片注册表：`output/.canvas/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式（`imageinfo` 头部探测）与**可选来源标签** `kind`（canvas/result/ref 标记图片来源）+`sourceKey`（首次产生它的提交 id）；两字段均可缺省，旧条目缺失照常可读，仅首次登记写入、同内容去重不覆盖来源；`.canvas` 永不自动清理（区别于 `.refs` 的 24h 清理）。解析入口单一收敛为 `resolve_asset(id) -> {absPath,url}`（未注册/文件缺失返回 None，对应工作流 missing 语义）。
+- 资产注册表（代码层统称**资产 / ASSET_DIR / register_asset 系**，语义=全项目统一图库）：`output/.canvas/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式与**可选来源标签** `kind`（canvas/result/ref）+`sourceKey`；均缺省可读、仅首次登记写入、同内容去重不覆盖来源；永不自动清理。**磁盘目录沿用存量名 `.canvas`**（工作流/提交快照只存 registryId、不存目录名，改名仅需搬文件 + 改注册表 relPath 前缀，可用 `migrate --rename-asset-dir`，默认不做以免动真实数据）。解析入口单一收敛为 `resolve_asset(id)`。
 
 #### 画布图片的注册入口（谁进 `.canvas/`）
 
