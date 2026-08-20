@@ -116,6 +116,40 @@ def test_rebuild_registry_from_files(canvas_env):
     assert restored["width"] == 100 and restored["height"] == 200
 
 
+def test_upgrade_reports_pending_relocate_when_legacy_has_v1(canvas_env):
+    """dry-run：.canvas/registry.json 是 v1 裸清单但还没搬到 .assets 时，
+    upgrade_registry 应返回 'pending-relocate' 提示待迁后升级，避免误报 missing/noop。"""
+    entry = _register_png(canvas_env)
+    (canvas_env / ".canvas" / "registry.json").write_text(
+        json.dumps({entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}),
+        encoding="utf-8",
+    )
+    # .assets 还不存在（没搬过），主路径 detect 返回 missing；upgrade 应去 legacy 探测
+    assert not (canvas_env / ".assets").exists()
+    report = registry.upgrade_registry(apply=False)
+    assert report["registry"]["state"] == "v1"
+    assert report["action"] == "pending-relocate"
+    assert report["entries"] == 1
+    # dry-run 不写任何文件
+    assert not (canvas_env / ".assets").exists()
+    assert (canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8").startswith("{")
+
+
+def test_upgrade_pending_relocate_clears_after_apply(canvas_env):
+    """apply 后 .canvas 搬到 .assets，pending-relocate 消失，再 dry-run 显示 v2/noop。"""
+    entry = _register_png(canvas_env)
+    (canvas_env / ".canvas" / "registry.json").write_text(
+        json.dumps({entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}),
+        encoding="utf-8",
+    )
+    assert registry.upgrade_registry(apply=False)["action"] == "pending-relocate"
+    # 一步 apply（relocate 把 .canvas 搬到 .assets，legacy 下的清单随之就位）
+    registry.migrate(apply=True)
+    assert registry.upgrade_registry(apply=False)["action"] == "none"
+    raw = json.loads((canvas_env / ".assets" / "registry.json").read_text(encoding="utf-8"))
+    assert raw["schemaVersion"] == 2 and raw["images"][entry["id"]]["kind"] == "canvas"
+
+
 # ---------- 工作流：升级 v1->v2 ----------
 
 def test_workflow_upgrade_plan_and_apply(canvas_env):

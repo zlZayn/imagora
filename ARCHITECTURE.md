@@ -18,7 +18,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 ### 1.2 设计哲学
 
 - **配置分离**：公开配置（中转站地址/模型/尺寸/质量）在 `config.json`（git 跟踪、多 profile）；密钥只在 `.env` / 环境变量（git 忽略）；`core/config.py` 是唯一加载层，代码中不出现明文密钥。
-- **职责单一**：一个模块一个职责——config 管配置、api 管上游请求、tasks 管异步任务、canvas 管画布存储、logging 管日志、server 只做路由薄层、frontend 管界面。
+- **职责单一**：一个模块一个职责——config 管配置、api 管上游请求、tasks 管异步任务、registry 管资产注册表、graphstore 管工作流存储、logging 管日志、server 只做路由薄层、frontend 管界面（`canvas` 仅是兼容 shim，星号 re-export 前两者供旧引用过渡）。
 - **产物与代码分离**：生成图片、参考图缓存、画布图片、工作流文件全部落在 `output/`（git 忽略），不进代码库。
 - **按名管理**：每个产品一个目录，素材/批量配置/输出随产品走；工具代码跨产品共享。
 - **类型安全**：前端 TypeScript 严格模式，前后端类型契约集中在 `frontend/src/types.ts`，与后端返回结构一一对应。
@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `output/…/submissions/` | 经典提交图快照（复用工作流格式，kind='submission'），提供整图导入画布 |
 | `frontend/` | React SPA（见 2.3） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新：注册表+工作流迁移，默认只报告、`--apply` 才落盘备份校验） |
-| `tests/` | 后端 pytest（164 用例，纯函数 + 路由，不调上游） |
+| `tests/` | 后端 pytest（166 用例，纯函数 + 路由，不调上游） |
 | `docs/` | `prompt-contract.md`：提示词契约模板（发给多模态模型的输出格式规范） |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流 |
@@ -62,7 +62,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `canvas.py` —— 兼容 shim：保留旧模块名（`from core import canvas`）星号 re-export registry+graphstore（含私有 `_REGISTRY_LOCK`），供 server/migrate/旧引用过渡，无业务逻辑。
 - `pathtrust.py` —— 路径白名单单一实现（match_roots），`canvas.safe_ref_path_allowlist` 与 `server.safe_ref_path` 共同委托，消除重复与跨盘误判。
 - `imageinfo.py` —— 图片头解析（PNG/JPEG/GIF/WebP/BMP 宽高/格式），纯标准库零依赖；供注册表 v2 元数据与迁移工具。
-- `migrate.py` —— 画布存储迁移：v1→v2 升级、损坏清单按 `.assets` 文件重建、可选来源标签 kind 回填（backfill_asset_meta）、备份→转换→校验→报告（默认只报告、非破坏）。依赖 canvas 与 imageinfo。
+- 迁移逻辑不在 `core/` 单独建模块，注册表迁移随 `registry.migrate`、工作流迁移随 `graphstore.migrate_workflows`，`scripts/migrate.py` 仅做协调与打印（默认只报告、`--apply` 才落盘备份校验、dry-run 时若 `.canvas/registry.json` 仍是 v1 清单会报 `pending-relocate` 待迁后升级，避免误报 missing/noop）。
 - `history.py` —— 生成历史 JSONL 读取。依赖 logging 的日志目录常量，无 HTTP。
 - `logging.py` —— 生成日志统一写入（线程锁串行追加），UI/批量/CLI 三路共用。
 - `console.py` —— rich 终端输出（成功/失败/信息配色、进度条、面板），无业务依赖，可被任意模块引用。
@@ -181,10 +181,10 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 5.5 持久化
 
 - **格式版本化（v1/v2 兼容）**：注册表与工作流都有明确 schema 版本。运行时时**只写当前版本（v2）**、可读 v1 与 v2——老数据零失效；未知版本明确拒绝（不按错误结构解析未来格式）。v1→v2 一键迁移/损坏清单重建由 `scripts/migrate.py`（注册表迁移逻辑在 `core/registry.migrate`、工作流在 `core.graphstore.migrate_workflows`，默认只报告、`--apply` 才落地并先备份 `.bak-<时间戳>`、写后加载器读回校验）。用法：
-  - 查看状态（只报告）：`python scripts/migrate.py`
-  - 升级 v1→v2：`python scripts/migrate.py --apply`
+  - 查看状态（只报告）：`python scripts/migrate.py`（dry-run 时若 `.canvas/registry.json` 仍是 v1 清单会报 `pending-relocate` 提示待迁后升级，不会误报 missing/noop）
+  - 一步到最新（迁目录 + 升级 v1→v2 + 回填 kind + 升工作流）：`python scripts/migrate.py --apply`
   - 清单缺失/损坏按文件重建：`python scripts/migrate.py --apply --rebuild-registry`
-  - 回填可选来源标签 kind：`python scripts/migrate.py --apply`（默认已含；`--skip-meta-backfill` 跳过）
+  - 跳过 kind 回填：`python scripts/migrate.py --apply --skip-meta-backfill`（默认已含）
   - 指定 output 根：追加 `--output-root 路径`
 - **重建原理**：`rebuild_registry` 扫描 `.assets/` 下 `canv_<sha1[:12]>.<ext>` 文件——id/relPath/name 由文件名还原，size 实测、宽高/格式用 `imageinfo` 探测、createdAt 取文件 mtime；canvas 工作流按"编号"引用图片，编号不丢则老存档全部可恢复。**限制**：重建后条目 name 为系统名（原始上传名未单独持久化，无法还原）。
 - 资产注册表（代码层统称**资产 / ASSET_DIR / register_asset 系**，语义=全项目统一图库）：`output/.assets/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式与**可选来源标签** `kind`（canvas/result/ref）+`sourceKey`；均缺省可读、仅首次登记写入、同内容去重不覆盖来源；永不自动清理。**磁盘目录规范名 `.assets`（存量 `.canvas` 已由迁移一步迁入并备份 `.canvas-bak-<ts>`）**（工作流/提交快照只存 registryId、不存目录名，改名仅需搬文件 + 改注册表 relPath 前缀，迁移工具（`migrate.py --apply`）已内置该改名步骤）。解析入口单一收敛为 `resolve_asset(id)`。
@@ -384,7 +384,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-后端 `uv run pytest`（147 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，94 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
+后端 `uv run pytest`（166 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，94 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -392,15 +392,16 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_core_batch.py` | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
 | `tests/test_core_config.py` | 14 | API Key（环境变量 / 跟随 profile / 缺失报错）/ profile 解析（优先级 / 缺失回退 / 白名单校验）/ RATIOS 表结构 |
 | `tests/test_server_helpers.py` | 21 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 |
-| `tests/test_core_logging.py` | 7 | 日志写入 / 并发串行 / 路径相对化 |
-| `tests/test_core_history.py` | 2 | 历史读取 / 坏行容忍 / 筛选 |
-| `tests/test_core_canvas.py` | 20 | 注册表（v2 包装 + v1 裸清单兼容）/ 内容去重 / import 边界 / workflow 归一化与自愈 / recovery |
+| `tests/test_core_logging.py` | 8 | 日志写入 / 并发串行 / 路径相对化 |
+| `tests/test_core_history.py` | 3 | 历史读取 / 坏行容忍 / 筛选 |
+| `tests/test_core_canvas.py` | 27 | 注册表（v2 包装 + v1 裸清单兼容）/ 内容去重 / import 边界 / kind 来源标签 / workflow 归一化与自愈 / recovery / submission |
 | `tests/test_server_canvas.py` | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / 未知版本拒绝 / ref_paths 放行 |
 | `tests/test_core_imageinfo.py` | 10 | PNG/JPEG/GIF/WebP(VP8/VP8L/VP8X)/BMP 头解析 / 垃圾与截断返回 None |
-| `tests/test_core_migrate.py` | 16 | 注册表 detect/升级/重建/回填/迁目录 + 工作流升级 + CLI 端到端 |
+| `tests/test_core_migrate.py` | 17 | 注册表 detect/升级/重建/回填/迁目录 + pending-relocate dry-run 预检 + 工作流升级 + CLI 端到端 |
 | `tests/test_core_tasks.py` | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
 | `tests/test_server_tasks.py` | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
 | `tests/test_main_process.py` | 4 | 端口探测 / 祖先链回溯 |
+| `tests/test_core_pathtrust.py` | 2 | 路径白名单（match_roots 双根/单根/跨盘不误伤） |
 | `frontend/src/workflow.test.ts` | 41 | 自动布局 / 复杂连接分层（结果图复用/多级链路/环容忍/结果块居中）/ 局部整理不漂移 / 动画类 / 连线约束 / 入边收集 / 落点阶梯 / 图片文件识别 / 节点构建器 |
 | `frontend/src/canvasDrop.test.ts` | 11 | 拖拽意图解析（文件/工具栏/放行+回退）/ 文件识别 / 数量统计 / 落点示意文案 |
 | `frontend/src/promptContract.test.ts` | 19 | 契约解析容错 / 尺寸映射 / 建卡 |

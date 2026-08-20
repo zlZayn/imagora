@@ -250,12 +250,18 @@ def _backup_then_write(path: str, payload: dict) -> str | None:
     return backup_path
 
 
-def detect_registry() -> dict:
-    """检测注册表状态：{state: v2|v1|missing|corrupt, count, kind_missing}"""
-    if not os.path.isfile(REGISTRY_FILE):
+def detect_registry(path: str | None = None) -> dict:
+    """检测注册表状态：{state: v2|v1|missing|corrupt, count, kind_missing}。
+
+    path 默认取当前 REGISTRY_FILE；显式传任意文件路径用于迁移预检（dry-run
+    时主路径 .assets/registry.json 不存在但旧目录 .canvas/registry.json
+    里有 v1 清单时，调用方据此报告"待迁后升级"，避免误报 missing/noop）。
+    """
+    target = path or REGISTRY_FILE
+    if not os.path.isfile(target):
         return {"state": "missing", "count": 0, "kind_missing": 0}
     try:
-        with open(REGISTRY_FILE, encoding="utf-8") as f:
+        with open(target, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
         return {"state": "corrupt", "count": 0, "kind_missing": 0}
@@ -288,8 +294,24 @@ def _entry_with_dims(entry: dict, out_root: str) -> dict:
 
 
 def upgrade_registry(apply: bool) -> dict:
-    """v1 裸清单 → v2 包装（逐条补宽高/格式）；已是 v2/缺失/损坏按状态原样报告。"""
+    """v1 裸清单 → v2 包装（逐条补宽高/格式）；已是 v2/缺失/损坏按状态原样报告。
+
+    dry-run 时若主路径缺失但 LEGACY_ASSET_DIR 下有清单，返回 'pending-relocate'：
+    语义是"v1/v2 待 relocate 完成后再升级/回填"——避免在 .canvas 还没搬到
+    .assets 的情况下报 missing/noop 让用户误以为没东西要迁。
+    """
     state = detect_registry()
+    if state["state"] == "missing" and not apply:
+        legacy_reg = os.path.join(LEGACY_ASSET_DIR, "registry.json")
+        if os.path.isdir(LEGACY_ASSET_DIR) and os.path.isfile(legacy_reg):
+            legacy_state = detect_registry(legacy_reg)
+            if legacy_state["state"] in ("v1", "v2"):
+                return {
+                    "registry": legacy_state,
+                    "action": "pending-relocate",
+                    "backup": None,
+                    "entries": legacy_state["count"],
+                }
     if state["state"] != "v1":
         return {"registry": state, "action": "none", "backup": None}
     with _REGISTRY_LOCK:

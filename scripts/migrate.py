@@ -38,6 +38,9 @@ def _milestone(rel, reg, am):
     a = reg.get('action', '')
     if a == 'none':
         out.append(f"[注册表] {reg.get('registry', {}).get('state')} 无需迁移")
+    elif a == 'pending-relocate':
+        s = reg.get('registry', {})
+        out.append(f"[注册表] {s.get('state')} 待迁目录后升级（{s.get('count', 0)} 条，加 --apply）")
     elif a:
         out.append(f"[注册表] {a}（{reg.get('entries', '')} 条）")
     if am.get('action') == 'noop':
