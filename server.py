@@ -120,17 +120,9 @@ def save_last_output_dir(path: str) -> None:
 
 
 def safe_ref_path(path: str) -> str | None:
-    """仅接受 REF_DIR 内的绝对路径（防路径穿越）；非法返回 None"""
-    abs_path = os.path.abspath(path)
-    ref_root = os.path.abspath(REF_DIR)
-    try:
-        inside_ref_dir = os.path.commonpath([abs_path, ref_root]) == ref_root
-    except ValueError:
-        # Windows 不同盘符没有公共路径，按越界路径处理。
-        return None
-    if not inside_ref_dir:
-        return None
-    return abs_path
+    """仅接受 REF_DIR 内的绝对路径（防路径穿越）；非法返回 None（委托 pathtrust 统一实现）"""
+    from core.pathtrust import match_roots
+    return match_roots(path, [REF_DIR])
 
 
 def relative_display_path(path: str, root: str | os.PathLike[str]) -> str:
@@ -287,7 +279,7 @@ def generation_history(limit: int = 200, query: str = "", status: str = ""):
 
 
 @app.post("/api/history/import")
-def canvas_history_import(body: dict):
+def import_history_asset(body: dict):
     """把日志中真实存在的历史结果导入画布，拒绝任意未记录路径。"""
     requested = os.path.normcase(resolve_history_output_path(str(body.get("path", ""))))
     recorded_paths = {
@@ -786,3 +778,6 @@ else:
             "<p>构建完成后刷新本页。详见 README「快速开始」。</p>",
             status_code=503,
         )
+
+# 兼容别名：旧函数名（历史/前端引用陈旧名称时仍可用），新名统一为 import_history_asset
+canvas_history_import = import_history_asset

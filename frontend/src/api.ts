@@ -240,7 +240,7 @@ export async function generationHistory(params: {
   return requestJson(`/api/history?${query.toString()}`);
 }
 
-export async function historyCanvasImport(path: string): Promise<{
+export async function importHistoryAsset(path: string): Promise<{
   imported: CanvasImageEntry[];
   skipped: { path: string; reason: string }[];
 }> {
@@ -250,3 +250,6 @@ export async function historyCanvasImport(path: string): Promise<{
     body: JSON.stringify({ path }),
   });
 }
+
+/** 兼容别名：旧名（陈旧引用）仍可用 */
+export const historyCanvasImport = importHistoryAsset;

@@ -25,7 +25,7 @@ import { GripVertical } from "lucide-react";
 
 import {
   canvasUpload,
-  historyCanvasImport,
+  importHistoryAsset,
   importSubmission,
   selectFolder,
   workflowList,
@@ -826,7 +826,7 @@ export default function CanvasPage({
         .filter(Boolean);
       if (!resultPaths.length) return 0;
       try {
-        const importedBatches = await Promise.all(resultPaths.map((path) => historyCanvasImport(path)));
+        const importedBatches = await Promise.all(resultPaths.map((path) => importHistoryAsset(path)));
         const imported = importedBatches.flatMap((batch) => batch.imported);
         if (!imported.length) {
           pushLog(`节点 ${nodeId}：生成成功，但结果导入画布失败`);
@@ -1025,7 +1025,7 @@ export default function CanvasPage({
 
   const handleHistoryImport = useCallback(async (path: string) => {
     try {
-      const { imported, skipped } = await historyCanvasImport(path);
+      const { imported, skipped } = await importHistoryAsset(path);
       if (!imported.length) {
         pushLog(`历史图片导入失败：${skipped[0]?.reason ?? "文件不可用"}`);
         return;

@@ -43,9 +43,11 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `启动生图工作台.cmd` | 开发环境双击入口：构建检查 → 起服务 → 开窗 → 进入交互菜单 |
 | `config.json` | 公开配置（git 跟踪）：多 profile（中转站/模型/尺寸/质量/ratios），`default_profile` 指定公共默认 |
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块 |
+| `core/pathtrust.py` | 路径白名单统一实现（`.refs`/`.canvas` 双根 + 单根），供 canvas 与 server 复用 |
+| `output/…/submissions/` | 经典提交图快照（复用工作流格式，kind='submission'），提供整图导入画布 |
 | `frontend/` | React SPA（见 2.3） |
 | `scripts/` | 独立运维脚本：`migrate_canvas_v2.py`（画布存储 v1→v2 迁移，默认只报告、`--apply` 才落盘） |
-| `tests/` | 后端 pytest（147 用例，纯函数 + 路由，不调上游） |
+| `tests/` | 后端 pytest（163 用例，纯函数 + 路由，不调上游） |
 | `docs/` | `prompt-contract.md`：提示词契约模板（发给多模态模型的输出格式规范） |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.canvas` 画布图片与注册表、`workflows` 工作流 |
@@ -55,9 +57,10 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `config.py` —— 配置中心：API Key、BASE_URL、尺寸/质量选项、RATIOS、默认参数。**全后端唯一配置源**，其他模块从这里读，不自行读环境变量。
 - `api.py` —— 上游请求封装：`generate_image`（文生图/图生图一次请求）、尺寸解析、错误格式化。依赖 config 与 console。
 - `tasks.py` —— 异步任务管线：`TaskManager` 提交登记、线程池并发执行、快照查询、取消、TTL 清理。
-- `canvas.py` —— 画布存储：图片注册表（内容去重、原子写）、工作流 JSON 存取（v1/v2 兼容）、恢复快照。纯逻辑，无 HTTP。
+- `canvas.py` —— 画布存储：图片注册表（内容去重、原子写，条目可选来源标签 kind/sourceKey）、工作流 JSON 存取（v1/v2 兼容）、恢复快照、经典提交图快照（submission_save/load）+ 统一解析 `resolve_asset`。纯逻辑，无 HTTP。
+- `pathtrust.py` —— 路径白名单单一实现（match_roots），`canvas.safe_ref_path_allowlist` 与 `server.safe_ref_path` 共同委托，消除重复与跨盘误判。
 - `imageinfo.py` —— 图片头解析（PNG/JPEG/GIF/WebP/BMP 宽高/格式），纯标准库零依赖；供注册表 v2 元数据与迁移工具。
-- `migrate.py` —— 画布存储迁移：v1→v2 升级、损坏清单按 `.canvas` 文件重建、备份→转换→校验→报告（默认只报告、非破坏）。依赖 canvas 与 imageinfo。
+- `migrate.py` —— 画布存储迁移：v1→v2 升级、损坏清单按 `.canvas` 文件重建、可选来源标签 kind 回填（backfill_asset_meta）、备份→转换→校验→报告（默认只报告、非破坏）。依赖 canvas 与 imageinfo。
 - `history.py` —— 生成历史 JSONL 读取。依赖 logging 的日志目录常量，无 HTTP。
 - `logging.py` —— 生成日志统一写入（线程锁串行追加），UI/批量/CLI 三路共用。
 - `console.py` —— rich 终端输出（成功/失败/信息配色、进度条、面板），无业务依赖，可被任意模块引用。
@@ -65,12 +68,12 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 ### 2.3 前端 src/ 模块
 
 - `main.tsx` / `App.tsx` —— 入口与双模式外壳：经典表单 / 无限画布切换（`?mode=canvas` 直达），多窗口编号与主题色。
-- `api.ts` —— `/api/*` 请求封装，全部返回类型化。
+- `api.ts` —— `/api/*` 请求封装，全部返回类型化；含 importSubmission（经典提交整图导入）。
 - `types.ts` —— 前后端类型契约（AppConfig / 任务快照 / 节点 / 边）。
 - `useGenerationTask.ts` —— 提交-轮询任务 hook：经典表单与画布共用，`submit/cancel/get/tasks/subscribe` 五个稳定成员。
 - `useCanvasRecovery.ts` —— 画布恢复：挂载时询问是否恢复最近存档，防抖自动保存。
 - `useCanvasDrop.tsx` —— 画布拖拽接线 hook（文件多图 / 工具栏按钮拖出共用）：落点示意显隐/定位/文案、拖放意图解析、window 级兜底守卫、工作区四事件；节点怎么建由回调上抛（onDropFiles/onDropNode），本 hook 不含业务。
-- 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/布局/连线/节点构建器）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案）、`promptContract.ts`（契约解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
+- 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/布局/连线/节点构建器/mergeSubmissionGraph 提交图合并）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案）、`promptContract.ts`（契约解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
 - `components/`：`CanvasPage.tsx`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes.tsx`（三类节点组件）、`WorkflowModals.tsx`（保存/加载/放大预览弹窗）、`PromptImportModal.tsx`、`HistoryGallery.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`Select.tsx`、`FolderPicker.tsx`。
 
 ### 2.4 依赖规则
@@ -192,10 +195,12 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | 画布「历史导入」/「导入目录」 | ✅ | `history/import` / `canvas/import`，同样复制 + 登记 |
 | 生成结果回流 | ✅ | done 快照按 registryId 去重后复制 + 登记（见 6.5） |
 | 图片节点「替换」 | ✅ | 新图登记；旧图文件保留（避免破坏其他引用/已存工作流） |
-| 经典表单上传区参考图 | ❌ | 只落 `output/.refs/`（24h 临时中转），不进 `.canvas/`；仅当后续导入画布/结果回流才登记 |
+| 经典表单上传区参考图 | ⚠️ 按需晋升 | 添加时只落 `output/.refs/`（24h 临时中转，不进 `.canvas/`）；**生成成功后**该次用到的 `.refs` 参考图晋升为 `kind='ref'` 复制进 `.canvas/`（原 `.refs` 文件不动、24h 清理照旧） |
+| 经典表单生成结果 | ✅ | 生成成功后结果图 `kind='result'` 复制进 `.canvas/` 并登记，同时落一份**提交图快照**（`output/submissions/`，kind='submission'，组→提示词→结果连线），账本带 submissionId/资产 id；经典结果区「导入画布」= 整图重建（见 6.5） |
 
-> `.canvas/` 与 `.refs/`：前者是画布长期图库（永不清理、工作流按编号引用、损坏可重建）；后者是参考图临时缓存（添加即落盘供继承/生成引用，启动清 24h 孤儿，无引用计数）。
+> `.canvas/` 与 `.refs/`：前者是画布长期图库（永不清理、工作流按编号引用、损坏可重建）；后者是参考图临时缓存（添加即落盘供继承/生成引用，启动清 24h 孤儿，无引用计数）。统一原则：**只要在系统里「出现且被保留」的图都进 `.canvas/` 注册表**（画布拖入、生成结果、晋升的参考图），`.refs` 仅是不确定是否要保留时的 24h 暂存。
 - 工作流文件：version 2 JSON（v1 兼容读取）存 `output/workflows/`，含 `savedAt` 元信息；图片节点**只持久化 registryId + 元数据**，url/absPath 由加载时按注册表实时重建——项目改名/移动后旧存档自愈；注册表缺失的 id 进 `missing`（前端标红「图片缺失」并阻止带缺图运行）。
+- 提交图快照：`output/submissions/`，与工作流同 schema（kind='submission'），经典生成自动落盘，提供「整图导入画布」（图片组→提示词→结果连线一次还原）；解析统一走 `resolve_asset`。
 - 恢复快照：独立于手动工作流，自动保存（防抖 1.5s）+ 挂载询问恢复。
 
 ### 5.6 新建节点定位
@@ -214,6 +219,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 3. `POST /api/generate` 提交即返回 `{taskId, status}`；前端 `useGenerationTask` 每 2s 轮询快照（竞态防护 + elapsed 本地计时，终态停止）。
 4. 服务端线程池执行 `generate_image`（多参考图一次请求）→ 解码 b64 写入输出目录 → 写回 results/messages/total_cost。
 5. 快照 `url=/api/image?path=` 回显（附带 fileSize/ext）；经典表单进画廊，画布按节点映射驱动状态灯并在 done 时**结果回流**（见 6.5）。
+6. **经典结果落盘（旁路，失败不影响生成）**：done 时 `run_generation` 把成功结果图 `kind='result'`、本次 `.refs` 参考图 `kind='ref'` 注册进 `.canvas/`，并落一份提交图快照（`output/submissions/<submissionId>.json`）；账本该行带 `submissionId/inputAssetIds/outputAssetIds`。经典结果区「导入画布」= 整图重建到画布（图片组→提示词→结果连线）。
 
 ### 6.2 批量生成（命令行）
 
@@ -230,6 +236,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 6.5 结果回流
 
 任务 done 后：成功结果按 `registryId` 去重（画布已有同图不重建）→ 复制进画布注册表 → 建图片节点放在提示词**正下方居中横排**（`layoutPromptResults`）→ 自动连线 提示词 → 结果图。回流前检查提示词节点仍存在（删除后完成的结果不回流，避免幽灵节点）。
+
+**经典统一**：经典表单生成在 done 时同样落盘（见 6.1 step 6）——结果/参考图注册 + 提交图快照 + 账本联动；「导入画布」走 `POST /api/canvas/import-submission` 整图重建，前端 `mergeSubmissionGraph` 按 registryId 去重复用现有图片节点并接上提示词与连线（不产生重复节点）。
 
 ## 7. 前后端契约
 
@@ -255,16 +263,17 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | POST | `/api/canvas/image/delete` | { id } | { ok }（注册表移除 + 尽力删文件） |
 | GET | `/api/health/details` | 无 | { ok, checks, issues[] }（启动自检，不泄漏配置） |
 | GET | `/api/history` | ?limit=&query=&status= | { items }（仅给仍存在的图片附加预览 URL） |
-| POST | `/api/history/import` | { path } | { imported, skipped }（只接受日志中真实存在的路径） |
+| POST | `/api/history/import` | { path } | { imported, skipped }（只接受日志中真实存在的路径；服务端函数名 import_history_asset，旧名 canvas_history_import 为别名） |
 | POST | `/api/canvas/workflow/save` | { name, nodes, edges } | { ok, path }（图片节点归一化：只存 registryId+元数据） |
 | GET | `/api/canvas/workflow/list` | 无 | { workflows[ name, modified ] }（按修改时间倒序） |
 | GET | `/api/canvas/workflow/load` | ?name= | { name, nodes, edges, missing }（按 registry 实时解析，缺失进 missing） |
+| POST | `/api/canvas/import-submission` | { submissionId } | { name, nodes, edges, missing }（经典提交整图导入，解析资产路径，缺失进 missing） |
 | POST | `/api/canvas/recovery/save` | { nodes, edges } | { ok, path, name, savedAt }（独立恢复快照，不覆盖手动工作流） |
 | GET | `/api/canvas/recovery/latest` | 无 | { ok, empty? | name?, savedAt?, nodes?, edges?, missing? } |
 
 ### 7.2 类型契约
 
-前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerationTaskSnapshot` / `GenerateParams` / `ResultItem` / `WorkflowNode` / `WorkflowEdge` / `CanvasImageEntry`），与后端返回结构一一对应。改接口必须同步改这里和对应测试。
+前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerationTaskSnapshot` / `GenerateParams` / `ResultItem` / `WorkflowNode` / `WorkflowEdge` / `CanvasImageEntry`；`GenerationTaskSnapshot` 含可选 `submissionId`），与后端返回结构一一对应。改接口必须同步改这里和对应测试。
 
 ### 7.3 路径与配置基准
 
@@ -291,7 +300,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 - **独立任务模型**：连线 = 参考图输入（非执行顺序），提示词节点间无依赖，「全部运行」= 全部提交到服务端并发队列。
 - **自动整理=按连线深度分层**：`workflow.ts:autoLayout` 用**最长路径分层**（层号=入边最深路径；普通三段式恰为其特例 0/1/2/3）+ 层内 barycenter 块居中。结果图被复用（连图片组/别的提示词）或多级链路自动向下延伸——连线只朝下不横穿；环容忍（DFS 回边不计层）；孤立节点按类型保底（图/组 0、提示词 1）；无前驱节点左对齐打底（origin 平移模式二次整理不漂移）。
-- **派生路径不落盘**：图片节点只持久化 registryId，url/absPath 加载时实时重建——项目目录改名/移动后旧存档自愈；URL 构建单一入口 `canvas.image_url()`。
+- **派生路径不落盘**：图片节点只持久化 registryId，url/absPath 加载时实时重建——项目目录改名/移动后旧存档自愈；URL 构建单一入口 `canvas.image_url()`，注册表解析单一入口 `resolve_asset(id)`。
+- **统一存储模型**：画布与经典表单走后端同一套存储——`kind`（canvas/result/ref）标记图片来源；一次生成即一份提交图快照（`output/submissions/`，图片组→提示词→结果）；账本（`generation.jsonl`）每行带 `submissionId/inputAssetIds/outputAssetIds` 联动。「导入画布」= 按 registryId 整图重建（前端 `mergeSubmissionGraph` 去重复用），不产生重复节点。
 - **删除分层**：删节点仅断连线不删文件；删文件是图片节点显式操作。
 - **缺图守卫**：参考图文件缺失时明确报错中止运行，不静默跳过导致不带参考图生成错误结果。
 

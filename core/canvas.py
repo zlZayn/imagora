@@ -245,20 +245,9 @@ def resolve_asset(img_id: str) -> dict | None:
 
 
 def safe_ref_path_allowlist(path: str, roots: list[str]) -> str | None:
-    """路径白名单校验：abs path 与任一 root 的 commonpath 匹配则返回 abs，否则 None
-
-    注意：commonpath 在跨盘（不同盘符）时抛 ValueError，需逐 root 单独捕获——
-    某个 root 跨盘不代表其他 root 不匹配。
-    """
-    abs_path = os.path.abspath(path)
-    for root in roots:
-        try:
-            root_abs = os.path.abspath(root)
-            if os.path.commonpath([abs_path, root_abs]) == root_abs:
-                return abs_path
-        except ValueError:
-            continue
-    return None
+    """路径白名单校验（委托 core.pathtrust.match_roots 统一实现）"""
+    from core.pathtrust import match_roots
+    return match_roots(path, roots)
 
 
 # ---------- 工作流存取（version 2 JSON 文件，固定目录 output/workflows/） ----------
@@ -304,7 +293,7 @@ def _atomic_write_json(path: str, payload: dict) -> None:
             pass
 
 
-def _resolve_image_nodes(nodes: list) -> list[str]:
+def resolve_image_node_paths(nodes: list) -> list[str]:
     """加载工作流时按 registryId 统一解析图片节点（单一事实来源）。
 
     就地更新每个图片节点 data：registry 命中且文件存在 → 重新推导当前真实
@@ -329,11 +318,11 @@ def _resolve_image_nodes(nodes: list) -> list[str]:
     return missing
 
 
-def _normalize_workflow_nodes(nodes: list) -> list:
+def strip_derived_node_paths(nodes: list) -> list:
     """落盘前归一化：图片节点只保留 registryId + 元数据，剥离派生路径（url/absPath）。
 
     返回新列表（不修改入参）：非图片节点原样引用，图片节点复制 data 后剔除
-    url/absPath——保证磁盘工作流是规范数据，加载时由 _resolve_image_nodes 重建。
+    url/absPath——保证磁盘工作流是规范数据，加载时由 resolve_image_node_paths 重建。
     """
     normalized: list = []
     for node in nodes:
@@ -352,8 +341,8 @@ def _normalize_workflow_nodes(nodes: list) -> list:
 def workflow_save(name: str, nodes: list, edges: list) -> dict:
     """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json，version 2）。
 
-    图片节点落盘前归一化（_normalize_workflow_nodes）：只存 registryId + 元数据，
-    不存派生路径 url/absPath——加载时由 _resolve_image_nodes 实时重建，
+    图片节点落盘前归一化（strip_derived_node_paths）：只存 registryId + 元数据，
+    不存派生路径 url/absPath——加载时由 resolve_image_node_paths 实时重建，
     项目目录改名/移动后旧存档依然可恢复。原子写（先临时文件再替换），多窗口不会写坏。
     返回 {"ok": True, "path"} 或 {"ok": False, "error"}。
     """
@@ -367,7 +356,7 @@ def workflow_save(name: str, nodes: list, edges: list) -> dict:
             "version": WORKFLOW_VERSION,
             "name": filename,
             "savedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "nodes": _normalize_workflow_nodes(nodes),
+            "nodes": strip_derived_node_paths(nodes),
             "edges": edges,
         }
         _atomic_write_json(abs_path, payload)
@@ -401,7 +390,7 @@ def workflow_list() -> list[dict]:
 def workflow_load(name: str) -> dict:
     """加载工作流 JSON：校验版本（v1/v2 均支持）、按 registryId 实时解析图片节点路径。
 
-    图片节点经 _resolve_image_nodes 统一解析（registry → relPath → absPath/url，
+    图片节点经 resolve_image_node_paths 统一解析（registry → relPath → absPath/url，
     不信任存档里的旧绝对路径）；registry 缺失或文件不存在的 registryId 进 missing
     （节点保持无路径，前端占位标红）。未知版本明确拒绝（不按错误结构解析未来格式）。
     返回 {"ok": True, "name", "nodes", "edges", "missing"} 或 {"ok": False, "error"}。
@@ -429,7 +418,7 @@ def workflow_load(name: str) -> dict:
         "name": str(data.get("name", "")),
         "nodes": nodes,
         "edges": edges,
-        "missing": _resolve_image_nodes(nodes),
+        "missing": resolve_image_node_paths(nodes),
     }
 
 
@@ -450,7 +439,7 @@ def submission_save(
     """把一次经典生成落成一份提交图快照（复用工作流格式，kind='submission'）。
 
     结构：可选图片组节点收拢输入参考图 → 提示词卡片 → 结果图节点；连线组→提示词→结果。
-    图片节点只存 registryId + 元数据（url/absPath 由加载时 _resolve_image_nodes 重建）。
+    图片节点只存 registryId + 元数据（url/absPath 由加载时 resolve_image_node_paths 重建）。
     写 output/submissions/<submission_id>.json，原子写；失败返回 {"ok":False,"error"}。
     """
     if not _safe_submission_id(submission_id):
@@ -514,7 +503,7 @@ def submission_save(
         "name": f"classic-{submission_id}",
         "savedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
         "meta": {"submissionId": submission_id, "sourceMode": "classic", "win": win},
-        "nodes": _normalize_workflow_nodes(nodes),
+        "nodes": strip_derived_node_paths(nodes),
         "edges": edges,
     }
     try:
@@ -553,7 +542,7 @@ def submission_load(submission_id: str) -> dict:
         "name": str(data.get("name", "")),
         "nodes": nodes,
         "edges": edges,
-        "missing": _resolve_image_nodes(nodes),
+        "missing": resolve_image_node_paths(nodes),
     }
 
 
@@ -594,7 +583,7 @@ def recovery_save(nodes: list, edges: list) -> dict:
                 "version": WORKFLOW_VERSION,
                 "name": name,
                 "savedAt": saved_at,
-                "nodes": _normalize_workflow_nodes(nodes),
+                "nodes": strip_derived_node_paths(nodes),
                 "edges": edges,
             }
             os.makedirs(RECOVERY_DIR, exist_ok=True)
@@ -608,7 +597,7 @@ def recovery_save(nodes: list, edges: list) -> dict:
 def recovery_latest() -> dict:
     """读取最近一份可用恢复快照；损坏文件自动跳过。
 
-    图片节点同样经 _resolve_image_nodes 实时解析（同 workflow_load 规则）。
+    图片节点同样经 resolve_image_node_paths 实时解析（同 workflow_load 规则）。
     """
     for path in _recovery_paths():
         try:
@@ -628,6 +617,12 @@ def recovery_latest() -> dict:
             "savedAt": str(data.get("savedAt", "")),
             "nodes": nodes,
             "edges": edges,
-            "missing": _resolve_image_nodes(nodes),
+            "missing": resolve_image_node_paths(nodes),
         }
     return {"ok": False, "empty": True}
+
+
+# ---------- 兼容别名（命名统一过渡层，全绿后删除） ----------
+_resolve_image_nodes = resolve_image_node_paths
+_normalize_workflow_nodes = strip_derived_node_paths
+register_asset = register_file
