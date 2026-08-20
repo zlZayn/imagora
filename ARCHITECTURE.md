@@ -44,7 +44,8 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `config.json` | 公开配置（git 跟踪）：多 profile（中转站/模型/尺寸/质量/ratios），`default_profile` 指定公共默认 |
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块 |
 | `frontend/` | React SPA（见 2.3） |
-| `tests/` | 后端 pytest（113 用例，纯函数 + 路由，不调上游） |
+| `scripts/` | 独立运维脚本：`migrate_canvas_v2.py`（画布存储 v1→v2 迁移，默认只报告、`--apply` 才落盘） |
+| `tests/` | 后端 pytest（147 用例，纯函数 + 路由，不调上游） |
 | `docs/` | `prompt-contract.md`：提示词契约模板（发给多模态模型的输出格式规范） |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.canvas` 画布图片与注册表、`workflows` 工作流 |
@@ -54,7 +55,9 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `config.py` —— 配置中心：API Key、BASE_URL、尺寸/质量选项、RATIOS、默认参数。**全后端唯一配置源**，其他模块从这里读，不自行读环境变量。
 - `api.py` —— 上游请求封装：`generate_image`（文生图/图生图一次请求）、尺寸解析、错误格式化。依赖 config 与 console。
 - `tasks.py` —— 异步任务管线：`TaskManager` 提交登记、线程池并发执行、快照查询、取消、TTL 清理。
-- `canvas.py` —— 画布存储：图片注册表（内容去重、原子写）、工作流 JSON 存取、恢复快照。纯逻辑，无 HTTP。
+- `canvas.py` —— 画布存储：图片注册表（内容去重、原子写）、工作流 JSON 存取（v1/v2 兼容）、恢复快照。纯逻辑，无 HTTP。
+- `imageinfo.py` —— 图片头解析（PNG/JPEG/GIF/WebP/BMP 宽高/格式），纯标准库零依赖；供注册表 v2 元数据与迁移工具。
+- `migrate.py` —— 画布存储迁移：v1→v2 升级、损坏清单按 `.canvas` 文件重建、备份→转换→校验→报告（默认只报告、非破坏）。依赖 canvas 与 imageinfo。
 - `history.py` —— 生成历史 JSONL 读取。依赖 logging 的日志目录常量，无 HTTP。
 - `logging.py` —— 生成日志统一写入（线程锁串行追加），UI/批量/CLI 三路共用。
 - `console.py` —— rich 终端输出（成功/失败/信息配色、进度条、面板），无业务依赖，可被任意模块引用。
@@ -172,8 +175,9 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 5.5 持久化
 
-- 图片注册表：`output/.canvas/registry.json`，id = 内容 sha1 前缀（同内容去重，画布上同一文件只一个节点）；`.canvas` 永不自动清理（区别于 `.refs` 的 24h 清理）。
-- 工作流文件：version 1 JSON 存 `output/workflows/`，图片节点**只持久化 registryId + 元数据**，url/absPath 由加载时按注册表实时重建——项目改名/移动后旧存档自愈；注册表缺失的 id 进 `missing`（前端标红「图片缺失」并阻止带缺图运行）。
+- **格式版本化（v1/v2 兼容）**：注册表与工作流都有明确 schema 版本。运行时时**只写当前版本（v2）**、可读 v1 与 v2——老数据零失效；未知版本明确拒绝（不按错误结构解析未来格式）。v1→v2 一键迁移/损坏清单重建由 `scripts/migrate_canvas_v2.py`（纯逻辑在 `core/migrate.py`，默认只报告、`--apply` 才落地并先备份 `.bak-<时间戳>`、写后加载器读回校验）。
+- 图片注册表：`output/.canvas/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式（`imageinfo` 头部探测）；`.canvas` 永不自动清理（区别于 `.refs` 的 24h 清理）。
+- 工作流文件：version 2 JSON（v1 兼容读取）存 `output/workflows/`，含 `savedAt` 元信息；图片节点**只持久化 registryId + 元数据**，url/absPath 由加载时按注册表实时重建——项目改名/移动后旧存档自愈；注册表缺失的 id 进 `missing`（前端标红「图片缺失」并阻止带缺图运行）。
 - 恢复快照：独立于手动工作流，自动保存（防抖 1.5s）+ 挂载询问恢复。
 
 ### 5.6 新建节点定位
@@ -350,7 +354,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-后端 `uv run pytest`（126 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，89 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
+后端 `uv run pytest`（147 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，94 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -360,8 +364,10 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_server_helpers.py` | 21 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 |
 | `tests/test_core_logging.py` | 7 | 日志写入 / 并发串行 / 路径相对化 |
 | `tests/test_core_history.py` | 2 | 历史读取 / 坏行容忍 / 筛选 |
-| `tests/test_core_canvas.py` | 19 | 注册表 / 内容去重 / import 边界 / workflow 归一化与自愈 / recovery |
-| `tests/test_server_canvas.py` | 17 | canvas 路由 / workflow 往返 / missing 收集 / ref_paths 放行 |
+| `tests/test_core_canvas.py` | 20 | 注册表（v2 包装 + v1 裸清单兼容）/ 内容去重 / import 边界 / workflow 归一化与自愈 / recovery |
+| `tests/test_server_canvas.py` | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / 未知版本拒绝 / ref_paths 放行 |
+| `tests/test_core_imageinfo.py` | 10 | PNG/JPEG/GIF/WebP(VP8/VP8L/VP8X)/BMP 头解析 / 垃圾与截断返回 None |
+| `tests/test_core_migrate.py` | 10 | 版本检测 / v1→v2 升级（备份+校验）/ 清单重建 / 幂等 / 非破坏默认 / 损坏跳过 |
 | `tests/test_core_tasks.py` | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
 | `tests/test_server_tasks.py` | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
 | `tests/test_main_process.py` | 4 | 端口探测 / 祖先链回溯 |

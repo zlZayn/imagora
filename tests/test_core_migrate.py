@@ -1,0 +1,163 @@
+"""core/migrate.py 单元测试：v1→v2 迁移（注册表/工作流）、清单重建、备份校验、幂等、非破坏默认"""
+import json
+import os
+import struct
+
+import pytest
+
+from core import canvas, migrate
+
+# 真实最小 PNG（IHDR 可解析出 100x200），供 dims 探测
+PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n"
+    + b"\x00\x00\x00\x0dIHDR"
+    + struct.pack(">II", 100, 200)
+    + b"\x08\x06\x00\x00\x00"
+    + b"\x00" * 4
+)
+
+
+@pytest.fixture
+def canvas_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(canvas, "DEFAULT_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setattr(canvas, "CANVAS_DIR", str(tmp_path / ".canvas"))
+    monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
+    monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
+    monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)
+    return tmp_path
+
+
+def _register_png(env, name="a.png"):
+    (env / ".canvas").mkdir(parents=True, exist_ok=True)
+    src = env / name
+    src.write_bytes(PNG_BYTES + name.encode())
+    entry = canvas.register_file(str(src), name)
+    assert entry is not None
+    return entry
+
+
+def test_detect_registry_missing(canvas_env):
+    assert migrate.detect_registry()["state"] == "missing"
+
+
+def test_detect_registry_v2(canvas_env):
+    _register_png(canvas_env)
+    assert migrate.detect_registry()["state"] == "v2"  # 新注册即 v2
+
+
+def test_detect_registry_v1_and_corrupt(canvas_env):
+    (canvas_env / ".canvas").mkdir(parents=True, exist_ok=True)
+    reg = canvas_env / ".canvas" / "registry.json"
+    reg.write_text(json.dumps({"old-entry": {"id": "old-entry", "name": "x.png"}}), encoding="utf-8")
+    assert migrate.detect_registry()["state"] == "v1"
+    reg.write_text("{broken", encoding="utf-8")
+    assert migrate.detect_registry()["state"] == "corrupt"
+
+
+def test_upgrade_registry_plan_only_is_non_destructive(canvas_env):
+    entry = _register_png(canvas_env)
+    # 人为降级为 v1 裸 dict（模拟老版本落盘格式）
+    (canvas_env / ".canvas" / "registry.json").write_text(
+        json.dumps({entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}),
+        encoding="utf-8",
+    )
+    before = (canvas_env / ".canvas" / "registry.json").read_bytes()
+    report = migrate.plan_or_apply()
+    assert report["registry"]["action"] == "upgrade-to-v2"
+    assert report["registry"]["entries"] == 1
+    # 默认不写文件、不备份、不产生 .bak
+    assert (canvas_env / ".canvas" / "registry.json").read_bytes() == before
+    assert list((canvas_env / ".canvas").glob("*.bak-*")) == []
+
+
+def test_upgrade_registry_apply_backs_up_and_verifies(canvas_env):
+    entry = _register_png(canvas_env)
+    (canvas_env / ".canvas" / "registry.json").write_text(
+        json.dumps({entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}),
+        encoding="utf-8",
+    )
+    report = migrate.plan_or_apply(apply=True)
+    assert report["registry"]["action"] == "upgraded-to-v2"
+    # 备份存在，且原内容仍可从备份恢复
+    backup = report["registry"]["backup"]
+    assert backup and os.path.isfile(backup)
+    # 新文件是 v2 包装，加载器可读，条目数与转换前一致
+    raw = json.loads((canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8"))
+    assert raw["schemaVersion"] == 2
+    assert isinstance(raw["images"], dict) and len(raw["images"]) == 1
+    assert len(canvas.load_registry()) == 1
+    # v1 升级补上了宽高（真实 PNG 可解析）
+    assert raw["images"][entry["id"]]["width"] == 100
+    assert raw["images"][entry["id"]]["height"] == 200
+
+
+def test_upgrade_registry_idempotent(canvas_env):
+    _register_png(canvas_env)  # 已是 v2
+    first = migrate.plan_or_apply(apply=True)
+    second = migrate.plan_or_apply(apply=True)
+    assert first["registry"]["action"] == "none"  # 无需迁移
+    assert second["registry"]["action"] == "none"
+    assert len(canvas.load_registry()) == 1
+
+
+def test_rebuild_registry_from_files(canvas_env):
+    entry = _register_png(canvas_env)
+    # 模拟清单丢失：删掉 registry 文件，文件保留
+    os.unlink(canvas_env / ".canvas" / "registry.json")
+    report = migrate.plan_or_apply(rebuild=True)
+    assert report["registry"]["action"] == "rebuild-ready"
+    assert report["registry"]["restored"] == 1
+    report = migrate.plan_or_apply(rebuild=True, apply=True)
+    assert report["registry"]["action"] == "rebuilt"
+    entries = canvas.load_registry()
+    restored = entries[entry["id"]]
+    assert restored["name"] == f"canv_{entry['id']}.png"  # 文件名还原
+    assert restored["width"] == 100 and restored["height"] == 200
+    assert os.path.normpath(os.path.join(canvas.DEFAULT_OUTPUT_DIR, restored["relPath"])) == os.path.normpath(
+        str(canvas_env / ".canvas" / f"canv_{entry['id']}.png")
+    )
+
+
+def test_workflow_upgrade_plan_and_apply(canvas_env):
+    (canvas_env / "workflows").mkdir(parents=True, exist_ok=True)
+    wf = canvas_env / "workflows" / "old.json"
+    wf.write_text(json.dumps({"version": 1, "name": "old", "nodes": [{"id": "n1"}], "edges": []}), encoding="utf-8")
+    report = migrate.plan_or_apply()
+    assert report["workflows"][0]["action"] == "upgrade-ready"
+    assert wf.read_bytes().startswith(b'{"version": 1')  # 未落地前文件不变
+    report = migrate.plan_or_apply(apply=True)
+    upgraded = report["workflows"][0]
+    assert upgraded["action"] == "upgraded"
+    raw = json.loads(wf.read_text(encoding="utf-8"))
+    assert raw["version"] == 2
+    assert raw["savedAt"]
+    assert os.path.isfile(upgraded["backup"])
+    # 应用自身加载器可读回
+    assert canvas.workflow_load("old")["ok"] is True
+    # 幂等：再跑一次变 noop
+    report2 = migrate.plan_or_apply(apply=True)
+    assert report2["workflows"][0]["action"] == "noop"
+
+
+def test_workflow_corrupt_skipped(canvas_env):
+    (canvas_env / "workflows").mkdir(parents=True, exist_ok=True)
+    (canvas_env / "workflows" / "bad.json").write_text("{broken", encoding="utf-8")
+    report = migrate.plan_or_apply(apply=True)
+    assert report["workflows"][0]["action"] == "skip-corrupt"
+    assert report["summary"]["corrupt"] == 1
+
+
+def test_plan_never_writes_any_file(canvas_env):
+    entry = _register_png(canvas_env)
+    (canvas_env / ".canvas" / "registry.json").write_text(
+        json.dumps({entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}),
+        encoding="utf-8",
+    )
+    (canvas_env / "workflows").mkdir(parents=True, exist_ok=True)
+    wf = canvas_env / "workflows" / "w.json"
+    wf.write_text(json.dumps({"version": 1, "nodes": [], "edges": []}), encoding="utf-8")
+    before = {p.name: p.read_bytes() for p in canvas_env.rglob("*") if p.is_file()}
+    migrate.plan_or_apply(rebuild=True)
+    after = {p.name: p.read_bytes() for p in canvas_env.rglob("*") if p.is_file()}
+    assert set(after) == set(before)
+    assert all(after[k] == before[k] for k in before)
