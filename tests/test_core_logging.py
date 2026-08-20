@@ -116,3 +116,23 @@ def test_log_generation_concurrent_writes_not_interleaved(monkeypatch, tmp_path)
     assert len(lines) == n
     for line in lines:
         assert isinstance(json.loads(line), dict)
+
+
+def test_log_generation_optional_submission_fields(monkeypatch, tmp_path):
+    """可选账本联动字段：传入则写入，缺省不写入（旧行兼容）"""
+    monkeypatch.setattr(log_module, "LOGS_DIR", tmp_path)
+    log_module.log_generation(
+        prompt="p", mode="txt2img", refs=0, size="1024x1024", quality="low",
+        status="ok", cost=0.01, seconds=1.0,
+        submission_id="sub-1", input_asset_ids=["in1", "in2"], output_asset_ids=["out1"],
+    )
+    log_module.log_generation(prompt="p2", mode="txt2img", refs=0, size="1024x1024", quality="low", status="ok")
+
+    lines = (tmp_path / "generation.jsonl").read_text(encoding="utf-8").splitlines()
+    r1, r2 = (json.loads(x) for x in lines)
+    assert r1["submissionId"] == "sub-1"
+    assert r1["inputAssetIds"] == ["in1", "in2"]
+    assert r1["outputAssetIds"] == ["out1"]
+    assert "submissionId" not in r2
+    assert "inputAssetIds" not in r2
+    assert "outputAssetIds" not in r2

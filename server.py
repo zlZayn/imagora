@@ -564,6 +564,16 @@ def run_generation(task: GenerationTask) -> None:
     if ok_count > 0:
         save_last_output_dir(out_dir)
 
+    task.results = results
+    task.messages = messages
+    task.total_cost = total_cost
+    # 旁路：生成成功后注册结果图/参考图并落提交图快照（失败不影响生成结果）
+    submission_meta: dict | None = None
+    if ok_count > 0 and task.submission_id:
+        try:
+            submission_meta = _persist_submission(task)
+        except Exception:
+            submission_meta = None
     log_generation(
         prompt=task.prompt,
         mode="img2img" if (task.temp_bases or task.ref_bases) else "txt2img",
@@ -575,24 +585,19 @@ def run_generation(task: GenerationTask) -> None:
         cost=total_cost,
         seconds=time.time() - started_at,
         win=task.win or None,
+        submission_id=task.submission_id or "",
+        input_asset_ids=(submission_meta or {}).get("input_asset_ids"),
+        output_asset_ids=(submission_meta or {}).get("output_asset_ids"),
     )
-    task.results = results
-    task.messages = messages
-    task.total_cost = total_cost
-    # 旁路：生成成功后注册结果图/参考图并落提交图快照（失败不影响生成结果）
-    if ok_count > 0 and task.submission_id:
-        try:
-            _persist_submission(task)
-        except Exception:
-            pass
 
 
-def _persist_submission(task: GenerationTask) -> None:
+def _persist_submission(task: GenerationTask) -> dict | None:
     """旁路：把本次成功结果 + 参考图注册进 .canvas 并落提交图快照。
 
     参考图只对 ref_bases（已在 .refs/.canvas 白名单）晋升为 kind='ref'；
     multipart 兜底的未同步本地图（temp_bases）不晋升，仅结果注册。
     任何失败不抛（由调用方 try/except 兜底），成功与否不影响生成结果。
+    返回 {"input_asset_ids": [...], "output_asset_ids": [...]} 供账本联动；无结果返回 None。
     """
     def _path_from_url(url: str) -> str:
         try:
@@ -629,11 +634,15 @@ def _persist_submission(task: GenerationTask) -> None:
             result_entries.append(entry)
 
     if not result_entries:
-        return
+        return None
     params = {"size": task.size, "quality": task.quality, "outputDir": task.output_dir}
     canvas.submission_save(
         task.submission_id, task.prompt, params, input_entries, result_entries, task.win,
     )
+    return {
+        "input_asset_ids": [e["id"] for e in input_entries],
+        "output_asset_ids": [e["id"] for e in result_entries],
+    }
 
 
 # 全局生成任务池：执行池大小即全局并发上限，所有窗口 / 模式共享（详见 core/tasks.py）

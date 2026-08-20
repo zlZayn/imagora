@@ -30,7 +30,9 @@ def _display_path(path: str) -> str:
 
 def log_generation(prompt: str, mode: str, refs: int, size: str, quality: str,
                    status: str, output: str = "", cost: float = 0.0,
-                   seconds: float = 0.0, win: int | None = None) -> None:
+                   seconds: float = 0.0, win: int | None = None,
+                   submission_id: str = "", input_asset_ids: list | None = None,
+                   output_asset_ids: list | None = None) -> None:
     """记录一次生成结果。
 
     Args:
@@ -43,6 +45,7 @@ def log_generation(prompt: str, mode: str, refs: int, size: str, quality: str,
         cost: 本次费用（元）
         seconds: 耗时（秒）
         win: 窗口编号（多开页面时传，None 则不记录）
+        submission_id / input_asset_ids / output_asset_ids: 可选，账本与提交/资产联动（缺省不写，旧行兼容）
     """
     record = {
         "time": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -58,6 +61,12 @@ def log_generation(prompt: str, mode: str, refs: int, size: str, quality: str,
     }
     if win is not None:
         record["win"] = win
+    if submission_id:
+        record["submissionId"] = submission_id
+    if input_asset_ids:
+        record["inputAssetIds"] = list(input_asset_ids)
+    if output_asset_ids:
+        record["outputAssetIds"] = list(output_asset_ids)
     # 日志失败不影响主流程：写入出错静默跳过
     try:
         with _LOCK:
