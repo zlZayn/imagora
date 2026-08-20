@@ -14,7 +14,6 @@
   python scripts/migrate.py --apply --output-root 路径
 """
 import argparse
-import importlib
 import os
 import sys
 
@@ -55,7 +54,8 @@ def _print_report(report) -> None:
     print(f'模式：{mode}')
     print(_milestone(report.get('relocate') or {}, report.get('registry') or {}, report.get('asset_meta') or {}))
     s = report.get('summary') or {}
-    print(f"[工作流] 待升级/已升级 {s.get('upgraded', 0)} · 无需动 {s.get('noop', 0)} · 损坏跳过 {s.get('corrupt', 0)}")
+    pending = s.get('ready', 0) + s.get('upgraded', 0)  # dry-run: ready；apply: upgraded
+    print(f"[工作流] 待升级/已升级 {pending} · 无需动 {s.get('noop', 0)} · 损坏跳过 {s.get('corrupt', 0)}")
 
 
 def main() -> int:
