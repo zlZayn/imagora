@@ -175,7 +175,12 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 5.5 持久化
 
-- **格式版本化（v1/v2 兼容）**：注册表与工作流都有明确 schema 版本。运行时时**只写当前版本（v2）**、可读 v1 与 v2——老数据零失效；未知版本明确拒绝（不按错误结构解析未来格式）。v1→v2 一键迁移/损坏清单重建由 `scripts/migrate_canvas_v2.py`（纯逻辑在 `core/migrate.py`，默认只报告、`--apply` 才落地并先备份 `.bak-<时间戳>`、写后加载器读回校验）。
+- **格式版本化（v1/v2 兼容）**：注册表与工作流都有明确 schema 版本。运行时时**只写当前版本（v2）**、可读 v1 与 v2——老数据零失效；未知版本明确拒绝（不按错误结构解析未来格式）。v1→v2 一键迁移/损坏清单重建由 `scripts/migrate_canvas_v2.py`（纯逻辑在 `core/migrate.py`，默认只报告、`--apply` 才落地并先备份 `.bak-<时间戳>`、写后加载器读回校验）。用法：
+  - 查看状态（只报告）：`python scripts/migrate_canvas_v2.py`
+  - 升级 v1→v2：`python scripts/migrate_canvas_v2.py --apply`
+  - 清单缺失/损坏按文件重建：`python scripts/migrate_canvas_v2.py --apply --rebuild-registry`
+  - 指定 output 根：追加 `--output-root 路径`
+- **重建原理**：`rebuild_registry` 扫描 `.canvas/` 下 `canv_<sha1[:12]>.<ext>` 文件——id/relPath/name 由文件名还原，size 实测、宽高/格式用 `imageinfo` 探测、createdAt 取文件 mtime；canvas 工作流按"编号"引用图片，编号不丢则老存档全部可恢复。**限制**：重建后条目 name 为系统名（原始上传名未单独持久化，无法还原）。
 - 图片注册表：`output/.canvas/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式（`imageinfo` 头部探测）；`.canvas` 永不自动清理（区别于 `.refs` 的 24h 清理）。
 - 工作流文件：version 2 JSON（v1 兼容读取）存 `output/workflows/`，含 `savedAt` 元信息；图片节点**只持久化 registryId + 元数据**，url/absPath 由加载时按注册表实时重建——项目改名/移动后旧存档自愈；注册表缺失的 id 进 `missing`（前端标红「图片缺失」并阻止带缺图运行）。
 - 恢复快照：独立于手动工作流，自动保存（防抖 1.5s）+ 挂载询问恢复。

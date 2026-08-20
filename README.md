@@ -110,6 +110,12 @@ python Imagora/frontend/e2e/verify_canvas.py       # 画布交互 E2E（另开�
 - **键盘快捷键**：`Ctrl+A` 全选 · `Ctrl`+点击加选 · `Ctrl+Z` 撤销 / `Ctrl+Y` 恢复 · `Ctrl+S` 保存 · `Delete` 删除；输入框聚焦时不拦截
 - **缩放与预览**：滚轮缩放，左下角「适应视图」一键全览（节点再多也能一屏显示）；双击图片打开预览弹窗，支持滚轮缩放、放大后拖拽平移、双击复位
 
+> **数据迁移 / 清单修复**（维护向，日常无需执行）：画布数据已版本化（v1/v2 自动兼容），需要时用独立脚本 `scripts/migrate_canvas_v2.py`：
+> - 查看当前存储状态（只报告，不改文件）：`python scripts/migrate_canvas_v2.py`
+> - 把 v1 老清单/老存档升级为 v2（先备份 `.bak-时间戳`，程序读回校验通过才保留）：`python scripts/migrate_canvas_v2.py --apply`
+> - 图片清单缺失/损坏时按图片文件重建：`python scripts/migrate_canvas_v2.py --apply --rebuild-registry`
+> - output 目录不在默认位置：追加 `--output-root 路径`（如 `output/` 或自定义目录）
+
 ## 计费说明
 
 | 档位 | 分辨率示例 | 单张价格 |
