@@ -19,6 +19,7 @@ def canvas_env(tmp_path, monkeypatch):
     monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
     monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
     monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)
+    monkeypatch.setattr(canvas, "SUBMISSIONS_DIR", str(tmp_path / "submissions"), raising=False)
     return tmp_path
 
 
@@ -346,4 +347,57 @@ def test_list_images_kind_filter(canvas_env):
         encoding="utf-8",
     )
     assert all(i["id"] != "old" for i in canvas.list_images(kind="canvas"))
+
+def _register_asset(env, name, content, kind="canvas", source_key=None):
+    return _must(canvas.register_file(str(_write_png(env / name, content)), name,
+                                        kind=kind, source_key=source_key))
+
+
+def test_submission_save_load_roundtrip(canvas_env):
+    inp = _register_asset(canvas_env, "inp.png", b"sub-in", kind="ref", source_key="sub-1")
+    res = _register_asset(canvas_env, "res.png", b"sub-out", kind="result", source_key="sub-1")
+    saved = canvas.submission_save("sub-1", "a red apple", {"size": "1024x1024", "quality": "high", "outputDir": "out"}, [inp], [res])
+    assert saved["ok"] is True
+    path = Path(saved["path"])
+    assert path.exists()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["kind"] == "submission"
+    assert raw["version"] == canvas.WORKFLOW_VERSION
+    types = [n["type"] for n in raw["nodes"]]
+    assert "prompt" in types and "group" in types and "image" in types
+    # 落盘剥离派生路径
+    for n in raw["nodes"]:
+        if n["type"] == "image":
+            assert "url" not in n["data"]
+            assert "absPath" not in n["data"]
+    # 连线：组→提示词→结果
+    edges = raw["edges"]
+    prompt_id = [n["id"] for n in raw["nodes"] if n["type"] == "prompt"][0]
+    group_id = [n["id"] for n in raw["nodes"] if n["type"] == "group"][0]
+    assert any(e["target"] == prompt_id for e in edges)          # 组→提示词
+    assert any(e["source"] == prompt_id for e in edges)         # 提示词→结果
+    assert any(e["source"] == group_id for e in edges)           # 组出边
+
+    loaded = canvas.submission_load("sub-1")
+    assert loaded["ok"] is True
+    assert loaded["missing"] == []  # 资产在注册表且文件存在
+    for n in loaded["nodes"]:
+        if n["type"] == "image":
+            assert n["data"]["absPath"]  # 实时重建路径
+            assert n["data"]["url"].startswith("/api/image?path=")
+
+
+def test_submission_load_missing_asset(canvas_env):
+    inp = _register_asset(canvas_env, "inp.png", b"sub-miss", kind="ref", source_key="sub-2")
+    canvas.submission_save("sub-2", "p", {"size": "1", "quality": "h", "outputDir": "o"}, [inp], [])
+    os.remove(canvas_env / inp["relPath"])  # 资产文件丢失
+    loaded = canvas.submission_load("sub-2")
+    assert loaded["ok"] is True
+    assert inp["id"] in loaded["missing"]
+
+
+def test_submission_invalid_id_rejected(canvas_env):
+    assert canvas.submission_save("../evil", "p", {}, [], [])["ok"] is False
+    assert canvas.submission_load("../evil")["ok"] is False
+
 

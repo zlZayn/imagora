@@ -84,6 +84,13 @@ def current_window_id() -> int:
 
 # 参考图文件名全局序号
 _REF_SEQ = itertools.count(1)
+# 提交 id 全局序号（进程无关：时间戳 + 序号，供落盘提交图快照与账本追溯）
+_SUB_SEQ = itertools.count(1)
+
+
+def _next_submission_id() -> str:
+    """生成稳定提交 id（sub-<epoch_ns>-<seq>），与内存任务 id 解耦"""
+    return f"sub-{time.time_ns()}-{next(_SUB_SEQ):04d}"
 # 参考图孤儿文件最长保留时长（前端删除失败 / 上传未用的情况兜底清理）
 REF_MAX_AGE_SECONDS = 24 * 3600
 # 上次输出路径记录：服务重启后默认沿用（无记录才按窗口分区）
@@ -440,6 +447,24 @@ def canvas_recovery_latest():
     return canvas.recovery_latest()
 
 
+@app.post("/api/canvas/import-submission")
+def canvas_import_submission(body: dict):
+    """经典提交整图导入画布：按 submissionId 读取提交图快照，实时解析资产路径。
+
+    返回 {name, nodes, edges, missing}（图片节点已解析 absPath/url，缺失进 missing）。
+    """
+    submission_id = str(body.get("submissionId", ""))
+    result = canvas.submission_load(submission_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "导入提交失败"))
+    return {
+        "name": result["name"],
+        "nodes": result["nodes"],
+        "edges": result["edges"],
+        "missing": result["missing"],
+    }
+
+
 @app.post("/api/select-folder")
 def select_folder(body: dict):
     """弹出系统文件夹选择器；取消则返回原路径
@@ -554,6 +579,61 @@ def run_generation(task: GenerationTask) -> None:
     task.results = results
     task.messages = messages
     task.total_cost = total_cost
+    # 旁路：生成成功后注册结果图/参考图并落提交图快照（失败不影响生成结果）
+    if ok_count > 0 and task.submission_id:
+        try:
+            _persist_submission(task)
+        except Exception:
+            pass
+
+
+def _persist_submission(task: GenerationTask) -> None:
+    """旁路：把本次成功结果 + 参考图注册进 .canvas 并落提交图快照。
+
+    参考图只对 ref_bases（已在 .refs/.canvas 白名单）晋升为 kind='ref'；
+    multipart 兜底的未同步本地图（temp_bases）不晋升，仅结果注册。
+    任何失败不抛（由调用方 try/except 兜底），成功与否不影响生成结果。
+    """
+    def _path_from_url(url: str) -> str:
+        try:
+            from urllib.parse import parse_qs, urlparse
+            return parse_qs(urlparse(url).query).get("path", [""])[0] or ""
+        except Exception:
+            return ""
+
+    input_entries: list[dict] = []
+    seen_input: set[str] = set()
+    for rb in task.ref_bases:
+        try:
+            entry = canvas.register_file(rb, Path(rb).name, kind="ref", source_key=task.submission_id)
+        except Exception:
+            entry = None
+        if entry and entry["id"] not in seen_input:
+            seen_input.add(entry["id"])
+            input_entries.append(entry)
+
+    result_entries: list[dict] = []
+    seen_result: set[str] = set()
+    for res in task.results:
+        if res.get("status") != "ok" or not res.get("url"):
+            continue
+        dest = _path_from_url(res["url"])
+        if not dest or not os.path.isfile(dest):
+            continue
+        try:
+            entry = canvas.register_file(dest, os.path.basename(dest), kind="result", source_key=task.submission_id)
+        except Exception:
+            entry = None
+        if entry and entry["id"] not in seen_result:
+            seen_result.add(entry["id"])
+            result_entries.append(entry)
+
+    if not result_entries:
+        return
+    params = {"size": task.size, "quality": task.quality, "outputDir": task.output_dir}
+    canvas.submission_save(
+        task.submission_id, task.prompt, params, input_entries, result_entries, task.win,
+    )
 
 
 # 全局生成任务池：执行池大小即全局并发上限，所有窗口 / 模式共享（详见 core/tasks.py）
@@ -596,7 +676,7 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
 
     task = GenerationTask(
         prompt=prompt, size=size, quality=quality, output_dir=output_dir, win=win,
-        ref_bases=ref_bases, temp_bases=temp_bases,
+        ref_bases=ref_bases, temp_bases=temp_bases, submission_id=_next_submission_id(),
     )
     task_id = task_manager.submit(task)
     return {"taskId": task_id, "status": task.status}

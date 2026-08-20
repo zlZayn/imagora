@@ -264,6 +264,8 @@ def safe_ref_path_allowlist(path: str, roots: list[str]) -> str | None:
 # ---------- 工作流存取（version 2 JSON 文件，固定目录 output/workflows/） ----------
 
 # 工作流固定保存目录（相对 output 根，用户只需选名字）
+# 经典表单生成自动落盘提交图快照的固定目录（复用工作流格式，kind='submission'）
+SUBMISSIONS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "submissions")
 WORKFLOWS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "workflows")
 # 自动恢复使用独立子目录，每次写新快照，不会覆盖用户手动命名的工作流。
 RECOVERY_DIR = os.path.join(WORKFLOWS_DIR, ".recovery")
@@ -422,6 +424,130 @@ def workflow_load(name: str) -> dict:
     edges = data.get("edges", [])
     if not isinstance(nodes, list) or not isinstance(edges, list):
         return {"ok": False, "error": "工作流结构非法"}
+    return {
+        "ok": True,
+        "name": str(data.get("name", "")),
+        "nodes": nodes,
+        "edges": edges,
+        "missing": _resolve_image_nodes(nodes),
+    }
+
+
+
+def _safe_submission_id(submission_id: str) -> bool:
+    """提交 id 白名单：仅字母/数字/短横线/下划线（内部生成，防御性校验防路径穿越）"""
+    return bool(submission_id) and bool(re.fullmatch(r"[A-Za-z0-9_-]+", submission_id))
+
+
+def submission_save(
+    submission_id: str,
+    prompt: str,
+    params: dict,
+    input_assets: list[dict],
+    result_assets: list[dict],
+    win: int = 0,
+) -> dict:
+    """把一次经典生成落成一份提交图快照（复用工作流格式，kind='submission'）。
+
+    结构：可选图片组节点收拢输入参考图 → 提示词卡片 → 结果图节点；连线组→提示词→结果。
+    图片节点只存 registryId + 元数据（url/absPath 由加载时 _resolve_image_nodes 重建）。
+    写 output/submissions/<submission_id>.json，原子写；失败返回 {"ok":False,"error"}。
+    """
+    if not _safe_submission_id(submission_id):
+        return {"ok": False, "error": "提交 id 不合法"}
+    prompt_id = f"prompt-{submission_id}"
+    group_id = f"group-{submission_id}"
+
+    def _img(node_id: str, asset: dict) -> dict:
+        return {
+            "id": node_id,
+            "type": "image",
+            "position": {"x": 0, "y": 0},
+            "data": {
+                "registryId": asset["id"],
+                "name": asset.get("name", ""),
+                "size": asset.get("size", 0),
+                "ext": asset.get("ext", ""),
+                "refCount": 0,
+            },
+        }
+
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    prompt_node = {
+        "id": prompt_id,
+        "type": "prompt",
+        "position": {"x": 0, "y": 0},
+        "data": {
+            "prompt": prompt,
+            "size": params.get("size", ""),
+            "quality": params.get("quality", ""),
+            "outputDir": params.get("outputDir", ""),
+            "status": "idle",
+        },
+    }
+    nodes.append(prompt_node)
+
+    use_group = bool(input_assets)
+    group_member_ids: list[str] = []
+    for i, asset in enumerate(input_assets):
+        nid = f"img-{asset['id']}"
+        nodes.append(_img(nid, asset))
+        group_member_ids.append(nid)
+    if use_group:
+        nodes.append({"id": group_id, "type": "group", "position": {"x": 0, "y": 0},
+                      "data": {"name": "图片组", "imageCount": len(input_assets),
+                               "totalSize": sum(a.get("size", 0) for a in input_assets)}})
+        for nid in group_member_ids:
+            edges.append({"id": f"{nid}->{group_id}", "source": nid, "target": group_id})
+        edges.append({"id": f"{group_id}->{prompt_id}", "source": group_id, "target": prompt_id})
+
+    for asset in result_assets:
+        nid = f"img-{asset['id']}"
+        nodes.append(_img(nid, asset))
+        edges.append({"id": f"{prompt_id}->{nid}", "source": prompt_id, "target": nid})
+
+    path = os.path.join(SUBMISSIONS_DIR, f"{submission_id}.json")
+    payload = {
+        "version": WORKFLOW_VERSION,
+        "kind": "submission",
+        "name": f"classic-{submission_id}",
+        "savedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "meta": {"submissionId": submission_id, "sourceMode": "classic", "win": win},
+        "nodes": _normalize_workflow_nodes(nodes),
+        "edges": edges,
+    }
+    try:
+        os.makedirs(SUBMISSIONS_DIR, exist_ok=True)
+        _atomic_write_json(path, payload)
+        return {"ok": True, "path": path}
+    except (OSError, TypeError, ValueError) as e:
+        return {"ok": False, "error": str(e)}
+
+
+def submission_load(submission_id: str) -> dict:
+    """读取提交图快照并按注册表实时解析图片节点路径（同 workflow_load 规则）。
+
+    校验版本（v1/v2）与 kind='submission'；缺失资产进 missing。
+    返回 {"ok":True,"name","nodes","edges","missing"} 或 {"ok":False,"error"}。
+    """
+    if not _safe_submission_id(submission_id):
+        return {"ok": False, "error": "提交 id 不合法"}
+    path = os.path.join(SUBMISSIONS_DIR, f"{submission_id}.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "error": f"读取失败: {e}"}
+    if not isinstance(data, dict) or data.get("kind") != "submission":
+        return {"ok": False, "error": "不是提交图快照"}
+    version = data.get("version")
+    if version not in WORKFLOW_LOAD_VERSIONS:
+        return {"ok": False, "error": f"不支持的版本（{version}）"}
+    nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return {"ok": False, "error": "提交图快照结构非法"}
     return {
         "ok": True,
         "name": str(data.get("name", "")),

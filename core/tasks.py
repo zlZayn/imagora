@@ -54,6 +54,8 @@ class GenerationTask:
     win: int = 0
     ref_bases: list[str] = field(default_factory=list)
     temp_bases: list[str] = field(default_factory=list)
+    # 稳定提交 id（提交时生成、进程无关，供落盘提交图快照与账本追溯）
+    submission_id: str = ""
     # 结果（由注入的 run_task 写入）
     results: list[dict] = field(default_factory=list)
     messages: list[str] = field(default_factory=list)
@@ -117,6 +119,7 @@ class TaskManager:
                 "totalCost": task.total_cost,
                 "error": task.error,
                 "cancelRequested": task.cancel_requested,
+                "submissionId": task.submission_id,
             }
 
     def cancel(self, task_id: str) -> bool:

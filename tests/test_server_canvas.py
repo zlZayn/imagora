@@ -25,6 +25,7 @@ from server import (
     canvas_workflow_list,
     canvas_workflow_load,
     canvas_workflow_save,
+    canvas_import_submission,
 )
 
 
@@ -38,6 +39,7 @@ def canvas_env(tmp_path, monkeypatch):
     monkeypatch.setattr(canvas, "REGISTRY_FILE", str(tmp_path / ".canvas" / "registry.json"))
     monkeypatch.setattr(canvas, "WORKFLOWS_DIR", str(tmp_path / "workflows"))
     monkeypatch.setattr(canvas, "RECOVERY_DIR", str(tmp_path / "workflows" / ".recovery"), raising=False)
+    monkeypatch.setattr(canvas, "SUBMISSIONS_DIR", str(tmp_path / "submissions"), raising=False)
     return tmp_path
 
 
@@ -228,3 +230,29 @@ def test_generate_ref_paths_accepts_canvas_dir(canvas_env, monkeypatch):
     assert snap["status"] == "done"
     assert snap["results"][0]["status"] == "ok"
     assert "参考图 1 张" in snap["messages"][0]
+
+def test_import_submission_whole_graph(canvas_env):
+    """经典提交整图导入：返回按 registryId 实时解析节点的图，缺失资产进 missing。"""
+    from core import canvas as canvas_mod
+    src_in = canvas_env / "in.png"
+    src_in.write_bytes(b"sub-in-route")
+    entry_in = canvas_mod.register_file(str(src_in), "in.png", kind="ref", source_key="sub-x")
+    src_res = canvas_env / "res.png"
+    src_res.write_bytes(b"sub-res-route")
+    entry_res = canvas_mod.register_file(str(src_res), "res.png", kind="result", source_key="sub-x")
+    assert canvas_mod.submission_save("sub-x", "p", {"size": "1", "quality": "h", "outputDir": "o"},
+                                     [entry_in], [entry_res])["ok"] is True
+    got = canvas_import_submission({"submissionId": "sub-x"})
+    assert got["missing"] == []
+    assert len(got["nodes"]) >= 4  # prompt + group + 输入图 + 结果图
+    for n in got["nodes"]:
+        if n["type"] == "image":
+            assert n["data"]["absPath"]
+            assert n["data"]["url"].startswith("/api/image?path=")
+    from fastapi import HTTPException
+    try:
+        canvas_import_submission({"submissionId": "nope"})
+        raised = False
+    except HTTPException:
+        raised = True
+    assert raised
