@@ -106,7 +106,8 @@ def test_workflow_save_writes_versioned_file(canvas_env):
     assert result["ok"] is True
     assert result["path"].endswith(f"workflows{os.sep}测试工作流.json")
     data = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
-    assert data["version"] == 1
+    assert data["version"] == 2  # v2 起含 version 字段 + savedAt
+    assert data["savedAt"]
     assert data["name"] == "测试工作流"
     assert data["nodes"] == nodes
 
@@ -159,11 +160,12 @@ def test_workflow_load_missing_image(canvas_env):
 
 
 def test_workflow_load_wrong_version(canvas_env):
-    path = canvas_env / "workflows" / "v2.json"
+    """未知版本（未来格式）明确拒绝，v1/v2 均可读（v2 见 roundtrip 测试）"""
+    path = canvas_env / "workflows" / "v99.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"version": 2, "nodes": [], "edges": []}), encoding="utf-8")
+    path.write_text(json.dumps({"version": 99, "nodes": [], "edges": []}), encoding="utf-8")
     with pytest.raises(Exception):
-        canvas_workflow_load("v2")
+        canvas_workflow_load("v99")
 
 
 def test_workflow_load_missing_file(canvas_env):

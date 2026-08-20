@@ -83,6 +83,19 @@ def test_registry_corrupt_returns_empty(canvas_env):
     assert canvas.load_registry() == {}
 
 
+def test_registry_writes_v2_wrapper_and_loads_v1_bare(canvas_env):
+    """v2 落盘是 {schemaVersion, images} 包装；v1 裸 dict 老清单仍可读（兼容升级前数据）"""
+    entry = _must(canvas.register_file(str(_write_png(canvas_env / "a.png", b"v2-wrap")), "a.png"))
+    raw = json.loads((canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8"))
+    assert raw["schemaVersion"] == 2
+    assert isinstance(raw["images"], dict) and raw["images"][entry["id"]]["name"] == "a.png"
+
+    # 模拟旧版裸 dict 清单（无 schemaVersion）：照常读取
+    bare = {entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}
+    (canvas_env / ".canvas" / "registry.json").write_text(json.dumps(bare), encoding="utf-8")
+    assert canvas.load_registry() == bare
+
+
 def test_import_directory_recursive(canvas_env):
     (canvas_env / "win1").mkdir(parents=True)
     _write_png(canvas_env / "win1" / "x.png")

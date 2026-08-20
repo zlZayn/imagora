@@ -26,11 +26,14 @@ from pathlib import Path
 from urllib.parse import quote
 
 from core.config import DEFAULT_OUTPUT_DIR
+from core.imageinfo import image_dimensions
 
 # 画布图片目录：永不自动清理（与 .refs 24h 清理区分）
 CANVAS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".canvas")
-# 注册表：id -> { id, relPath, name, size, ext, createdAt }
+# 注册表：v2 = { schemaVersion: 2, images: { id: entry } }；v1 = 裸 dict { id: entry }（兼容读取）
 REGISTRY_FILE = os.path.join(CANVAS_DIR, "registry.json")
+# 注册表当前 schema 版本（升级只发生在迁移脚本，运行时 v1/v2 都能读）
+REGISTRY_SCHEMA_VERSION = 2
 # 注册表读写锁：多窗口并发 import/delete 安全
 _REGISTRY_LOCK = threading.Lock()
 # 导入允许的图片后缀
@@ -38,27 +41,41 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
 
 def load_registry() -> dict[str, dict]:
-    """读取注册表（id -> entry）；缺失 / 损坏返回空 dict 不抛异常"""
+    """读取注册表（id -> entry）。
+
+    v2 包装（{\"schemaVersion\", \"images\"}）与 v1 裸 dict（无版本字段的旧清单）均兼容；
+    缺失 / 损坏返回 {} 不抛异常（恢复由迁移脚本按文件重建）。
+    """
     try:
         with open(REGISTRY_FILE, encoding="utf-8") as f:
             data = json.load(f)
-        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+    if isinstance(data, dict):
+        inner = data.get("images")
+        if isinstance(inner, dict):
+            return inner  # v2
+        if "schemaVersion" not in data:
+            return data  # v1 裸 dict
+    return {}
 
 
 def save_registry(entries: dict[str, dict]) -> None:
-    """原子写注册表（tmp 文件 + os.replace，防并发读半文件）"""
+    """原子写注册表（tmp 文件 + os.replace，防并发读半文件）；按当前 schema 版本落盘 v2 包装"""
     os.makedirs(CANVAS_DIR, exist_ok=True)
+    payload = {"schemaVersion": REGISTRY_SCHEMA_VERSION, "images": entries}
     tmp = REGISTRY_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     os.replace(tmp, REGISTRY_FILE)
 
 
 def _entry_from_src(img_id: str, src_abs: str, original_name: str, dest_name: str) -> dict:
-    """由源文件构建注册表条目（id 为内容 sha1 前缀，relPath 相对 DEFAULT_OUTPUT_DIR 正斜杠）"""
-    return {
+    """由源文件构建注册表条目（id 为内容 sha1 前缀，relPath 相对 DEFAULT_OUTPUT_DIR 正斜杠）。
+
+    v2 起附带可选宽高/格式（imageinfo 头部探测，失败时不带——旧字段宽兼容）。
+    """
+    entry = {
         "id": img_id,
         "relPath": os.path.relpath(
             os.path.join(CANVAS_DIR, dest_name), DEFAULT_OUTPUT_DIR
@@ -68,6 +85,10 @@ def _entry_from_src(img_id: str, src_abs: str, original_name: str, dest_name: st
         "ext": Path(dest_name).suffix.lstrip("."),
         "createdAt": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
+    dims = image_dimensions(src_abs)
+    if dims:
+        entry.update({"width": dims["width"], "height": dims["height"], "format": dims["format"]})
+    return entry
 
 
 def image_url(path: str) -> str:
@@ -203,7 +224,7 @@ def safe_ref_path_allowlist(path: str, roots: list[str]) -> str | None:
     return None
 
 
-# ---------- 工作流存取（version 1 JSON 文件，固定目录 output/workflows/） ----------
+# ---------- 工作流存取（version 2 JSON 文件，固定目录 output/workflows/） ----------
 
 # 工作流固定保存目录（相对 output 根，用户只需选名字）
 WORKFLOWS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "workflows")
@@ -212,6 +233,11 @@ RECOVERY_DIR = os.path.join(WORKFLOWS_DIR, ".recovery")
 RECOVERY_LIMIT = 20
 _RECOVERY_LOCK = threading.Lock()
 _RECOVERY_SEQUENCE = 0
+
+# 当前工作流 schema 版本（v2 = +savedAt meta；v1 老存档仍可读，见 _LOAD_SUPPORTED_VERSIONS）
+WORKFLOW_VERSION = 2
+# 可读取的历史版本：v1（无 savedAt 的旧档）/ v2；其他版本明确拒绝（避免按错误结构解析未来格式）
+WORKFLOW_LOAD_VERSIONS = (1, 2)
 
 # Windows / 通用非法文件名字符（含路径分隔符，防穿越）
 _INVALID_NAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -290,11 +316,11 @@ def _normalize_workflow_nodes(nodes: list) -> list:
 
 
 def workflow_save(name: str, nodes: list, edges: list) -> dict:
-    """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json）
+    """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json，version 2）。
 
     图片节点落盘前归一化（_normalize_workflow_nodes）：只存 registryId + 元数据，
     不存派生路径 url/absPath——加载时由 _resolve_image_nodes 实时重建，
-    项目目录改名/移动后旧存档依然可恢复。
+    项目目录改名/移动后旧存档依然可恢复。原子写（先临时文件再替换），多窗口不会写坏。
     返回 {"ok": True, "path"} 或 {"ok": False, "error"}。
     """
     filename = sanitize_workflow_name(name)
@@ -304,13 +330,13 @@ def workflow_save(name: str, nodes: list, edges: list) -> dict:
     try:
         os.makedirs(WORKFLOWS_DIR, exist_ok=True)
         payload = {
-            "version": 1,
+            "version": WORKFLOW_VERSION,
             "name": filename,
+            "savedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
             "nodes": _normalize_workflow_nodes(nodes),
             "edges": edges,
         }
-        with open(abs_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+        _atomic_write_json(abs_path, payload)
         return {"ok": True, "path": abs_path}
     except (OSError, TypeError, ValueError) as e:
         return {"ok": False, "error": str(e)}
@@ -339,11 +365,11 @@ def workflow_list() -> list[dict]:
 
 
 def workflow_load(name: str) -> dict:
-    """加载工作流 JSON：校验 version、按 registryId 实时解析图片节点路径。
+    """加载工作流 JSON：校验版本（v1/v2 均支持）、按 registryId 实时解析图片节点路径。
 
     图片节点经 _resolve_image_nodes 统一解析（registry → relPath → absPath/url，
     不信任存档里的旧绝对路径）；registry 缺失或文件不存在的 registryId 进 missing
-    （节点保持无路径，前端占位标红）。
+    （节点保持无路径，前端占位标红）。未知版本明确拒绝（不按错误结构解析未来格式）。
     返回 {"ok": True, "name", "nodes", "edges", "missing"} 或 {"ok": False, "error"}。
     """
     filename = sanitize_workflow_name(name)
@@ -355,8 +381,11 @@ def workflow_load(name: str) -> dict:
             data = json.load(f)
     except (OSError, ValueError) as e:
         return {"ok": False, "error": f"读取失败: {e}"}
-    if not isinstance(data, dict) or data.get("version") != 1:
-        return {"ok": False, "error": "不支持的版本（仅支持 version 1）"}
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "工作流结构非法"}
+    version = data.get("version")
+    if version not in WORKFLOW_LOAD_VERSIONS:
+        return {"ok": False, "error": f"不支持的版本（{version}），仅支持 v{'/v'.join(str(v) for v in WORKFLOW_LOAD_VERSIONS)}"}
     nodes = data.get("nodes", [])
     edges = data.get("edges", [])
     if not isinstance(nodes, list) or not isinstance(edges, list):
@@ -404,7 +433,7 @@ def recovery_save(nodes: list, edges: list) -> dict:
             name = f"recovery_{time.time_ns()}_{_RECOVERY_SEQUENCE:04d}"
             path = os.path.join(RECOVERY_DIR, f"{name}.json")
             payload = {
-                "version": 1,
+                "version": WORKFLOW_VERSION,
                 "name": name,
                 "savedAt": saved_at,
                 "nodes": _normalize_workflow_nodes(nodes),
@@ -429,7 +458,7 @@ def recovery_latest() -> dict:
                 data = json.load(f)
         except (OSError, ValueError):
             continue
-        if not isinstance(data, dict) or data.get("version") != 1:
+        if not isinstance(data, dict) or data.get("version") not in WORKFLOW_LOAD_VERSIONS:
             continue
         nodes = data.get("nodes")
         edges = data.get("edges")
