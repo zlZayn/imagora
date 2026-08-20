@@ -31,8 +31,10 @@ from urllib.parse import quote
 from core.config import DEFAULT_OUTPUT_DIR
 from core.imageinfo import image_dimensions
 
-# 画布图片目录：永不自动清理（与 .refs 24h 清理区分）
+# 资产库目录（代码语义=资产库）。磁盘目录沿用存量名 .canvas：工作流/提交快照只存 registryId、
+# 不存目录名，改名仅需搬文件+改注册表 relPath 前缀（可选用 migrate --rename-asset-dir，默认不做，避免动真实数据）。
 ASSET_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".canvas")
+LEGACY_ASSET_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".canvas")
 # 注册表：v2 = { schemaVersion: 2, images: { id: entry } }；v1 = 裸 dict { id: entry }（兼容读取）
 REGISTRY_FILE = os.path.join(ASSET_DIR, "registry.json")
 # 注册表当前 schema 版本（升级只发生在迁移脚本，运行时 v1/v2 都能读）

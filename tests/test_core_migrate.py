@@ -207,3 +207,28 @@ def test_backfill_skipped_flag(canvas_env):
     report = migrate.plan_or_apply(apply=True, backfill=False)
     assert report["asset_meta"]["action"] == "skipped"
     assert (canvas_env / ".canvas" / "registry.json").read_bytes() == before
+
+def test_relocate_asset_dir_moves_and_rewrites_relpath(tmp_path, monkeypatch):
+    """资产目录改名 .canvas -> .assets：搬文件 + 重写 registry relPath 前缀，幂等"""
+    legacy = tmp_path / ".canvas"
+    new = tmp_path / ".assets"
+    legacy.mkdir(parents=True, exist_ok=True)
+    (legacy / "canv_aabb.png").write_bytes(b"img")
+    reg = {"schemaVersion": 2, "images": {"aabb": {
+        "id": "aabb", "relPath": ".canvas/canv_aabb.png", "name": "a.png", "kind": "canvas"}}}
+    (legacy / "registry.json").write_text(json.dumps(reg), encoding="utf-8")
+    monkeypatch.setattr(canvas, "ASSET_DIR", str(new))
+    monkeypatch.setattr(canvas, "REGISTRY_FILE", str(new / "registry.json"))
+    monkeypatch.setattr(canvas, "LEGACY_ASSET_DIR", str(legacy), raising=False)
+
+    plan = migrate.relocate_asset_dir(apply=False)
+    assert plan["action"] == "ready" and plan["files"] == 1
+    assert legacy.is_dir() and not new.exists()
+
+    res = migrate.relocate_asset_dir(apply=True)
+    assert res["action"] == "moved" and res["backup"]
+    assert not legacy.exists() and new.is_dir()
+    assert (new / "canv_aabb.png").exists()
+    raw = json.loads((new / "registry.json").read_text(encoding="utf-8"))
+    assert raw["images"]["aabb"]["relPath"] == ".assets/canv_aabb.png"
+    assert migrate.relocate_asset_dir(apply=True)["action"] in ("noop", "nothing")

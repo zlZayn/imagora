@@ -195,6 +195,45 @@ def backfill_asset_meta(apply: bool) -> dict:
     }
 
 
+
+# ---------------- 目录改名：.canvas -> .assets ----------------
+
+def relocate_asset_dir(apply: bool) -> dict:
+    """把存量资产目录 .canvas 迁到规范名 .assets（搬文件 + 重写 registry relPath 前缀）。
+
+    工作流/提交/恢复快照只存 registryId、不存目录名，改名仅需搬整个目录 + 把
+    registry.json 每个条目的 relPath 前缀 .canvas/ -> .assets/。默认只报告待搬文件数；
+    apply 才先整目录备份 .bak-<ts>、重写 relPath、os.replace 换目录、读回校验条目数。
+    幂等：.assets 已存在即 noop；旧目录不存在即 nothing。
+    """
+    legacy = canvas.LEGACY_ASSET_DIR
+    new = canvas.ASSET_DIR
+    if os.path.isdir(new) and os.path.isfile(os.path.join(new, "registry.json")):
+        return {"action": "noop", "reason": ".assets 已存在"}
+    if not os.path.isdir(legacy):
+        return {"action": "nothing", "reason": "旧目录 .canvas 不存在"}
+    files = [n for n in sorted(os.listdir(legacy)) if n.startswith("canv_")]
+    if not apply:
+        return {"action": "ready", "files": len(files)}
+    bak = legacy + f"-bak-{_ts()}"
+    if not os.path.isdir(bak):
+        shutil.copytree(legacy, bak)
+    reg = os.path.join(legacy, "registry.json")
+    if os.path.isfile(reg):
+        with open(reg, encoding="utf-8") as f:
+            data = json.load(f)
+        entries = data.get("images") if isinstance(data, dict) and isinstance(data.get("images"), dict) else (data if isinstance(data, dict) else {})
+        for e in entries.values():
+            if isinstance(e, dict) and isinstance(e.get("relPath"), str):
+                e["relPath"] = e["relPath"].replace(".canvas/", ".assets/")
+        payload = {"schemaVersion": canvas.REGISTRY_SCHEMA_VERSION, "images": entries}
+        with open(reg, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+    os.replace(legacy, new)
+    reloaded = canvas.load_registry()
+    return {"action": "moved", "files": len(files), "backup": bak, "entries": len(reloaded)}
+
+
 # ---------------- workflows ----------------
 
 def workflow_files() -> list[str]:

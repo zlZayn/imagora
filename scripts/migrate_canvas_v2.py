@@ -77,14 +77,16 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="落地迁移（先备份 .bak-<时间戳>，校验通过才保留）")
     parser.add_argument("--rebuild-registry", action="store_true", help="清单缺失/损坏时按图片文件重建 v2 清单")
     parser.add_argument("--skip-meta-backfill", action="store_true", help="跳过来源标签(kind)回填")
+    parser.add_argument("--rename-asset-dir", action="store_true", help="把存量资产目录 .canvas 迁到规范名 .assets（默认只报告，--apply 才落地并备份）")
     parser.add_argument("--output-root", default=None, help="output 根目录（默认取配置 DEFAULT_OUTPUT_DIR）")
     args = parser.parse_args()
 
     if args.output_root:
         old = canvas_mod.DEFAULT_OUTPUT_DIR
         canvas_mod.DEFAULT_OUTPUT_DIR = os.path.abspath(args.output_root)
-        canvas_mod.CANVAS_DIR = os.path.join(canvas_mod.DEFAULT_OUTPUT_DIR, ".canvas")
-        canvas_mod.REGISTRY_FILE = os.path.join(canvas_mod.CANVAS_DIR, "registry.json")
+        canvas_mod.ASSET_DIR = os.path.join(canvas_mod.DEFAULT_OUTPUT_DIR, ".assets")
+        canvas_mod.REGISTRY_FILE = os.path.join(canvas_mod.ASSET_DIR, "registry.json")
+        canvas_mod.LEGACY_ASSET_DIR = os.path.join(canvas_mod.DEFAULT_OUTPUT_DIR, ".canvas")
         canvas_mod.WORKFLOWS_DIR = os.path.join(canvas_mod.DEFAULT_OUTPUT_DIR, "workflows")
         canvas_mod.RECOVERY_DIR = os.path.join(canvas_mod.WORKFLOWS_DIR, ".recovery")
         importlib.reload(migrate)  # 让迁移模块读取更新后的常量
@@ -95,6 +97,9 @@ def main() -> int:
         apply=args.apply, rebuild=args.rebuild_registry, backfill=not args.skip_meta_backfill,
     )
     _print_report(report)
+    if args.rename_asset_dir:
+        reloc = migrate.relocate_asset_dir(args.apply)
+        print(f"[目录改名] action={reloc.get('action')} files={reloc.get('files')} backup={reloc.get('backup')}")
     return 0
 
 
