@@ -14,7 +14,7 @@ from core.config import DEFAULT_OUTPUT_DIR
 from core.imageinfo import image_dimensions
 
 
-ASSET_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".canvas")
+ASSET_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".assets")
 
 LEGACY_ASSET_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".canvas")
 
