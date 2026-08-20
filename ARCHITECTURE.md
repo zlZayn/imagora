@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `output/…/submissions/` | 经典提交图快照（复用工作流格式，kind='submission'），提供整图导入画布 |
 | `frontend/` | React SPA（见 2.3） |
 | `scripts/` | 独立运维脚本：`migrate_canvas_v2.py`（画布存储 v1→v2 迁移，默认只报告、`--apply` 才落盘） |
-| `tests/` | 后端 pytest（163 用例，纯函数 + 路由，不调上游） |
+| `tests/` | 后端 pytest（164 用例，纯函数 + 路由，不调上游） |
 | `docs/` | `prompt-contract.md`：提示词契约模板（发给多模态模型的输出格式规范） |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.canvas` 画布图片与注册表、`workflows` 工作流 |

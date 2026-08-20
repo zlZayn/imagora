@@ -116,6 +116,7 @@ python Imagora/frontend/e2e/verify_canvas.py       # 画布交互 E2E（另开�
 > - 图片清单缺失/损坏时按图片文件重建：`python scripts/migrate_canvas_v2.py --apply --rebuild-registry`
 > - 回填可选来源标签 kind（旧条目补 canvas）：`python scripts/migrate_canvas_v2.py --apply`（默认已含；`--skip-meta-backfill` 跳过）
 > - output 目录不在默认位置：追加 `--output-root 路径`（如 `output/` 或自定义目录）
+> - 可选的**资产目录改名** `.canvas`→`.assets`（会动真实图，默认**只报告**、`--apply` 才整目录备份搬移+校验）：`python scripts/migrate_canvas_v2.py --rename-asset-dir --apply`，日常无需执行（代码语义已是资产库，目录名仅存量兼容）
 
 ## 计费说明
 
