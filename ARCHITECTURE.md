@@ -46,7 +46,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `core/pathtrust.py` | 路径白名单统一实现（`.refs`/`.assets` 双根 + 单根），供 canvas 与 server 复用 |
 | `output/…/submissions/` | 经典提交图快照（复用工作流格式，kind='submission'），提供整图导入画布 |
 | `frontend/` | React SPA（见 2.3） |
-| `scripts/` | 独立运维脚本：`migrate_canvas_v2.py`（画布存储 v1→v2 迁移，默认只报告、`--apply` 才落盘） |
+| `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新：注册表+工作流迁移，默认只报告、`--apply` 才落盘备份校验） |
 | `tests/` | 后端 pytest（164 用例，纯函数 + 路由，不调上游） |
 | `docs/` | `prompt-contract.md`：提示词契约模板（发给多模态模型的输出格式规范） |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
@@ -180,14 +180,14 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 5.5 持久化
 
-- **格式版本化（v1/v2 兼容）**：注册表与工作流都有明确 schema 版本。运行时时**只写当前版本（v2）**、可读 v1 与 v2——老数据零失效；未知版本明确拒绝（不按错误结构解析未来格式）。v1→v2 一键迁移/损坏清单重建由 `scripts/migrate_canvas_v2.py`（纯逻辑在 `core/migrate.py`，默认只报告、`--apply` 才落地并先备份 `.bak-<时间戳>`、写后加载器读回校验）。用法：
-  - 查看状态（只报告）：`python scripts/migrate_canvas_v2.py`
-  - 升级 v1→v2：`python scripts/migrate_canvas_v2.py --apply`
-  - 清单缺失/损坏按文件重建：`python scripts/migrate_canvas_v2.py --apply --rebuild-registry`
-  - 回填可选来源标签 kind：`python scripts/migrate_canvas_v2.py --apply`（默认已含；`--skip-meta-backfill` 跳过）
+- **格式版本化（v1/v2 兼容）**：注册表与工作流都有明确 schema 版本。运行时时**只写当前版本（v2）**、可读 v1 与 v2——老数据零失效；未知版本明确拒绝（不按错误结构解析未来格式）。v1→v2 一键迁移/损坏清单重建由 `scripts/migrate.py`（注册表迁移逻辑在 `core/registry.migrate`、工作流在 `core.graphstore.migrate_workflows`，默认只报告、`--apply` 才落地并先备份 `.bak-<时间戳>`、写后加载器读回校验）。用法：
+  - 查看状态（只报告）：`python scripts/migrate.py`
+  - 升级 v1→v2：`python scripts/migrate.py --apply`
+  - 清单缺失/损坏按文件重建：`python scripts/migrate.py --apply --rebuild-registry`
+  - 回填可选来源标签 kind：`python scripts/migrate.py --apply`（默认已含；`--skip-meta-backfill` 跳过）
   - 指定 output 根：追加 `--output-root 路径`
 - **重建原理**：`rebuild_registry` 扫描 `.assets/` 下 `canv_<sha1[:12]>.<ext>` 文件——id/relPath/name 由文件名还原，size 实测、宽高/格式用 `imageinfo` 探测、createdAt 取文件 mtime；canvas 工作流按"编号"引用图片，编号不丢则老存档全部可恢复。**限制**：重建后条目 name 为系统名（原始上传名未单独持久化，无法还原）。
-- 资产注册表（代码层统称**资产 / ASSET_DIR / register_asset 系**，语义=全项目统一图库）：`output/.assets/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式与**可选来源标签** `kind`（canvas/result/ref）+`sourceKey`；均缺省可读、仅首次登记写入、同内容去重不覆盖来源；永不自动清理。**磁盘目录规范名 `.assets`（存量 `.canvas` 已由迁移一步迁入并备份 `.canvas-bak-<ts>`）**（工作流/提交快照只存 registryId、不存目录名，改名仅需搬文件 + 改注册表 relPath 前缀，迁移工具（`migrate_canvas_v2.py --apply`）已内置该改名步骤）。解析入口单一收敛为 `resolve_asset(id)`。
+- 资产注册表（代码层统称**资产 / ASSET_DIR / register_asset 系**，语义=全项目统一图库）：`output/.assets/registry.json`，v2 包装 `{ schemaVersion, images: { id: entry } }`（v1 裸 dict 兼容读取），id = 内容 sha1 前缀（同内容去重），v2 条目附可选宽高/格式与**可选来源标签** `kind`（canvas/result/ref）+`sourceKey`；均缺省可读、仅首次登记写入、同内容去重不覆盖来源；永不自动清理。**磁盘目录规范名 `.assets`（存量 `.canvas` 已由迁移一步迁入并备份 `.canvas-bak-<ts>`）**（工作流/提交快照只存 registryId、不存目录名，改名仅需搬文件 + 改注册表 relPath 前缀，迁移工具（`migrate.py --apply`）已内置该改名步骤）。解析入口单一收敛为 `resolve_asset(id)`。
 
 #### 画布图片的注册入口（谁进 `.assets/`）
 
@@ -397,7 +397,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_core_canvas.py` | 20 | 注册表（v2 包装 + v1 裸清单兼容）/ 内容去重 / import 边界 / workflow 归一化与自愈 / recovery |
 | `tests/test_server_canvas.py` | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / 未知版本拒绝 / ref_paths 放行 |
 | `tests/test_core_imageinfo.py` | 10 | PNG/JPEG/GIF/WebP(VP8/VP8L/VP8X)/BMP 头解析 / 垃圾与截断返回 None |
-| `tests/test_core_migrate.py` | 10 | 版本检测 / v1→v2 升级（备份+校验）/ 清单重建 / 幂等 / 非破坏默认 / 损坏跳过 |
+| `tests/test_core_migrate.py` | 16 | 注册表 detect/升级/重建/回填/迁目录 + 工作流升级 + CLI 端到端 |
 | `tests/test_core_tasks.py` | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
 | `tests/test_server_tasks.py` | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
 | `tests/test_main_process.py` | 4 | 端口探测 / 祖先链回溯 |

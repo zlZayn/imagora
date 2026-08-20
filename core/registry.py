@@ -6,6 +6,7 @@
 import hashlib
 import json
 import os
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -221,3 +222,202 @@ def safe_ref_path_allowlist(path: str, roots: list[str]) -> str | None:
     """路径白名单校验（委托 core.pathtrust.match_roots 统一实现）"""
     from core.pathtrust import match_roots
     return match_roots(path, roots)
+
+
+
+# ================= 注册表迁移（registry 自带，避免经由 shim 绕行） =================
+
+def _mig_ts() -> str:
+    return time.strftime("%Y%m%d-%H%M%S")
+
+
+def _backup_then_write(path: str, payload: dict) -> str | None:
+    """备份旧文件并原子写入新 payload；返回备份路径（无旧文件返回 None）。失败抛 OSError。"""
+    backup_path = None
+    if os.path.isfile(path):
+        backup_path = f"{path}.bak-{_mig_ts()}"
+        shutil.copy2(path, backup_path)
+    tmp = f"{path}.migrate-{os.getpid()}-{time.time_ns()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    return backup_path
+
+
+def detect_registry() -> dict:
+    """检测注册表状态：{state: v2|v1|missing|corrupt, count, kind_missing}"""
+    if not os.path.isfile(REGISTRY_FILE):
+        return {"state": "missing", "count": 0, "kind_missing": 0}
+    try:
+        with open(REGISTRY_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {"state": "corrupt", "count": 0, "kind_missing": 0}
+    if not isinstance(data, dict):
+        return {"state": "corrupt", "count": 0, "kind_missing": 0}
+    if isinstance(data.get("images"), dict):
+        return {
+            "state": "v2", "count": len(data["images"]),
+            "kind_missing": sum(1 for e in data["images"].values() if not isinstance(e, dict) or "kind" not in e),
+        }
+    if "schemaVersion" not in data:
+        return {
+            "state": "v1", "count": len(data),
+            "kind_missing": sum(1 for e in data.values() if not isinstance(e, dict) or "kind" not in e),
+        }
+    return {"state": "corrupt", "count": 0, "kind_missing": 0}
+
+
+def _entry_with_dims(entry: dict, out_root: str) -> dict:
+    """给 v1 条目补宽高/格式（文件存在且可解析时），保持其余字段原样"""
+    dims = None
+    rel = entry.get("relPath")
+    if rel:
+        abs_path = os.path.normpath(os.path.join(out_root, rel))
+        if os.path.isfile(abs_path):
+            dims = image_dimensions(abs_path)
+    if not dims:
+        return entry
+    return {**entry, **dims}
+
+
+def upgrade_registry(apply: bool) -> dict:
+    """v1 裸清单 → v2 包装（逐条补宽高/格式）；已是 v2/缺失/损坏按状态原样报告。"""
+    state = detect_registry()
+    if state["state"] != "v1":
+        return {"registry": state, "action": "none", "backup": None}
+    with _REGISTRY_LOCK:
+        entries = load_registry()
+        upgraded = {i: _entry_with_dims(e, DEFAULT_OUTPUT_DIR) for i, e in entries.items()}
+    if not apply:
+        return {"registry": state, "action": "upgrade-to-v2", "backup": None, "entries": len(upgraded)}
+    payload = {"schemaVersion": REGISTRY_SCHEMA_VERSION, "images": upgraded}
+    backup = _backup_then_write(REGISTRY_FILE, payload)
+    reloaded = load_registry()
+    ok = len(reloaded) == len(upgraded)
+    return {
+        "registry": {"state": "v2", "count": len(reloaded)},
+        "action": "upgraded-to-v2" if ok else "FAILED-VERIFY",
+        "backup": backup,
+        "entries": len(reloaded),
+    }
+
+
+def rebuild_registry(apply: bool) -> dict:
+    """清单缺失/损坏时按 ASSET_DIR 下的 canv_* 文件重建 v2 清单。"""
+    candidates = []
+    try:
+        for name in sorted(os.listdir(ASSET_DIR)):
+            if not name.startswith("canv_") or not name.endswith(tuple(IMAGE_EXTENSIONS)):
+                continue
+            stem, ext = os.path.splitext(name)
+            img_id = stem[len("canv_"):]
+            abs_path = os.path.normpath(os.path.join(ASSET_DIR, name))
+            candidates.append({
+                "id": img_id,
+                "relPath": os.path.relpath(abs_path, DEFAULT_OUTPUT_DIR).replace("\\", "/"),
+                "name": name,
+                "size": os.path.getsize(abs_path),
+                "ext": ext.lstrip(".").lower(),
+                "createdAt": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(abs_path))),
+            })
+    except OSError:
+        candidates = []
+    if not candidates:
+        return {"action": "nothing-to-rebuild", "restored": 0}
+    if not apply:
+        return {"action": "rebuild-ready", "restored": len(candidates)}
+    entries = {}
+    with _REGISTRY_LOCK:
+        for c in candidates:
+            dims = image_dimensions(os.path.normpath(os.path.join(DEFAULT_OUTPUT_DIR, c["relPath"])))
+            entries[c["id"]] = {**c, **(dims or {})}
+        if os.path.isfile(REGISTRY_FILE):
+            shutil.copy2(REGISTRY_FILE, f"{REGISTRY_FILE}.bak-{_mig_ts()}")
+        payload = {"schemaVersion": REGISTRY_SCHEMA_VERSION, "images": entries}
+        tmp = f"{REGISTRY_FILE}.rebuild-{time.time_ns()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, REGISTRY_FILE)
+    return {"action": "rebuilt", "restored": len(entries)}
+
+
+def backfill_asset_meta(apply: bool) -> dict:
+    """给缺可选来源标签（kind）的旧条目补 kind='canvas'（幂等、只加不改结构）。"""
+    state = detect_registry()
+    if state.get("state") not in ("v1", "v2"):
+        return {"asset_meta": state, "action": "none", "backup": None}
+    missing = state.get("kind_missing", 0)
+    if missing == 0:
+        return {"asset_meta": state, "action": "noop", "backfilled": 0}
+    if not apply:
+        return {"asset_meta": state, "action": "backfill-ready", "backfilled": missing}
+    with _REGISTRY_LOCK:
+        entries = load_registry()
+        filled = 0
+        for img_id, entry in entries.items():
+            if isinstance(entry, dict) and "kind" not in entry:
+                entries[img_id] = {**entry, "kind": "canvas"}
+                filled += 1
+        if filled == 0:
+            return {"asset_meta": detect_registry(), "action": "noop", "backfilled": 0}
+        payload = {"schemaVersion": REGISTRY_SCHEMA_VERSION, "images": entries}
+        backup = _backup_then_write(REGISTRY_FILE, payload)
+    reloaded = load_registry()
+    ok = len(reloaded) == len(entries)
+    return {
+        "asset_meta": detect_registry(),
+        "action": "backfilled" if ok else "FAILED-VERIFY",
+        "backfilled": filled,
+        "backup": backup,
+    }
+
+
+def relocate_asset_dir(apply: bool) -> dict:
+    """存量资产目录 .canvas -> 规范名 .assets（搬文件 + 重写 registry relPath 前缀）。"""
+    legacy = LEGACY_ASSET_DIR
+    new = ASSET_DIR
+    if os.path.isdir(new) and os.path.isfile(os.path.join(new, "registry.json")):
+        return {"action": "noop", "reason": ".assets 已存在"}
+    if not os.path.isdir(legacy):
+        return {"action": "nothing", "reason": "旧目录 .canvas 不存在"}
+    files = [n for n in sorted(os.listdir(legacy)) if n.startswith("canv_")]
+    if not apply:
+        return {"action": "ready", "files": len(files)}
+    bak = legacy + f"-bak-{_mig_ts()}"
+    if not os.path.isdir(bak):
+        shutil.copytree(legacy, bak)
+    reg = os.path.join(legacy, "registry.json")
+    if os.path.isfile(reg):
+        with open(reg, encoding="utf-8") as f:
+            data = json.load(f)
+        entries = data.get("images") if isinstance(data, dict) and isinstance(data.get("images"), dict) else (data if isinstance(data, dict) else {})
+        for e in entries.values():
+            if isinstance(e, dict) and isinstance(e.get("relPath"), str):
+                e["relPath"] = e["relPath"].replace(".canvas/", ".assets/")
+        payload = {"schemaVersion": REGISTRY_SCHEMA_VERSION, "images": entries}
+        with open(reg, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+    os.replace(legacy, new)
+    reloaded = load_registry()
+    return {"action": "moved", "files": len(files), "backup": bak, "entries": len(reloaded)}
+
+
+def migrate(apply: bool = False, rebuild: bool = False, backfill: bool = True) -> dict:
+    """注册表一步到最新：先迁目录，再升级/重建，再回填 kind。
+
+    顺序关键：先 relocate（.canvas->.assets 重写 relPath），旧目录不在 .assets 时升级会读到空。
+    """
+    report = {"relocate": relocate_asset_dir(apply)}
+    if rebuild:
+        report["registry"] = rebuild_registry(apply)
+    else:
+        report["registry"] = upgrade_registry(apply)
+    report["asset_meta"] = backfill_asset_meta(apply) if backfill else {"action": "skipped"}
+    return report

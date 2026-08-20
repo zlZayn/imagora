@@ -19,7 +19,7 @@
 - 画布：拖图/上传注册 kind=canvas，生成结果回流注册 kind=result 建节点并连线
 
 ### 迁移（一步到最新）
-- python scripts/migrate_canvas_v2.py --apply = v1→v2 + 回填 kind + 迁 .canvas 到 .assets（重写 relPath）+ 升工作流；默认只报告，--apply 才整目录备份+搬运+读回校验，幂等
+- python scripts/migrate.py --apply = v1→v2 + 回填 kind + 迁 .canvas 到 .assets（重写 relPath）+ 升工作流；默认只报告，--apply 才整目录备份+搬运+读回校验，幂等
 - --output-root 路径：指定别的输出目录（脚本会同时 patch registry/graphstore/canvas 三模块常量）
 - 安全测试已加：test_plan_or_apply_one_shot_full_upgrade（真实结构副本综合升级）+ test_migrate_script_cli_output_root_end_to_end（CLI 子进程）
 - 真实数据已迁移：363 张图在 output/.assets，resolve_asset 命中

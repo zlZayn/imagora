@@ -365,3 +365,91 @@ def recovery_latest() -> dict:
             "missing": _resolve_image_node_paths(nodes),
         }
     return {"ok": False, "empty": True}
+
+
+# ================= 工作流迁移（graphstore 自带） =================
+
+def workflow_files(pattern: str = ".json") -> list[str]:
+    """工作流目录下匹配扩展名（含 .json）的文件绝对路径列表。"""
+    try:
+        names = [n for n in os.listdir(WORKFLOWS_DIR) if n.endswith(pattern)]
+    except OSError:
+        return []
+    return [os.path.join(WORKFLOWS_DIR, n) for n in sorted(names)]
+
+
+def detect_workflow_version(path: str) -> int | None:
+    """返回文件内 version（v1/v2）；损坏/缺失返回 None"""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return data.get("version") if isinstance(data, dict) else None
+
+
+def upgrade_workflow(path: str, apply: bool) -> dict:
+    """单个工作流 v1 → v2（补 version 2 + savedAt，nodes/edges 原样）。
+    默认只报告；apply 才备份+写+校验（加载器读回节点数一致才算成功）。"""
+    version = detect_workflow_version(path)
+    name = os.path.splitext(os.path.basename(path))[0]
+    if version == WORKFLOW_VERSION:
+        return {"name": name, "version": version, "action": "noop"}
+    if version is None:
+        return {"name": name, "version": version, "action": "skip-corrupt"}
+    if not apply:
+        return {"name": name, "version": version, "action": "upgrade-ready"}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        return {"name": name, "version": version, "action": f"error:{e}"}
+    saved_at = data.get("savedAt") or time.strftime("%Y-%m-%d %H:%M:%S")
+    payload = {**data, "version": WORKFLOW_VERSION, "savedAt": saved_at}
+    backup = _atomic_write_workflow_backup(path, payload)
+    result = workflow_load(name)
+    nodes_ok = result.get("ok") is True and len(result.get("nodes", [])) == len(data.get("nodes", []))
+    return {
+        "name": name,
+        "version": WORKFLOW_VERSION,
+        "action": "upgraded" if nodes_ok else "FAILED-VERIFY",
+        "backup": backup,
+    }
+
+
+def _atomic_write_workflow_backup(path: str, payload: dict) -> str:
+    """工作流迁移：备份旧文件 .bak-<ts> 后原子写新 payload（复用 graphstore._atomic_write_json 语义）。"""
+    import shutil
+    from core.registry import _mig_ts
+    backup = None
+    if os.path.isfile(path):
+        backup = f"{path}.bak-{_mig_ts()}"
+        shutil.copy2(path, backup)
+    base = os.path.splitext(path)[0]
+    tmp = f"{base}.{os.getpid()}-{time.time_ns()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    return backup
+
+
+def migrate_workflows(apply: bool = False) -> dict:
+    """工作流一步升级到最新：逐文件 v1→v2（备份+校验）。返回 {workflows:[...], summary}。"""
+    wf_reports = []
+    for path in workflow_files():
+        wf_reports.append(upgrade_workflow(path, apply))
+    return {
+        "workflows": wf_reports,
+        "summary": {
+            "v1_remaining": sum(1 for r in wf_reports if r.get("version") == 1),
+            "upgraded": sum(1 for r in wf_reports if r.get("action") == "upgraded"),
+            "noop": sum(1 for r in wf_reports if r.get("action") == "noop"),
+            "corrupt": sum(1 for r in wf_reports if r.get("action") == "skip-corrupt"),
+        },
+    }
