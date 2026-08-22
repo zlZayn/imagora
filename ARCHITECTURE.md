@@ -63,7 +63,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `pathtrust.py` —— 路径白名单单一实现（match_roots），`canvas.safe_ref_path_allowlist` 与 `server.safe_ref_path` 共同委托，消除重复与跨盘误判。
 - `imageinfo.py` —— 图片头解析（PNG/JPEG/GIF/WebP/BMP 宽高/格式），纯标准库零依赖；供注册表 v2 元数据与迁移工具。
 - 迁移逻辑不在 `core/` 单独建模块，注册表迁移随 `registry.migrate`、工作流迁移随 `graphstore.migrate_workflows`，`scripts/migrate.py` 仅做协调与打印（默认只报告、`--apply` 才落盘备份校验、dry-run 时若 `.canvas/registry.json` 仍是 v1 清单会报 `pending-relocate` 待迁后升级，避免误报 missing/noop）。
-- `history.py` —— 生成历史 JSONL 读取。依赖 logging 的日志目录常量，无 HTTP。
+- `history.py` —— 生成历史 JSONL 读取 + **账本迁移** `backfill_output_asset_ids`（旧行缺 outputAssetIds 时按 output 文件内容 sha1 反查注册表补齐，报告优先/整文件备份/原子写/幂等，仅补能可靠反查的行）+ `resolve_output_path` 统一路径解析（server 委托此处，消除分叉）。依赖 logging 与 registry，无 HTTP。
 - `logging.py` —— 生成日志统一写入（线程锁串行追加），UI/批量/CLI 三路共用。
 - `console.py` —— rich 终端输出（成功/失败/信息配色、进度条、面板），无业务依赖，可被任意模块引用。
 
@@ -180,9 +180,21 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 5.5 持久化
 
-- **格式版本化（v1/v2 兼容）**：注册表与工作流都有明确 schema 版本。运行时时**只写当前版本（v2）**、可读 v1 与 v2——老数据零失效；未知版本明确拒绝（不按错误结构解析未来格式）。v1→v2 一键迁移/损坏清单重建由 `scripts/migrate.py`（注册表迁移逻辑在 `core/registry.migrate`、工作流在 `core.graphstore.migrate_workflows`，默认只报告、`--apply` 才落地并先备份 `.bak-<时间戳>`、写后加载器读回校验）。用法：
-  - 查看状态（只报告）：`python scripts/migrate.py`（dry-run 时若 `.canvas/registry.json` 仍是 v1 清单会报 `pending-relocate` 提示待迁后升级，不会误报 missing/noop）
-  - 一步到最新（迁目录 + 升级 v1→v2 + 回填 kind + 升工作流）：`python scripts/migrate.py --apply`
+- **格式版本化（v1/v2 兼容）**：注册表与工作流都有明确 schema 版本。运行时时**只写当前版本（v2）**、可读 v1 与 v2——老数据零失效；未知版本明确拒绝（不按错误结构解析未来格式）。
+- **存储迁移（v1 → 最新，职责各归其位）**——迁移不做成独立中间模块，三处各管各的存储，`scripts/migrate.py` 仅协调与打印：
+
+  | 迁移段落 | 归属 | 做什么 |
+  | --- | --- | --- |
+  | 注册表 | `core.registry.migrate()` | 目录 `.canvas`→`.assets`（重写 relPath）+ v1 裸清单→v2 包装 + 损坏重建 + 回填 kind |
+  | 工作流 | `core.graphstore.migrate_workflows()` | 逐文件 v1→v2（补 version+savedAt，备份+校验） |
+  | 历史账本 | `core.history.backfill_output_asset_ids()` | 旧行缺 `outputAssetIds` 时按 output 文件内容 sha1 反查注册表补齐 |
+
+  **执行顺序**（`--apply` 一步完成）：注册表 → 工作流 → 历史账本。
+  **安全语义**（三段共用）：默认只报告、`--apply` 才落盘；先整文件/整目录备份 `.bak-<时间戳>`；原子写（tmp+os.replace）；写后读回校验；幂等（重复执行结果不变）；**只改能可靠判别的东西**——注册表只动 relPath/包装/kind、历史只补能按内容反查命中注册表的行，文件缺失或注册表无该内容一律跳过并计数（不伪造）。dry-run 若存量还在 `.canvas/` 且注册表为 v1 会报 `pending-relocate` 提示先迁目录，避免误报 missing/noop。
+
+  **用法**：
+  - 查看状态（只报告）：`python scripts/migrate.py`
+  - 一步到最新（迁目录 + 升级 v1→v2 + 回填 kind + 升工作流 + 历史补 outputAssetIds）：`python scripts/migrate.py --apply`
   - 清单缺失/损坏按文件重建：`python scripts/migrate.py --apply --rebuild-registry`
   - 跳过 kind 回填：`python scripts/migrate.py --apply --skip-meta-backfill`（默认已含）
   - 指定 output 根：追加 `--output-root 路径`
@@ -391,9 +403,9 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_core_api.py` | 13 | 尺寸解析 / 默认输出路径（并发唯一）/ 错误格式化 |
 | `tests/test_core_batch.py` | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
 | `tests/test_core_config.py` | 14 | API Key（环境变量 / 跟随 profile / 缺失报错）/ profile 解析（优先级 / 缺失回退 / 白名单校验）/ RATIOS 表结构 |
-| `tests/test_server_helpers.py` | 21 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 |
+| `tests/test_server_helpers.py` | 22 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 |
 | `tests/test_core_logging.py` | 8 | 日志写入 / 并发串行 / 路径相对化 |
-| `tests/test_core_history.py` | 3 | 历史读取 / 坏行容忍 / 筛选 |
+| `tests/test_core_history.py` | 7 | 历史读取 / 坏行容忍 / 筛选 / backfill（报告不写·补齐备份·幂等·跳过无法反查·坏行保留） |
 | `tests/test_core_canvas.py` | 27 | 注册表（v2 包装 + v1 裸清单兼容）/ 内容去重 / import 边界 / kind 来源标签 / workflow 归一化与自愈 / recovery / submission |
 | `tests/test_server_canvas.py` | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / 未知版本拒绝 / ref_paths 放行 |
 | `tests/test_core_imageinfo.py` | 10 | PNG/JPEG/GIF/WebP(VP8/VP8L/VP8X)/BMP 头解析 / 垃圾与截断返回 None |

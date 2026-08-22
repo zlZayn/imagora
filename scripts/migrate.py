@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import canvas as canvas_mod
 from core import graphstore
+from core import history
 from core import registry
 
 
@@ -56,6 +57,9 @@ def _print_report(report) -> None:
     s = report.get('summary') or {}
     pending = s.get('ready', 0) + s.get('upgraded', 0)  # dry-run: ready；apply: upgraded
     print(f"[工作流] 待升级/已升级 {pending} · 无需动 {s.get('noop', 0)} · 损坏跳过 {s.get('corrupt', 0)}")
+    h = report.get('history') or {}
+    if h.get('action') not in (None, 'nothing'):
+        print(f"[历史] {h.get('action')}：补 {h.get('backfill', 0)} 行 · 无法反查 {h.get('unable', 0)} · 已具备 {h.get('already', 0)}")
 
 
 def main() -> int:
@@ -78,7 +82,8 @@ def main() -> int:
 
     reg_report = registry.migrate(apply=args.apply, rebuild=args.rebuild_registry, backfill=not args.skip_meta_backfill)
     wf_report = graphstore.migrate_workflows(apply=args.apply)
-    combined = {**reg_report, **wf_report, 'apply': args.apply}
+    hist_report = history.backfill_output_asset_ids(apply=args.apply)
+    combined = {**reg_report, **wf_report, 'history': hist_report, 'apply': args.apply}
     _print_report(combined)
     return 0
 

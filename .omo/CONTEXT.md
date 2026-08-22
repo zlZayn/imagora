@@ -21,9 +21,14 @@
 ### 存储架构（沿用上一轮定型，未变）
 - core/registry.py —— 资产注册表（ASSET_DIR=.assets / register_asset / import_assets / delete_asset / list_assets / resolve_asset / image_url / safe_ref_path_allowlist / detect_registry(支持任意路径预检) / migrate），内容 sha1 去重、原子写、条目可选 kind(canvas/result/ref)+sourceKey；注册表 v2 包装 {schemaVersion:2, images:{id:entry}}（v1 裸 dict 兼容读）
 - core/graphstore.py —— 图/工作流/提交（workflow_* / submission_* / recovery_*、_resolve_image_node_paths / _strip_derived_node_paths / migrate_workflows），图片节点只存 registryId、路径由 registry.resolve_asset 实时重建
+- core/history.py —— 历史账本读取 + 迁移（backfill_output_asset_ids：旧行按 output 内容 sha1 反查注册表补 outputAssetIds，报告优先/备份/原子/幂等/无法反查跳过）+ resolve_output_path（server 委托，统一路径解析）
 - core/canvas.py —— 兼容 shim：星号 re-export registry+graphstore（含私有 _REGISTRY_LOCK）；from core import canvas 仍可用；无业务逻辑
 - core/pathtrust.py —— 路径白名单单一实现（match_roots），server 与 registry 共用
 - 资产库目录：output/.assets/（规范名）；存量 .canvas 已迁移
+
+### 历史显示语义（以注册表为准）
+- GET /api/history：存在性优先按 outputAssetIds 经 registry.resolve_asset 解析（注册表副本在 .assets，移动原文件不丢）；无 assetIds 的旧行回退 output 路径 isfile
+- 旧行缺 assetIds 由迁移补齐（scripts/migrate.py --apply 含 history.backfill_output_asset_ids），无 assetIds 也可以先跑一次生成/导入让新记录带上
 
 ### 统一生成模型（画布 / 经典同一套后端存储）
 - 经典表单生成 done 时：结果图 kind=result、用到的 .refs 参考图 kind=ref 注册进 .assets，落提交图快照（output/submissions/<submissionId>.json，图片组→提示词→结果连线），账本 generation.jsonl 每行带 submissionId/inputAssetIds/outputAssetIds

@@ -73,7 +73,7 @@ def test_resolve_history_output_path_uses_work_root_for_relative_logs(tmp_path, 
     """历史日志里的相对输出路径必须以项目工作根解析，而不是进程当前目录。"""
     from server import resolve_history_output_path
 
-    monkeypatch.setattr("server.WORK_ROOT", tmp_path)
+    monkeypatch.setattr("core.history.WORK_ROOT", tmp_path)
     assert resolve_history_output_path("output/result.png") == os.path.normpath(
         str(tmp_path / "output" / "result.png")
     )

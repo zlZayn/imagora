@@ -57,6 +57,7 @@ from core.config import (
     WORK_ROOT,
     get_api_key,
 )
+from core import history
 from core.history import read_generation_history
 from core.logging import log_generation
 from core.tasks import MAX_CONCURRENCY, GenerationTask, TaskManager
@@ -201,11 +202,8 @@ def _directory_writable(path: str) -> bool:
 
 
 def resolve_history_output_path(output: str) -> str:
-    """把日志里的输出路径解析为绝对路径，兼容从项目父目录启动。"""
-    raw = str(output or "").strip()
-    if not raw:
-        return ""
-    return os.path.normpath(raw if os.path.isabs(raw) else os.path.join(WORK_ROOT, raw))
+    """把日志里的输出路径解析为绝对路径（委托 core.history 统一实现，避免逻辑分叉）。"""
+    return history.resolve_output_path(output)
 
 
 @app.get("/api/health/details")

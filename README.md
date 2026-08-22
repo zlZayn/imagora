@@ -115,7 +115,8 @@ python Imagora/frontend/e2e/verify_canvas.py       # 画布交互 E2E（另开�
 > - 把 v1 老清单/老存档升级为 v2（先备份 `.bak-时间戳`，程序读回校验通过才保留）：`python scripts/migrate.py --apply`
 > - 图片清单缺失/损坏时按图片文件重建：`python scripts/migrate.py --apply --rebuild-registry`
 > - 回填可选来源标签 kind（旧条目补 canvas）：`python scripts/migrate.py --apply`（默认已含；`--skip-meta-backfill` 跳过）
-> - **一步到最新**（迁目录 .canvas→.assets + 升级 v1→v2 + 回填 kind + 升工作流）：`python scripts/migrate.py --apply`（默认只报告、`--apply` 才备份+校验；存量 `.canvas` 迁移有 `.canvas-bak-<时间戳>` 全量备份，旧目录里的 v1 清单会一并搬到新目录再升级，无需手动分步）
+> - **一步到最新**（迁目录 .canvas→.assets + 升级 v1→v2 + 回填 kind + 升工作流 + 历史旧行补 outputAssetIds）：`python scripts/migrate.py --apply`（默认只报告、`--apply` 才备份+校验；存量 `.canvas` 迁移有 `.canvas-bak-<时间戳>` 全量备份，旧目录里的 v1 清单会一并搬到新目录再升级，无需手动分步）
+> - **历史旧行补 outputAssetIds**：`--apply` 自动按 output 文件内容反查注册表补齐（仅补能可靠反查的行，文件缺失/注册表无该内容则跳过不伪造；整文件备份 `.bak-<时间戳>` + 原子写 + 幂等）
 > - output 目录不在默认位置：追加 `--output-root 路径`（如 `output/` 或自定义目录）
 
 ## 计费说明
