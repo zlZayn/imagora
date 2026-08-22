@@ -20,6 +20,7 @@ from rich.progress import (
 from rich.table import Table
 
 from core.api import format_error, generate_image
+import core.config as global_config
 from core.config import DEFAULT_QUALITY
 from core.console import console, print_dim, print_panel
 from core.logging import log_generation
@@ -75,7 +76,7 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
     jobs = filter_jobs_by_module(config["jobs"], module_filter)
     base_images = resolve_base_image_paths(config_dir, config.get("base_images", {}))
 
-    tier_cost = config.get("tier_cost", 0.10)
+    tier_cost = config.get("tier_cost") or global_config.cost_for_size(config["size"])
     _print_job_preview(jobs, base_images, config["size"], tier_cost)
 
     if dry_run:
@@ -123,7 +124,7 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
                 quality=DEFAULT_QUALITY,
                 status="ok" if job_ok else "error",
                 output=output_path if job_ok else "",
-                cost=config.get("tier_cost", 0.10) if job_ok else 0.0,
+                cost=(config.get("tier_cost") or global_config.cost_for_size(config["size"])) if job_ok else 0.0,
                 seconds=time.time() - job_started_at,
             )
             progress.advance(task)

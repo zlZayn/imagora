@@ -20,9 +20,9 @@ def test_size_cost_known_sizes():
     assert size_cost("1152x2048") == 0.10
 
 
-def test_size_cost_unknown_falls_back():
-    """未知尺寸 -> 按 2K 档 0.10 兜底"""
-    assert size_cost("9999x9999") == 0.10
+def test_size_cost_unknown_returns_zero():
+    """未知尺寸 -> 0.0（计费唯一由 config.json size_options 决定，不硬编码兜底价）"""
+    assert size_cost("9999x9999") == 0.0
 
 
 def test_display_path_relative_to_work_root():

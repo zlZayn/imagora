@@ -179,6 +179,17 @@ def get_api_key():
 # ---------- 尺寸映射 / UI 选项 / 默认参数（全部来自当前 profile） ----------
 RATIOS = _get("ratios")
 SIZE_OPTIONS = _get("size_options")
+
+
+def cost_for_size(size: str) -> float:
+    """按尺寸查单张费用（唯一来源：当前 profile 的 size_options，由 config.json 管理）。
+
+    未知尺寸返回 0.0——不在此处硬编码兜底价格，计费一律以配置文件为准。
+    """
+    for option in SIZE_OPTIONS:
+        if option.get("value") == size:
+            return float(option.get("cost", 0.0))
+    return 0.0
 QUALITY_OPTIONS = _get("quality_options")
 DEFAULT_MODEL = _get("default_model")
 DEFAULT_QUALITY = _get("default_quality")

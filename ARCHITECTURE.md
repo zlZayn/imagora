@@ -54,7 +54,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 ### 2.2 后端 core/ 模块
 
-- `config.py` —— 配置中心：API Key、BASE_URL、尺寸/质量选项、RATIOS、默认参数。**全后端唯一配置源**，其他模块从这里读，不自行读环境变量。
+- `config.py` —— 配置中心：API Key、BASE_URL、尺寸/质量选项、RATIOS、默认参数。**全后端唯一配置源**，其他模块从这里读，不自行读环境变量。**计费/尺寸唯一来源是 `config.json` 的 `size_options[].cost`**，结算统一走 `cost_for_size()`，代码与文档不硬编码价格（`_DEFAULTS` 仅作缺配时的代码级兜底）。
 - `api.py` —— 上游请求封装：`generate_image`（文生图/图生图一次请求）、尺寸解析、错误格式化。依赖 config 与 console。
 - `tasks.py` —— 异步任务管线：`TaskManager` 提交登记、线程池并发执行、快照查询、取消、TTL 清理。
 - `registry.py` —— 资产注册表（`ASSET_DIR`/`register_asset`/`import_assets`/`delete_asset`/`list_assets`/`resolve_asset`/`image_url`，内容去重、原子写、可选来源标签 kind/sourceKey）。命名语义：`asset/资产`=被持久化的图，`canvas`=前端编排视图。

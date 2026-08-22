@@ -129,3 +129,9 @@ def test_missing_key_message_lists_candidates(monkeypatch, tmp_path):
         config.get_api_key()
     msg = str(exc.value)
     assert "API_KEY_WANWU" in msg and "AIWANWU_API_KEY" in msg
+
+def test_cost_for_size_from_size_options():
+    """计费唯一来自 size_options：已知档命中，未知档 0.0（不硬编码兜底价）"""
+    known = config.SIZE_OPTIONS[0]
+    assert config.cost_for_size(known["value"]) == float(known["cost"])
+    assert config.cost_for_size("9999x9999") == 0.0

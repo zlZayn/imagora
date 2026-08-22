@@ -45,6 +45,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from core import canvas
 from core.api import format_error, generate_image
 from core.canvas import safe_ref_path_allowlist
+from core import config
 from core.config import (
     ACTIVE_PROFILE,
     BASE_URL,
@@ -492,11 +493,8 @@ def select_folder(body: dict):
 
 
 def size_cost(size: str) -> float:
-    """按尺寸查单张费用；未知尺寸按 2K 档 0.10 兜底"""
-    for option in SIZE_OPTIONS:
-        if option["value"] == size:
-            return option["cost"]
-    return 0.10
+    """按尺寸查单张费用（唯一来源 config.cost_for_size，即 config.json 的 size_options）"""
+    return config.cost_for_size(size)
 
 
 def display_path(path: str) -> str:
