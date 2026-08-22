@@ -202,6 +202,27 @@ def test_history_import_only_accepts_recorded_existing_output(monkeypatch, tmp_p
     assert rejected["imported"] == []
     assert rejected["skipped"]
 
+def test_generation_history_resolves_via_registry_when_output_moved(monkeypatch, tmp_path):
+    """历史以注册表为准：账本带 outputAssetIds 时，原 output 文件被移动/删除仍显示（注册表副本在）。"""
+    from server import generation_history
+    from core import registry
+
+    # 注册表副本（在 .assets 隔离区）：原 output 路径的文件已被删除
+    src = tmp_path / "moved_away.png"
+    src.write_bytes(b"png")
+    entry = registry.register_asset(str(src), "moved_away.png")
+    os.unlink(src)  # 模拟用户把原文件挪走/删掉
+
+    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
+        {"prompt": "registry-backed", "status": "ok", "output": str(src),
+         "outputAssetIds": [entry["id"]]},
+    ])
+    result = generation_history(limit=20, query="", status="")
+    item = result["items"][0]
+    assert item["exists"] is True                          # 注册表副本仍在
+    assert item["url"].startswith("/api/image?path=")
+    assert os.path.isfile(item["path"])                     # path 指向注册表副本
+
 
 def test_health_details_reports_actionable_checks(monkeypatch, tmp_path):
     """启动自检只返回状态和可读问题，不返回密钥。"""

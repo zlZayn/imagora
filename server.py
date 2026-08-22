@@ -262,12 +262,25 @@ def server_status():
 
 @app.get("/api/history")
 def generation_history(limit: int = 200, query: str = "", status: str = ""):
-    """读取本地生成历史；仅给仍存在的图片附加预览 URL。"""
+    """读取本地生成历史。
+
+    图片存在性以**资产注册表为准**：账本行带 outputAssetIds 时，按 registry.resolve_asset
+    解析（注册表副本在 .assets，移动原文件不丢），仅作参考的 output 路径不再参与判定；
+    无 outputAssetIds 的旧行回退按 output 路径 isfile 判定。
+    """
     records = read_generation_history(limit=limit, query=query, status=status)
     items = []
     for record in records:
-        output = str(record.get("output", ""))
-        abs_path = resolve_history_output_path(output)
+        abs_path = ""
+        asset_ids = record.get("outputAssetIds")
+        if isinstance(asset_ids, list) and asset_ids:
+            resolved = canvas.resolve_asset(str(asset_ids[0]))
+            if resolved:
+                abs_path = resolved["absPath"]
+        if not abs_path:
+            out_path = resolve_history_output_path(str(record.get("output", "")))
+            if out_path and os.path.isfile(out_path):
+                abs_path = out_path
         exists = bool(abs_path and os.path.isfile(abs_path))
         items.append({
             **record,
