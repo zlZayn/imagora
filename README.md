@@ -121,7 +121,7 @@ python Imagora/frontend/e2e/verify_canvas.py       # 画布交互 E2E（另开�
 
 ## 计费说明
 
-**计费/尺寸的唯一来源是 `config.json`**（当前 profile 的 `size_options[].cost`）；界面尺寸下拉由 `/api/config` 实时下发，命令行 `gen --tier 4K` 可按 profile 档位请求更高分辨率。本页不再维护价格表——改价只需改 `config.json` 一处，服务端结算统一走 `core.config.cost_for_size`。
+计费与尺寸由 `config.json`（当前 profile 的 `size_options[].cost`）统一管理；界面尺寸下拉经 `/api/config` 实时下发，命令行 `gen --tier 4K` 可按 profile 档位请求更高分辨率，生成费用按对应档位 `cost` 结算。
 
 其他注意：
 
