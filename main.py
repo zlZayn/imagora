@@ -6,22 +6,49 @@
   python -m main menu --port 7860                                      # 交互菜单（启动脚本用）
   python -m main batch --config 项目/batch_prompts.json                # 批量生图
   python -m main batch --config 项目/batch_prompts.json --dry-run      # 预览不花钱
-  python -m main gen "提示词" [-i 参考图] [-o 输出.png] [--ratio 9:16]  # 单张生图
+  python -m main config                                                # 显示当前 profile 支持的尺寸/比例/质量/默认值
+  python -m main gen "提示词" --size 1024x1024 --quality high -o out.png            # 文生图
+  python -m main gen "提示词" --ratio 9:16 --tier 2K --quality high -o out.png      # 按比例+档位
+  python -m main gen "提示词" --size 1024x1024 --quality high -o out.png -i r1.png -i r2.png  # 多参考图图生图
+
+CLI gen 子命令与 web 表单完全对等：尺寸/质量/参考图/输出路径无损透传到模型 API；
+生成成功后旁路注册资产 + 落提交快照 + 写全量账本（submission_id + asset_ids + cost_for_size），
+与 web 端产出的 logs/generation.jsonl 与 output/submissions/*.json 同源可互查。
 """
 import argparse
 import colorsys
 import os
 import sys
+import time
+from itertools import count
 from pathlib import Path
 
 from core import api
+from core import canvas as canvas_mod
+from core import config as config_mod
+from core import graphstore
+from core import registry
+from core.api import resolve_size_with_ratio, build_default_output_path, generate_image
 from core.batch import run_batch_generation
-from core.config import DEFAULT_MODEL, DEFAULT_QUALITY, DEFAULT_TIER
+from core.config import (
+    DEFAULT_MODEL,
+    DEFAULT_OUTPUT_DIR,
+    DEFAULT_QUALITY,
+    DEFAULT_SIZE,
+    DEFAULT_TIER,
+    QUALITY_OPTIONS,
+    RATIOS,
+    SIZE_OPTIONS,
+)
 from core.console import console, print_error, print_info, print_success
+from core.logging import log_generation
 
 _reconfigure = getattr(sys.stdout, "reconfigure", None)
 if _reconfigure is not None:
     _reconfigure(encoding="utf-8")
+
+# CLI gen 文件名序号（与 server._SEQ 同语义：秒级时间戳同秒并发必撞，加序号保证唯一）
+_SEQ = count(1)
 
 
 def accent_for_window(window_id: int | None) -> str:
@@ -62,45 +89,218 @@ def handle_batch_command(args):
         sys.exit(1)
 
 
+def _validate_gen_args(args) -> None:
+    """校验必填参数与互斥关系，缺失或冲突立即报错退出（与 web 表单等价的强约束）。
+
+    - --size 与 --ratio 二选一必填（与 web 表单一致：尺寸由用户显式选定）
+    - --quality 必填（与 web 表单一致：质量不能默认）
+    - --output 必填（与 web 表单的 output_dir 一致：输出位置必须明确）
+    - --ratio 必须在当前 profile 的 RATIOS 内
+    - --tier 配合 --ratio，必须在所选比例的档位内
+    - --quality 必须在当前 profile 的 QUALITY_OPTIONS 内
+    - --size 必须在当前 profile 的 SIZE_OPTIONS 的 value 列表内
+    """
+    import sys as _sys
+
+    missing: list[str] = []
+    if not args.size and not args.ratio:
+        missing.append("--size 或 --ratio（二选一）")
+    if not args.quality:
+        missing.append("--quality")
+    if not args.output:
+        missing.append("--output / -o")
+    if missing:
+        print_error("缺少必填参数：" + " · ".join(missing))
+        print_info("运行 `python -m main config` 查看当前 profile 支持的尺寸/比例/质量")
+        print_info("示例：python -m main gen \"提示词\" --size 1024x1024 --quality high -o out.png")
+        _sys.exit(2)
+    if args.size and args.ratio:
+        print_error("--size 与 --ratio 不能同时使用，二选一")
+        _sys.exit(2)
+    if args.ratio and args.ratio not in RATIOS:
+        print_error(f"不支持的比例 {args.ratio}，可用: {', '.join(RATIOS.keys())}")
+        _sys.exit(2)
+    if args.ratio and args.tier not in RATIOS[args.ratio]:
+        print_error(f"比例 {args.ratio} 没有 {args.tier} 档，可用档位: {', '.join(RATIOS[args.ratio].keys())}")
+        _sys.exit(2)
+    quality_values = [q.get("value") if isinstance(q, dict) else str(q) for q in QUALITY_OPTIONS]
+    if args.quality not in quality_values:
+        print_error(f"不支持的质量 {args.quality}，可用: {', '.join(quality_values)}")
+        _sys.exit(2)
+    if args.size:
+        size_values = [s.get("value") for s in SIZE_OPTIONS]
+        if args.size not in size_values:
+            print_error(f"不支持的尺寸 {args.size}，可用: {', '.join(size_values)}")
+            _sys.exit(2)
+
+
+def _persist_cli_submission(prompt: str, size: str, quality: str, output_dir: str,
+                            ref_paths: list[str], result_path: str, submission_id: str) -> dict | None:
+    """旁路：把本次 CLI 生成的结果 + 参考图注册进 .assets 并落提交快照。
+
+    与 server._persist_submission 等价（资产语义、submission_save 调用方式、返回结构一致）：
+      - 参考图：register_asset(kind="ref", source_key=submission_id)
+      - 结果图：register_asset(kind="result", source_key=submission_id)
+      - 落 submission_save（submissions/<id>.json），可在 web 画布"导入提交"复用
+    返回 {"input_asset_ids": [...], "output_asset_ids": [...]}；无结果或全失败返回 None。
+    """
+    input_entries: list[dict] = []
+    seen_input: set[str] = set()
+    for ref in ref_paths:
+        try:
+            entry = canvas_mod.register_asset(ref, Path(ref).name, kind="ref", source_key=submission_id)
+        except Exception:
+            entry = None
+        if entry and entry["id"] not in seen_input:
+            seen_input.add(entry["id"])
+            input_entries.append(entry)
+
+    result_entries: list[dict] = []
+    seen_result: set[str] = set()
+    if result_path and os.path.isfile(result_path):
+        try:
+            entry = canvas_mod.register_asset(result_path, os.path.basename(result_path), kind="result", source_key=submission_id)
+        except Exception:
+            entry = None
+        if entry and entry["id"] not in seen_result:
+            seen_result.add(entry["id"])
+            result_entries.append(entry)
+
+    if not result_entries:
+        return None
+    params = {"size": size, "quality": quality, "outputDir": output_dir}
+    canvas_mod.submission_save(submission_id, prompt, params, input_entries, result_entries, 0)
+    return {
+        "input_asset_ids": [e["id"] for e in input_entries],
+        "output_asset_ids": [e["id"] for e in result_entries],
+    }
+
+
 def handle_gen_command(args):
-    """单张生图（文生图 / 图生图）"""
-    import time
+    """单张生图（文生图 / 图生图）—— 与 web 表单完全对等。
 
-    from core.logging import log_generation
+    与 web 端的差异仅在调度：CLI 单次同步等待结果（不进入全局任务池），其余链路一致：
+      - 尺寸/质量/参考图/格式/张数无损透传到模型 API
+      - 成功后旁路 register_asset + submission_save + log_generation 全量字段
+      - 计费走 config.cost_for_size（与 server.size_cost 同源）
+    """
+    _validate_gen_args(args)
 
-    output_format = args.format if args.output is None else os.path.splitext(args.output)[1].lstrip(".") or args.format
-    size = api.resolve_size_with_ratio(args.size, args.ratio, args.tier)
-    output_path = api.build_default_output_path(args.output, output_format)
+    output_format = os.path.splitext(args.output)[1].lstrip(".") or args.format
+    size = resolve_size_with_ratio(args.size, args.ratio, args.tier)
+    # output 必填：若是目录，自动生成文件名（与 web output_dir 行为一致）
+    if os.path.isdir(args.output) or args.output.endswith(("\\", "/")):
+        output_path = build_default_output_path(None, output_format)
+        output_dir = args.output.rstrip("\\/")
+    else:
+        output_path = args.output
+        output_dir = os.path.dirname(os.path.abspath(args.output))
+    os.makedirs(output_dir, exist_ok=True)
+
+    ref_paths: list[str] = []
+    for p in args.image or []:
+        abs_p = os.path.abspath(p)
+        if not os.path.isfile(abs_p):
+            print_error(f"参考图不存在: {p}")
+            sys.exit(2)
+        ref_paths.append(abs_p)
+
+    submission_id = graphstore.next_submission_id()
+    cost = config_mod.cost_for_size(size)
     started_at = time.time()
+    dest = ""
+    ok = False
     try:
-        api.generate_image(
-            prompt=args.prompt,
-            image_path=args.image,
-            size=size,
-            quality=args.quality,
-            model=args.model,
-            n=args.n,
-            output_format=output_format,
-            output_path=output_path,
-        )
-        job_ok = True
+        if ref_paths:
+            # 图生图：多张参考图一次请求提交（与 web 表单 images 字段等价）
+            dest = os.path.join(output_dir, f"img2img_{time.strftime('%Y%m%d_%H%M%S')}_{next(_SEQ):03d}.{output_format}")
+            messages_hint = f"图生图 · 参考图 {len(ref_paths)} 张"
+            generate_image(
+                prompt=args.prompt, images=ref_paths, size=size,
+                quality=args.quality, model=args.model, n=args.n,
+                output_format=output_format, output_path=dest,
+            )
+        else:
+            dest = os.path.join(output_dir, f"txt2img_{time.strftime('%Y%m%d_%H%M%S')}_{next(_SEQ):03d}.{output_format}")
+            messages_hint = "文生图"
+            generate_image(
+                prompt=args.prompt, image_path=None, size=size,
+                quality=args.quality, model=args.model, n=args.n,
+                output_format=output_format, output_path=dest,
+            )
+        ok = True
+        print_success(f"{messages_hint} · 已保存: {dest}（{size}）· 费用 {cost:.2f} 元")
     except Exception as e:
-        job_ok = False
         print_error(f"生成失败: {api.format_error(e)}")
-    finally:
-        log_generation(
-            prompt=args.prompt,
-            mode="img2img" if args.image else "txt2img",
-            refs=1 if args.image else 0,
-            size=size,
-            quality=args.quality,
-            status="ok" if job_ok else "error",
-            output=output_path if job_ok else "",
-            cost=0.0,
-            seconds=time.time() - started_at,
-        )
-    if not job_ok:
+
+    # 旁路：注册资产 + 落提交快照（除非 --no-asset；失败不影响生成结果）
+    submission_meta: dict | None = None
+    if ok and not args.no_asset:
+        try:
+            submission_meta = _persist_cli_submission(
+                args.prompt, size, args.quality, output_dir, ref_paths, dest, submission_id,
+            )
+        except Exception:
+            submission_meta = None
+
+    log_generation(
+        prompt=args.prompt,
+        mode="img2img" if ref_paths else "txt2img",
+        refs=len(ref_paths),
+        size=size,
+        quality=args.quality,
+        status="ok" if ok else "error",
+        output=dest if ok else "",
+        cost=cost if ok else 0.0,
+        seconds=time.time() - started_at,
+        win=None,
+        submission_id=submission_id if ok else "",
+        input_asset_ids=(submission_meta or {}).get("input_asset_ids"),
+        output_asset_ids=(submission_meta or {}).get("output_asset_ids"),
+    )
+    if not ok:
         sys.exit(1)
+
+
+def handle_config_command(args):
+    """显示当前 profile 支持的全部参数值（从 config.json 实时读取）。
+
+    用户在写 gen 命令前可运行 `python -m main config` 看当前可用的尺寸/比例/质量/默认值，
+    避免传错值被 _validate_gen_args 拒绝。
+    """
+    from core.config import ACTIVE_PROFILE, BASE_URL
+
+    console.print(f"[bold]当前 profile[/bold]: {ACTIVE_PROFILE}  ·  模型: {DEFAULT_MODEL}  ·  端点: {BASE_URL}")
+    console.print(f"[bold]默认尺寸[/bold]: {DEFAULT_SIZE}  ·  默认质量: {DEFAULT_QUALITY}  ·  默认档位: {DEFAULT_TIER}")
+    console.print(f"[bold]默认输出目录[/bold]: {DEFAULT_OUTPUT_DIR}")
+
+    # 尺寸表（含费用）
+    console.print("\n[bold]尺寸 SIZE_OPTIONS[/bold]（--size 取 value）")
+    for opt in SIZE_OPTIONS:
+        val = opt.get("value", "")
+        label = opt.get("label", "")
+        cost = opt.get("cost", 0.0)
+        console.print(f"  {val:<14}  {label:<10}  费用 {cost:.2f} 元")
+
+    # 比例 + 档位
+    console.print("\n[bold]比例 RATIOS[/bold]（--ratio 取键，--tier 取档位）")
+    for ratio, tiers in RATIOS.items():
+        tier_str = "  ".join(f"{t}={dim}" for t, dim in tiers.items())
+        console.print(f"  {ratio:<6}  {tier_str}")
+
+    # 质量
+    console.print("\n[bold]质量 QUALITY_OPTIONS[/bold]（--quality 取以下值）")
+    for q in QUALITY_OPTIONS:
+        if isinstance(q, dict):
+            val = q.get("value", "")
+            label = q.get("label", "")
+        else:
+            val = str(q)
+            label = ""
+        console.print(f"  {val:<10}  {label}")
+
+    console.print("\n[#6b7280]提示：gen 子命令所有参数值必须取自上表，否则报错退出。[/#6b7280]")
+    console.print("[#6b7280]示例：python -m main gen \"提示词\" --size 1024x1024 --quality high -o out.png[/#6b7280]")
 
 
 def find_port_pid(port: int) -> int | None:
@@ -338,18 +538,34 @@ def build_argument_parser():
     sub_batch.add_argument("--dry-run", action="store_true", help="只预览配置与成本，不调用 API")
     sub_batch.set_defaults(handler=handle_batch_command)
 
-    sub_gen = subparsers.add_parser("gen", help="单张生图")
+    sub_gen = subparsers.add_parser(
+        "gen",
+        help="单张生图（与 web 表单完全对等：尺寸/质量/参考图/输出路径无损透传，"
+             "成功后注册资产 + 落提交快照 + 写全量账本）",
+    )
     sub_gen.add_argument("prompt", help="提示词（英文优先）")
-    sub_gen.add_argument("-i", "--image", help="参考图路径（可选；传了=图生图）")
-    sub_gen.add_argument("-o", "--output", help="输出路径（默认 output/ai_时间戳.png）")
-    sub_gen.add_argument("--size", default=None, help="分辨率（与 --ratio 二选一，默认 1024x1024）")
-    sub_gen.add_argument("--ratio", default=None, help="宽高比：1:1 / 3:2 / 2:3 / 16:9 / 9:16 / 7:4 / 4:7")
-    sub_gen.add_argument("--tier", default=DEFAULT_TIER, choices=["1K", "2K", "4K"], help="配合 --ratio 的档位，默认 2K")
-    sub_gen.add_argument("--quality", default=DEFAULT_QUALITY, choices=["low", "medium", "high"], help="质量，默认 high")
-    sub_gen.add_argument("--model", default=DEFAULT_MODEL, help="模型名")
+    sub_gen.add_argument("-i", "--image", action="append", default=None,
+                         help="参考图路径，可多次传 -i 实现多张参考图（传了=图生图）")
+    sub_gen.add_argument("-o", "--output", default=None,
+                         help="输出路径（必填）：文件路径直接用，目录则自动生成文件名")
+    sub_gen.add_argument("--size", default=None,
+                         help="分辨率（与 --ratio 二选一必填，取值见 `python -m main config`）")
+    sub_gen.add_argument("--ratio", default=None,
+                         help="宽高比（与 --size 二选一必填，取值见 `python -m main config`）")
+    sub_gen.add_argument("--tier", default=DEFAULT_TIER, choices=["1K", "2K", "4K"],
+                         help="配合 --ratio 的档位，默认 2K")
+    sub_gen.add_argument("--quality", default=None,
+                         help="质量（必填，取值见 `python -m main config`）")
+    sub_gen.add_argument("--model", default=DEFAULT_MODEL, help="模型名，默认取当前 profile")
     sub_gen.add_argument("--n", type=int, default=1, help="生成张数，默认 1")
-    sub_gen.add_argument("--format", default="png", choices=["png", "jpg", "webp"], help="输出格式，默认 png")
+    sub_gen.add_argument("--format", default="png", choices=["png", "jpg", "webp"],
+                         help="输出格式，默认 png")
+    sub_gen.add_argument("--no-asset", action="store_true",
+                         help="跳过资产注册 + 提交快照（纯生成模式，不进画布/账本无 asset_ids）")
     sub_gen.set_defaults(handler=handle_gen_command)
+
+    sub_config = subparsers.add_parser("config", help="显示当前 profile 支持的尺寸/比例/质量/默认值")
+    sub_config.set_defaults(handler=handle_config_command)
 
     return parser
 

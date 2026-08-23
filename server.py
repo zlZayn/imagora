@@ -59,6 +59,7 @@ from core.config import (
     get_api_key,
 )
 from core import history
+from core.graphstore import next_submission_id
 from core.history import read_generation_history
 from core.logging import log_generation
 from core.tasks import MAX_CONCURRENCY, GenerationTask, TaskManager
@@ -86,13 +87,6 @@ def current_window_id() -> int:
 
 # 参考图文件名全局序号
 _REF_SEQ = itertools.count(1)
-# 提交 id 全局序号（进程无关：时间戳 + 序号，供落盘提交图快照与账本追溯）
-_SUB_SEQ = itertools.count(1)
-
-
-def _next_submission_id() -> str:
-    """生成稳定提交 id（sub-<epoch_ns>-<seq>），与内存任务 id 解耦"""
-    return f"sub-{time.time_ns()}-{next(_SUB_SEQ):04d}"
 # 参考图孤儿文件最长保留时长（前端删除失败 / 上传未用的情况兜底清理）
 REF_MAX_AGE_SECONDS = 24 * 3600
 # 上次输出路径记录：服务重启后默认沿用（无记录才按窗口分区）
@@ -686,7 +680,7 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
 
     task = GenerationTask(
         prompt=prompt, size=size, quality=quality, output_dir=output_dir, win=win,
-        ref_bases=ref_bases, temp_bases=temp_bases, submission_id=_next_submission_id(),
+        ref_bases=ref_bases, temp_bases=temp_bases, submission_id=next_submission_id(),
     )
     task_id = task_manager.submit(task)
     return {"taskId": task_id, "status": task.status}
