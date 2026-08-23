@@ -8,11 +8,25 @@ import os
 import re
 import threading
 import time
+from itertools import count
+
 from core.config import DEFAULT_OUTPUT_DIR
 from core.registry import resolve_asset
 
 
 SUBMISSIONS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "submissions")
+
+# 提交 id 自增序号（进程级，多线程共享；与 server / CLI 入口共用同一生成器）
+_SUB_SEQ = count(1)
+
+
+def next_submission_id() -> str:
+    """生成稳定提交 id（sub-<epoch_ns>-<seq>），与内存任务 id 解耦。
+
+    server（web 表单）与 main（CLI）共用同一生成器，保证两端提交 id 格式一致、
+    可在 logs/generation.jsonl 与 output/submissions/*.json 之间互查。
+    """
+    return f"sub-{time.time_ns()}-{next(_SUB_SEQ):04d}"
 
 WORKFLOWS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "workflows")
 
