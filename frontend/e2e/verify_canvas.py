@@ -19,7 +19,7 @@ from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:7860"
 
-# 1x1 PNG（用于上传，避免依赖 output/.canvas 里的真实图片）
+# 1x1 PNG（用于上传，避免依赖 output/.assets 里的真实图片）
 PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 
 

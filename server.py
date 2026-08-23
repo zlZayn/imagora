@@ -16,7 +16,7 @@ API:
   POST /api/select-folder             弹出系统文件夹选择器
   POST /api/open-folder               资源管理器打开文件夹（置前）
   GET  /api/image?path=               读取图片文件
-  POST /api/canvas/upload             画布图片上传（复制进 output/.canvas/）
+  POST /api/canvas/upload             画布图片上传（复制进 output/.assets/）
   POST /api/canvas/import             输出目录导入画布（目录递归/单文件）
   GET  /api/canvas/images             画布图片全量
   POST /api/canvas/image/delete       删除画布图片
@@ -348,7 +348,7 @@ def remember_output_dir(path: str = Body(..., embed=True)):
 
 @app.post("/api/canvas/upload")
 def canvas_upload(images: list[UploadFile] = File(default=[])):
-    """画布图片上传：复制进 output/.canvas/ 并登记 registry（同内容去重）"""
+    """画布图片上传：复制进 output/.assets/ 并登记 registry（同内容去重）"""
     entries = []
     for image in images:
         ext = (Path(image.filename or "img").suffix or ".png").lower()
@@ -369,7 +369,7 @@ def canvas_upload(images: list[UploadFile] = File(default=[])):
 
 @app.post("/api/canvas/import")
 def canvas_import(body: dict):
-    """从输出目录导入图片（目录递归 / 单文件）到画布：复制进 .canvas 并登记
+    """从输出目录导入图片（目录递归 / 单文件）到画布：复制进 .assets 并登记
 
     路径必须落在 output 根内（realpath 前缀校验防穿越）；校验失败逐条进 skipped。
     """

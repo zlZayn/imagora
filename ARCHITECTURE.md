@@ -75,7 +75,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `useGenerationTask.ts` —— 提交-轮询任务 hook：经典表单与画布共用，`submit/cancel/get/tasks/subscribe` 五个稳定成员。
 - `useCanvasRecovery.ts` —— 画布恢复：挂载时询问是否恢复最近存档，防抖自动保存。
 - `useCanvasDrop.tsx` —— 画布拖拽接线 hook（文件多图 / 工具栏按钮拖出共用）：落点示意显隐/定位/文案、拖放意图解析、window 级兜底守卫、工作区四事件；节点怎么建由回调上抛（onDropFiles/onDropNode），本 hook 不含业务。
-- 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/布局/连线/节点构建器/mergeSubmissionGraph 提交图合并）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案）、`promptImportFormat.ts`（导入格式解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
+- 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/连线/节点构建器/mergeSubmissionGraph 提交图合并）、`layout.ts`（自动整理布局管道：分层/质心排序/自底向上定位/幂等）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案）、`promptImportFormat.ts`（导入格式解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
 - `components/`：`CanvasPage.tsx`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes.tsx`（三类节点组件）、`WorkflowModals.tsx`（保存/加载/放大预览弹窗）、`PromptImportModal.tsx`、`HistoryGallery.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`Select.tsx`、`FolderPicker.tsx`。
 
 ### 2.4 依赖规则
@@ -257,7 +257,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 6.5 结果回流
 
-任务 done 后：成功结果按 `registryId` 去重（画布已有同图不重建）→ 复制进画布注册表 → 建图片节点放在提示词**正下方居中横排**（`layoutPromptResults`）→ 自动连线 提示词 → 结果图。回流前检查提示词节点仍存在（删除后完成的结果不回流，避免幽灵节点）。
+画布任务与本表单共用同一 `/api/generate`（server 无条件生成 `submission_id`），所以 done 时后端旁路已把结果注册为 `kind='result'` 并落提交快照（见 6.1 step 6）。前端回流只做**取回 + 建节点**：`importHistoryAsset`（`POST /api/history/import`）按内容 sha1 命中旁路已注册的条目（同内容去重，不重复登记）→ 按 `registryId` 去重（画布已有同图不重建）→ 建图片节点放在提示词**正下方居中横排**（`layoutPromptResults`）→ 自动连线 提示词 → 结果图。回流前检查提示词节点仍存在（删除后完成的结果不回流，避免幽灵节点）。
 
 **经典统一**：经典表单生成在 done 时同样落盘（见 6.1 step 6）——结果/参考图注册 + 提交图快照 + 账本联动；「导入画布」走 `POST /api/canvas/import-submission` 整图重建，前端 `mergeSubmissionGraph` 按 registryId 去重复用现有图片节点并接上提示词与连线（不产生重复节点）。
 
@@ -295,7 +295,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 7.2 类型契约
 
-前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerationTaskSnapshot` / `GenerateParams` / `ResultItem` / `WorkflowNode` / `WorkflowEdge` / `CanvasImageEntry`；`GenerationTaskSnapshot` 含可选 `submissionId`），与后端返回结构一一对应。改接口必须同步改这里和对应测试。
+前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerationTaskSnapshot` / `GenerateParams` / `ResultItem` / `AssetEntry` / `WorkflowNode` / `WorkflowEdge`；`GenerationTaskSnapshot` 含可选 `submissionId`），与后端返回结构一一对应。改接口必须同步改这里和对应测试。
 
 ### 7.3 路径与配置基准
 

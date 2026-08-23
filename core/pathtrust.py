@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """路径信任（白名单）校验 —— 跨模块共享的单一实现。
 
-供 core/canvas（.refs/.canvas 双根）与 server（.refs 单根）统一调用，
+供 core/canvas（.refs/.assets 双根）与 server（.refs 单根）统一调用，
 避免两处各写一套 commonpath 校验（此前 safe_ref_path_allowlist 与
 server.safe_ref_path 就是两份近似重复）。
 """
