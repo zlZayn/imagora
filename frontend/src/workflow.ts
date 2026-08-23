@@ -353,6 +353,19 @@ export function autoConnect(nodes: WorkflowNode[], edges: WorkflowEdge[]): Workf
   return next;
 }
 
+/** 自动连线（仅选中）：只对选中节点之间的孤立关系自动补边——候选与新增边两端均限定在选中集合内，
+ *  未选中节点的既有连线与孤立状态不受影响。selectedIds 为空时原样返回。 */
+export function autoConnectSelection(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  selectedIds: ReadonlySet<string>,
+): WorkflowEdge[] {
+  if (!selectedIds.size) return edges;
+  const selected = nodes.filter((node) => selectedIds.has(node.id));
+  if (!selected.length) return edges;
+  return autoConnect(selected, edges);
+}
+
 /* ---------------- 自动布局：按连线深度分层（广义三段式） ----------------
  * 层号 = 从任一源点的最长路径长度（入边指向更深层）。普通三段式恰好映射到
  * 参考图 0 / 图片组 1 / 提示词 2 / 结果 3；结果图被复用（连到图片组/别的提示词）或
@@ -521,10 +534,19 @@ export function autoLayout(
           : baseX + nodeSize(node).width / 2,
       );
     }
-    // 稳定排序：期望中心升序，同中心按原始 x（结果保持确定性）
-    const ordered = [...layerNodes].sort(
-      (a, b) => desired.get(a.id)! - desired.get(b.id)! || a.position.x - b.position.x,
-    );
+    // 稳定排序：提示词卡片之间按左上角标题升序（界面标题 data.title，缺省「提示词生成」）；
+    // 其余按期望中心升序；同中心按原始 x（结果保持确定性）
+    const promptTitle = (node: WorkflowNode) =>
+      node.type === "prompt" ? node.data.title ?? "提示词生成" : undefined;
+    const ordered = [...layerNodes].sort((a, b) => {
+      const ta = promptTitle(a);
+      const tb = promptTitle(b);
+      if (ta !== undefined && tb !== undefined) {
+        const byTitle = ta.localeCompare(tb, "zh");
+        if (byTitle !== 0) return byTitle;
+      }
+      return desired.get(a.id)! - desired.get(b.id)! || a.position.x - b.position.x;
+    });
     // 块化放置：连续同期望中心的节点合成一块，块居中于该中心；与左侧已放节点碰撞时右移避让
     let cursorX = baseX;
     let i = 0;

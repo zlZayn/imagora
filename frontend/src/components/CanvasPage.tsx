@@ -45,6 +45,7 @@ import type {
 } from "../types";
 import {
   autoConnect,
+  autoConnectSelection,
   buildGroupNode,
   buildImageNode,
   buildPromptNode,
@@ -1023,6 +1024,21 @@ export default function CanvasPage({
     pushLog(`已自动补充 ${nextEdges.length - currentEdges.length} 条连线`);
   }, [pushLog, recordHistory, setEdges]);
 
+  /** 自动连线（仅选中）：与工具栏全图版同规则，但候选/新增边只限定在选中集合内，未选中节点不受影响。 */
+  const handleAutoConnectSelected = useCallback(() => {
+    const selected = selectedIdsRef.current;
+    if (!selected.size) return;
+    const currentEdges = edgesRef.current;
+    const nextEdges = autoConnectSelection(nodesRef.current, currentEdges, selected);
+    if (nextEdges.length === currentEdges.length) {
+      pushLog("所选节点中没有可自动连接的孤立节点");
+      return;
+    }
+    recordHistory();
+    setEdges(nextEdges);
+    pushLog(`已自动补充 ${nextEdges.length - currentEdges.length} 条连线（仅选中节点）`);
+  }, [pushLog, recordHistory, setEdges]);
+
   const handleHistoryImport = useCallback(async (path: string) => {
     try {
       const { imported, skipped } = await importHistoryAsset(path);
@@ -1356,7 +1372,7 @@ export default function CanvasPage({
       <div className="flex flex-wrap items-center gap-x-1 text-[10px] leading-tight text-neutral-400">
         <span className="font-medium text-neutral-500">画布</span>拖拽图片/按钮到画布放置（松开即落点新建） · 右键框选 · Ctrl+点击加选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · 左下角适应视图全览 · Ctrl+A 全选 · Ctrl+Z/Y 撤销恢复 · Delete 删除选中 · Ctrl+S 保存
         <span className="text-neutral-300">｜</span>
-        <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 选中后右上角可运行/整理/设路径/删除 · 双击图片放大预览 · 拖右下角拉伸
+        <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 选中后右上角可运行/整理/连线/设路径/删除 · 双击图片放大预览 · 拖右下角拉伸
         <span className="text-neutral-300">｜</span>
         <span className="font-medium text-neutral-500">连线</span>图片→提示词/图片组 · 图片组→提示词 · 提示词→图片（结果）；提示词仅一条入边，多图经图片组聚合
       </div>
@@ -1364,8 +1380,8 @@ export default function CanvasPage({
       {/* 画布 */}
       <div className="panel-card relative min-h-0 flex-1 overflow-hidden">
         {/* 选中操作栏：任意选中 ≥1 个节点即出现；「运行所选/设置输出路径」只作用于提示词卡片，
-            图片与图片组自动忽略（混合选区不误伤）；「自动整理」局部重排选中节点；「删除所选」作用于全部。
-            半透明毛玻璃样式：悬停时更实，平时不遮挡画布内容。 */}
+            图片与图片组自动忽略（混合选区不误伤）；「自动整理」局部重排选中节点；「自动连线」只补选中节点间的边；
+            「删除所选」作用于全部。半透明毛玻璃样式：悬停时更实，平时不遮挡画布内容。 */}
         {selectedCount >= 1 && (
           <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-white/50 bg-white/50 p-1 shadow-sm backdrop-blur-md transition-colors hover:bg-white/75">
             {selectedPromptCount > 0 && (
@@ -1381,10 +1397,18 @@ export default function CanvasPage({
             <button
               type="button"
               onClick={handleAutoLayout}
-              title="局部整理选中的节点，其余保持原位"
+              title="局部整理选中的节点，其余保持原位（同层提示词卡片按左上角标题从左到右）"
               className="nodrag btn-ghost !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
             >
               自动整理 ({selectedCount})
+            </button>
+            <button
+              type="button"
+              onClick={handleAutoConnectSelected}
+              title="只对选中的节点自动补齐明显连线，未选中节点不受影响"
+              className="nodrag btn-ghost !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
+            >
+              自动连线 ({selectedCount})
             </button>
             {selectedPromptCount > 0 && (
               <button

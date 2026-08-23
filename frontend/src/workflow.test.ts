@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoLayout, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, layoutPromptResults, layoutSelection, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoConnect, autoConnectSelection, autoLayout, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, layoutPromptResults, layoutSelection, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -239,6 +239,44 @@ describe("auto layout", () => {
     }
     expect(promptY).toBeGreaterThanOrEqual(40 + 180 + 60);
   });
+
+  it("orders prompt cards left-to-right by their top-left title in the same band", () => {
+    const withTitle = (id: string, title: string) => ({
+      ...promptNode(id),
+      data: { ...promptNode(id).data, title },
+    }) as WorkflowNode;
+    const shared = imageNode("shared");
+    const nodes = [shared, withTitle("p-b", "Beta"), withTitle("p-a", "Alpha"), withTitle("p-c", "Gamma")];
+    const edges = [edge("shared", "p-a"), edge("shared", "p-b"), edge("shared", "p-c")];
+
+    const arranged = autoLayout(nodes, edges);
+    const prompts = arranged
+      .filter((node) => node.type === "prompt")
+      .sort((a, b) => a.position.x - b.position.x);
+    const texts = prompts.map((node) => (node.type === "prompt" ? node.data.title : ""));
+    // 从左到右按标题升序：Alpha < Beta < Gamma
+    expect(texts).toEqual(["Alpha", "Beta", "Gamma"]);
+    expect(prompts[0].position.x).toBeLessThan(prompts[1].position.x);
+    expect(prompts[1].position.x).toBeLessThan(prompts[2].position.x);
+  });
+
+  it("defaults the title sort key for prompt cards without one", () => {
+    const withTitle = (id: string, title: string) => ({
+      ...promptNode(id),
+      data: { ...promptNode(id).data, title },
+    }) as WorkflowNode;
+    // 无标题卡片与标题卡片同层：缺省标题「提示词生成」参与排序，不抛异常、产出确定位置
+    const nodes = [
+      withTitle("p-a", "Alpha"),
+      { ...promptNode("p-b"), position: { x: 90, y: 0 } },
+    ];
+    const arranged = autoLayout(nodes, []);
+    const prompts = arranged.filter((node) => node.type === "prompt");
+
+    expect(prompts.length).toBe(2);
+    expect(prompts.every((n) => Number.isFinite(n.position.x))).toBe(true);
+    expect(new Set(prompts.map((n) => n.position.x)).size).toBe(2);
+  });
 });
 
 describe("auto layout complex connections", () => {
@@ -474,6 +512,59 @@ describe("auto connect", () => {
       ...existing,
       edge("group", "p2"),
     ]);
+  });
+});
+
+describe("auto connect selection", () => {
+  it("connects only selected orphan nodes, leaving unselected nodes untouched", () => {
+    const orphanA = { ...imageNode("a"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const promptB = { ...promptNode("b"), position: { x: 200, y: 400 } } as WorkflowNode;
+    const unselected = { ...imageNode("unselected"), position: { x: 900, y: 0 } } as WorkflowNode;
+
+    const result = autoConnectSelection(
+      [orphanA, promptB, unselected],
+      [],
+      new Set(["a", "b"]),
+    );
+
+    expect(result).toEqual([edge("a", "b")]);
+  });
+
+  it("connects nothing when the selection cannot form a pair", () => {
+    const image = { ...imageNode("image"), position: { x: 0, y: 0 } } as WorkflowNode;
+
+    const result = autoConnectSelection([image], [], new Set(["image"]));
+
+    expect(result).toEqual([]);
+  });
+
+  it("reuses existing edges and never adds edges touching unselected nodes", () => {
+    const image = { ...imageNode("image"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 0, y: 200 },
+      data: { name: "group", imageCount: 1, totalSize: 10 },
+    } as WorkflowNode;
+    const prompt = { ...promptNode("prompt"), position: { x: 0, y: 400 } } as WorkflowNode;
+    const existing = edge("image", "group");
+
+    // 选中 group + prompt：group 已有未选中图片入边，只补 group -> prompt
+    const result = autoConnectSelection(
+      [image, group, prompt],
+      [existing],
+      new Set(["group", "prompt"]),
+    );
+
+    expect(result).toEqual([existing, edge("group", "prompt")]);
+  });
+
+  it("returns edges unchanged when nothing is selected", () => {
+    const image = { ...imageNode("image"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const prompt = { ...promptNode("prompt"), position: { x: 0, y: 400 } } as WorkflowNode;
+    const existing = edge("image", "prompt");
+
+    expect(autoConnectSelection([image, prompt], [existing], new Set())).toEqual([existing]);
   });
 });
 
