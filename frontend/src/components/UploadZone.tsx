@@ -3,6 +3,7 @@ import { deleteRef, uploadRefs } from "../api";
 import { formatBytes } from "../format";
 import { isImageFile } from "../workflow";
 import type { RefItem } from "../types";
+import { ZoomModal } from "./WorkflowModals";
 
 interface UploadZoneProps {
   refs: RefItem[];
@@ -21,6 +22,8 @@ export default function UploadZone({ refs, onChange }: UploadZoneProps) {
   /** 上传中状态 / 上传失败的可见提示（不再静默） */
   const [pendingCount, setPendingCount] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  /** 双击缩略图放大预览（ZoomModal 与画布同组件、同注册表 URL，blob 占位亦可直显） */
+  const [zoom, setZoom] = useState<RefItem | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const refsRef = useRef(refs);
   refsRef.current = refs;
@@ -97,81 +100,90 @@ export default function UploadZone({ refs, onChange }: UploadZoneProps) {
         : "border-neutral-300 hover:border-brand hover:bg-brand/[0.03] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-brand)_8%,transparent)]";
 
   return (
-    <div
-      className={`${baseClasses} ${stateClasses}`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragging(true);
-      }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragging(false);
-        addFiles(e.dataTransfer.files);
-      }}
-      onClick={() => inputRef.current?.click()}
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          addFiles(e.target.files);
-          e.target.value = "";
+    <>
+      <div
+        className={`${baseClasses} ${stateClasses}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
         }}
-      />
-      {refs.length === 0 ? (
-        <p className="text-sm text-neutral-500">
-          拖拽图片到此处 / Ctrl+V 粘贴 / 点击添加 · 可多张
-        </p>
-      ) : (
-        <>
-          <p className="mb-2 text-xs text-neutral-400">
-            已选 {refs.length} 张参考图
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          addFiles(e.dataTransfer.files);
+        }}
+        onClick={() => inputRef.current?.click()}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        {refs.length === 0 ? (
+          <p className="text-sm text-neutral-500">
+            拖拽图片到此处 / Ctrl+V 粘贴 / 点击添加 · 可多张
           </p>
-          <ul className="flex flex-wrap justify-center gap-2">
-            {refs.map((ref, i) => {
-              const isRemoving = removing === (ref.id || ref.name);
-              return (
-                <li
-                  key={`${ref.name}-${i}`}
-                  className={`relative ${isRemoving ? "fade-out" : "pop-in"}`}
-                  onAnimationEnd={isRemoving ? () => finishRemove(ref) : undefined}
-                >
-                  <img
-                    src={ref.url}
-                    alt={ref.name}
-                    className="h-14 w-14 rounded-lg border border-neutral-200 object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeFile(ref);
-                    }}
-                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-700 text-[10px] leading-none text-white"
-                    aria-label={`移除 ${ref.name}`}
+        ) : (
+          <>
+            <p className="mb-2 text-xs text-neutral-400">
+              已选 {refs.length} 张参考图
+            </p>
+            <ul className="flex flex-wrap justify-center gap-2">
+              {refs.map((ref, i) => {
+                const isRemoving = removing === (ref.id || ref.name);
+                return (
+                  <li
+                    key={`${ref.name}-${i}`}
+                    className={`relative ${isRemoving ? "fade-out" : "pop-in"}`}
+                    onAnimationEnd={isRemoving ? () => finishRemove(ref) : undefined}
                   >
-                    x
-                  </button>
-                  <span
-                    className="absolute -bottom-4 left-0 max-w-[90px] truncate text-[10px] text-neutral-500"
-                    title={`${ref.name} · ${formatBytes(ref.size)}`}
-                  >
-                    {ref.name} · {formatBytes(ref.size)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-          {pendingCount > 0 && (
-            <p className="mt-2 text-[10px] text-neutral-400">上传中 {pendingCount} 张…</p>
-          )}
-          {uploadError && <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>}
-        </>
-      )}
-    </div>
+                    <img
+                      src={ref.url}
+                      alt={ref.name}
+                      title="双击放大"
+                      className="h-14 w-14 cursor-zoom-in rounded-lg border border-neutral-200 object-cover"
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setZoom(ref);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeFile(ref);
+                      }}
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-700 text-[10px] leading-none text-white"
+                      aria-label={`移除 ${ref.name}`}
+                    >
+                      x
+                    </button>
+                    <span
+                      className="absolute -bottom-4 left-0 max-w-[90px] truncate text-[10px] text-neutral-500"
+                      title={`${ref.name} · ${formatBytes(ref.size)}`}
+                    >
+                      {ref.name} · {formatBytes(ref.size)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {pendingCount > 0 && (
+              <p className="mt-2 text-[10px] text-neutral-400">上传中 {pendingCount} 张…</p>
+            )}
+            {uploadError && <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>}
+          </>
+        )}
+      </div>
+      {zoom && <ZoomModal imageUrl={zoom.url} name={zoom.name} onClose={() => setZoom(null)} />}
+    </>
   );
 }

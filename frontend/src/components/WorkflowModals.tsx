@@ -121,7 +121,8 @@ export function WorkflowLoadModal({
 /* ---------------- 放大预览：滚轮缩放 + 拖拽平移 + 适应窗口 ----------------
  * 状态收敛为一个 view 对象（zoom + pan），所有更新走同一 clampView 出口，
  * 缩放锚定指针位置（transform-origin 为图片中心时的精确补偿），放大后拖拽平移，
- * 双击复位 1:1，Esc / 点击遮罩关闭。缩放与夹紧的数学在 previewZoom.ts（纯函数，有单测）。 */
+ * 双击复位 1:1，Esc / 点击遮罩关闭。缩放与夹紧的数学在 previewZoom.ts（纯函数，有单测）。
+ * 图片直接以 imageUrl 显示（前端统一传注册表派生的 url，画布节点与经典表单共用本组件）。 */
 
 /** 滚轮缩放步进 */
 const ZOOM_STEP = 1.2;
@@ -132,11 +133,12 @@ interface PreviewView {
 }
 
 export function ZoomModal({
-  imagePath,
+  imageUrl,
   name,
   onClose,
 }: {
-  imagePath: string;
+  /** 可直接显示的完整图片 URL：画布与经典表单统一传注册表派生的 url（组件不再关心路径拼接） */
+  imageUrl: string;
   name: string;
   onClose: () => void;
 }) {
@@ -297,7 +299,7 @@ export function ZoomModal({
           <img
             ref={imageRef}
             data-zoom-image
-            src={`/api/image?path=${encodeURIComponent(imagePath)}`}
+            src={imageUrl}
             alt="预览"
             draggable={false}
             onLoad={(e) => {

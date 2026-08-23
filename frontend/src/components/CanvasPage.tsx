@@ -677,11 +677,12 @@ export default function CanvasPage({
   );
 
   /* ---------------- 图片双击动作：放大预览 ---------------- */
+  /** 画布与经典表单共用 ZoomModal，统一传注册表派生的完整 URL（node.data.url）；
+   *  缺失节点无 url，不弹预览（红框已提示）。 */
   const handleZoom = useCallback((nodeId: string) => {
     const node = nodesRef.current.find((n) => n.id === nodeId);
-    // 缺失节点无 absPath，不弹预览（红框已提示）
-    if (node?.type === "image" && node.data.absPath) {
-      setZoomImage(node.data.absPath);
+    if (node?.type === "image" && node.data.url) {
+      setZoomImage(node.data.url);
       setZoomName(node.data.name);
     }
   }, []);
@@ -1554,7 +1555,7 @@ export default function CanvasPage({
         />
       )}
       {zoomImage && (
-        <ZoomModal imagePath={zoomImage} name={zoomName} onClose={() => setZoomImage(null)} />
+        <ZoomModal imageUrl={zoomImage} name={zoomName} onClose={() => setZoomImage(null)} />
       )}
     </div>
   );

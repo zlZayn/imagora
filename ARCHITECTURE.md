@@ -69,7 +69,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 ### 2.3 前端 src/ 模块
 
-- `main.tsx` / `App.tsx` —— 入口与双模式外壳：经典表单 / 无限画布切换（`?mode=canvas` 直达），多窗口编号与主题色。
+- `main.tsx` / `App.tsx` —— 入口与双模式外壳：经典表单 / 无限画布切换（`?mode=canvas` 直达），多窗口编号与主题色；标题栏品牌区（logo+标题）3D 挤出 + 指针跟随见 8.4。
 - `api.ts` —— `/api/*` 请求封装，全部返回类型化；含 importSubmission（经典提交整图导入）。
 - `types.ts` —— 前后端类型契约（AppConfig / 任务快照 / 节点 / 边）。
 - `useGenerationTask.ts` —— 提交-轮询任务 hook：经典表单与画布共用，`submit/cancel/get/tasks/subscribe` 五个稳定成员。
@@ -333,7 +333,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 - **落点示意是纯 DOM 特效**：跟随光标的小胶囊（portal 到 body 的 fixed 元素），位置由 JS 直接写 transform——高频 dragover 移动不触发 React 渲染，只有拖拽起止等低频事件才改状态；文案/图标按意图区分（文件数量 / 新建类型），与画布光标同款品牌色加号图形，风格统一。
 - **一屏全览**：不用 ReactFlow 初始 `fitView` prop——空画布时它会被 React Flow 延迟到「第一个节点出现」才执行，导致新建/上传后视口突然放大跳动（已实测复现）。统一走 `fitCanvasToContent()`（自动整理/加载工作流/恢复存档后调用），`minZoom` 放宽到 0.05，fitView 显式允许缩到 0.02，节点再多也能全览。
 - **自定义光标**：画布空白区域用高对比十字准星 SVG data-URI 光标（细十字 + 白描边 + 中心白底品牌色加号，与拖拽落点示意同款图形，风格统一），平移切抓手；文件拖拽悬停时切系统 `copy` 光标；可拖出按钮（新建卡片/图片组）悬浮时给 grab 光标 + 品牌色呼吸光晕 + 拖拽图标（`.btn-draggable`）——拖入时可放感明确、可拖出暗示明显。
-- **预览弹窗**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。
+- **预览弹窗（ZoomModal，画布/经典表单共用）**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。入口两侧一致：画布图片节点双击或操作栏「预览大图」、经典表单参考图缩略图双击（UploadZone，单击缩略图不触发文件选择器）、结果图双击（Gallery，单击仍新窗口开原图——250ms 延时区分单击/双击，避免双击连开两个标签）。统一传注册表派生的完整 url，不传存储路径，组件内不再拼 `/api/image?path=`。
 - **选中操作栏**：选中 ≥1 个节点即出现「运行所选/自动整理/自动连线/设置输出路径/删除所选」，运行与设路径只作用于提示词卡片；自动连线只补选中节点之间的边（`workflow.ts:autoConnectSelection`，候选与新增边两端均限定在选中集合内），未选中节点不受影响；自动整理时未选中的参考图/组作为只读锚点参与对齐。
 
 ### 8.4 视觉与动效
@@ -344,6 +344,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 - **画布节点动画**：作用在内层 `.node-pop`（外层 `.react-flow__node` 是定位 transform，不可位移）；动画类是运行时标记，保存/加载时剥离，不持久化。
 - **动效与浮层堆叠**：transform 动画（fill both）让元素成为 stacking context，含浮层的卡片需 `relative` + 更高 z-index 才能盖过后续卡片。
 - **窗口主题色**：accent.ts 按窗口编号黄金角取色，运行时覆盖 `--color-brand`；favicon 同算法动态生成——多开一眼可辨；`--color-brand` 默认值是中性 slate 兜底（JS 加载前生效）。
+- **顶栏品牌区 3D（logo + 标题整体）**：借 React Bits DepthText 手法——`App.tsx` 顶部常量 `BRAND_LAYERS`（10）/ `BRAND_DEPTH`（1.5）生成 translateZ 挤出层（总深 ≈15px 克制偏浅），`brandLayerColor` 用 `color-mix` 让各层从正面色向深度色渐变（logo 正面 `var(--color-brand)` 随窗口主题色、标题正面 `#262626` = body 文字色，均不硬编码）；挤出层常驻 DOM 但被正面层（`z=0.6px`）盖住即平面态。指针跟踪（`pointerenter/move/leave` + rAF 平滑 0.14）只写 `--stage` 的 rotateX/rotateY：鼠标靠近才倾斜（±11°）显现立体并随光标摆动，离开回摆到平面。默认态无动画开销（停止 rAF 循环）；纯 JS 内联 transform 属直接操作型动效，不受全局 `prefers-reduced-motion` 降级影响；整体包 `<a target="_blank">` 点击打开远程仓库。
 
 ### 8.5 多开与继承
 
