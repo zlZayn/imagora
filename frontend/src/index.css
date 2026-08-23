@@ -124,6 +124,62 @@ body {
   animation: pulse-glow 1.6s ease-in-out infinite;
 }
 
+/* ============ 顶栏品牌区 3D 挤出 + 指针跟随（logo + Imagora 标题整体） ============
+ * 借 React Bits DepthText 的手法，颜色/字号等一概保持各自原始色：
+ * .brand-swing（perspective 景深，同 .depth-text）→
+ * .brand-swing__stage（preserve-3d 旋转层 + grid 叠层，同 .depth-text__stage）→
+ *   .brand-swing__layer×N（translateZ 逐层后退的挤出体，颜色由 JS 逐层写入）+
+ *   .brand-swing__face（z=0.6px 正面，logo=主题色 / 标题=body 文字色）。
+ * 挤出层常驻 DOM，默认被正面层完全盖住（平面态）；stage 角度由 App.tsx 指针跟踪
+ * 逻辑逐帧写入 transform：鼠标进入 → 向光标倾斜，挤出厚度随摆动显现，
+ * 移动 → 平滑跟随，离开 → 回摆到平面（3D 只出现在鼠标靠近时）。
+ * 属直接操作型动效（非周边自动动画），故不受系统「关闭动画效果」
+ * （prefers-reduced-motion）影响。 */
+.brand-swing {
+  display: inline-flex;
+  align-items: center;
+  perspective: 900px;
+  perspective-origin: 50% 48%;
+  cursor: pointer;
+}
+
+.brand-swing__stage {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  transform-style: preserve-3d;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+/* 挤出层 / 正面共用布局：grid 同格叠放 + 行内排列（logo 与标题横向 gap 不变） */
+.brand-swing__layer,
+.brand-swing__face {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem; /* 对应标题行原 gap-x-3 */
+  white-space: nowrap;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+/* 挤出层：绝对定位铺满 stage，translateZ 越负越深；层数越多/越深颜色越接近深度色 */
+.brand-swing__layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  filter: saturate(0.95) brightness(0.92);
+  pointer-events: none;
+}
+
+/* 正面层：最上层，保持各自原始色（logo=主题色，标题=body 文字色） */
+.brand-swing__face {
+  position: relative;
+  z-index: 1;
+  transform: translateZ(0.6px);
+}
+
 @keyframes enter-up {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }

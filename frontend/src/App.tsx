@@ -39,6 +39,30 @@ function openNewWindow() {
   window.open(url.pathname + url.search, "_blank");
 }
 
+/** 顶栏品牌区 3D 挤出参数（借 React Bits DepthText 手法）：
+ *  logo 与标题各自正面/深度配色，越深的层越接近深度色（progress^2 缓动 + color-mix）；
+ *  logo 正面跟随窗口主题色（var(--color-brand)），标题正面沿用 body 文字色，均不硬编码。 */
+const BRAND_LAYERS = 10; // 挤出层数（越小越省 DOM，也越浅）
+const BRAND_DEPTH = 1.5; // 层间距 px，挤出总深 ≈ BRAND_LAYERS × BRAND_DEPTH（≈15px，克制偏浅）
+const LOGO_FACE = "var(--color-brand)"; // logo 正面色（跟随窗口主题色）
+const LOGO_DEPTH = "var(--color-brand-dark)"; // logo 挤出深色（主题色加深）
+const TEXT_FACE = "#262626"; // 标题正面色（与 body 文字色一致）
+const TEXT_DEPTH = "#000000"; // 标题挤出深色
+
+/** DepthText 同款分层取色：index 1…BRAND_LAYERS，层越靠前越接近正面色 */
+function brandLayerColor(face: string, depth: string, index: number): string {
+  const progress = index / BRAND_LAYERS;
+  const eased = progress * progress;
+  const faceMix = Math.round((1 - eased) * 72 + 4);
+  return `color-mix(in srgb, ${face} ${faceMix}%, ${depth})`;
+}
+
+/** 挤出层索引：1（最前）…BRAND_LAYERS（最后，translateZ 最负 = 最深） */
+const brandLayers = Array.from({ length: BRAND_LAYERS }, (_, li) => BRAND_LAYERS - li);
+
+/** 品牌 logo 路径（与 favicon 同一图形，抽出便于多层复用） */
+const BRAND_LOGO_PATH = "M755.242667 396.224L643.84 168.32l-0.064-0.106667Q634.176 149.333333 612.373333 149.333333t-31.424 18.901334l-0.917333 1.813333v0.213333l-124.906667 255.488-0.064 0.128q-2.709333 6.037333 1.045334 11.52 3.541333 5.205333 9.92 5.290667h45.802666q8.682667 0.042667 12.501334-7.658667l88.106666-180.330666 60.906667 124.714666H597.76q-8.832-0.085333-12.586667 7.829334l-18.709333 38.506666-0.042667 0.128q-2.709333 6.037333 1.024 11.52 3.562667 5.205333 9.92 5.290667h146.389334q18.453333 0.405333 28.8-14.549333 10.581333-15.253333 2.688-31.914667z m-2.922667-237.44l-0.725333-1.557333q-3.776-7.872-12.565334-7.872h-21.290666l0.021333 0.021333h-24.085333q-6.506667 0.042667-10.069334 5.333333-3.754667 5.568-0.917333 11.648l130.474667 274.709334q3.754667 7.850667 12.565333 7.850666h45.376q6.357333 0.064 10.005333-5.184 3.818667-5.546667 1.024-11.626666l-0.064-0.106667-126.101333-265.557333-3.626667-7.658667zM471.466667 247.402667l3.626666-0.170667 0.213334-0.021333q15.808-1.557333 26.24-13.034667 10.56-11.690667 9.728-27.136-0.853333-15.402667-12.586667-25.962667Q487.125333 170.666667 471.253333 170.666667H208.106667l-4.778667 0.128h-0.128q-35.114667 1.877333-59.328 26.090666Q119.466667 221.290667 119.466667 254.954667v573.952l0.128 4.544v0.149333q2.026667 33.578667 27.84 56.618667Q173.034667 913.066667 208.213333 913.066667h607.701334l4.757333-0.128h0.128q35.114667-1.877333 59.328-26.090667 24.405333-24.405333 24.405333-58.069333V501.12l-0.213333-3.52v-0.234667q-1.706667-15.338667-13.994667-25.28-12.117333-9.792-27.946666-9.024-15.872 0.768-26.88 11.712-10.346667 10.261333-11.157334 24.234667l-4.757333 4.970667q-70.741333 72.768-140.992 116.053333-60.394667 37.226667-91.925333 37.226667-30.442667 0-69.717334-27.477334l-5.802666-4.096-0.106667 0.128q-1.066667-1.024-2.474667-2.048l-6.613333-4.864q-10.24-7.488-15.701333-11.392l-9.024-6.186666-0.085334-0.064q-14.72-9.621333-27.605333-14.890667-18.773333-7.722667-37.248-7.722667-52.992 0-212.565333 110.336V255.232l0.106666-1.514667q1.066667-6.314667 8.362667-6.314666H471.466667z m-129.493334 441.514666l0.021334-0.021333 5.717333-3.349333q51.733333-30.08 64.426667-30.272 3.178667 0.170667 6.058666 1.493333l0.213334 0.085333 4.565333 1.770667q3.093333 1.344 5.909333 3.456l41.984 30.165333Q530.56 733.866667 586.666667 733.866667q95.338667 0 237.610666-126.890667v221.504l-0.106666 1.514667q-1.066667 6.314667-8.362667 6.314666H208.426667l-1.706667-0.106666q-7.04-1.024-7.018667-7.445334v-44.821333q86.613333-62.08 142.250667-95.04z";
+
 /** 顶部标题区：logo + 标题 + 窗口徽章 + 配置徽章（当前 profile·模型，确认切换中转站生效）+ 模式切换 + 新窗口按钮 */
 function TitleBar({
   windowId,
@@ -57,18 +81,127 @@ function TitleBar({
   /** 当前 profile 的默认模型 */
   defaultModel?: string;
 }) {
+  /** 品牌区（logo + 标题整体）3D 指针跟随：借 React Bits DepthText 手法——
+   *  10 层挤出堆叠（见 BRAND_LAYERS / BRAND_DEPTH + .brand-swing__layer 样式）常驻 DOM，
+   *  默认平面（正面层盖住挤出层，无视觉变化）；鼠标接近时向光标方向倾斜，
+   *  挤出厚度随摆动显现、移动时平滑跟随、离开后回摆到平面。
+   *  只在悬停期写 transform（不碰颜色/字号），纯 JS 驱动（不受全局 reduced-motion
+   *  的 CSS 动画降级规则影响——指针跟随属直接操作型动效，非周边自动动画）。 */
+  const brandRootRef = useRef<HTMLAnchorElement | null>(null);
+  const brandStageRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const root = brandRootRef.current;
+    const stage = brandStageRef.current;
+    if (!root || !stage || typeof window === "undefined") return;
+    // 触屏 / 无 hover 设备不启用（DepthText 同款限制）
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+
+    const TILT = 11;
+    const SMOOTHING = 0.14;
+    const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+
+    let raf = 0;
+    let hovering = false;
+    // 默认平面：0 偏移；仅悬停期写入倾角，离开回摆到 0（3D 只在鼠标靠近时出现）
+    const current = { x: 0, y: 0 };
+    const target = { x: 0, y: 0 };
+
+    const apply = () => {
+      stage.style.transform = `rotateX(${current.x.toFixed(3)}deg) rotateY(${current.y.toFixed(3)}deg)`;
+    };
+    const tick = () => {
+      current.x += (target.x - current.x) * SMOOTHING;
+      current.y += (target.y - current.y) * SMOOTHING;
+      apply();
+      // 已回到静止位且不在悬停：停掉循环（省电，一轮 tick 即归位）
+      if (!hovering && Math.abs(current.x - target.x) < 0.01 && Math.abs(current.y - target.y) < 0.01) {
+        raf = 0;
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    const ensureLoop = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+
+    const onEnter = () => {
+      hovering = true;
+      ensureLoop();
+    };
+    const onMove = (e: PointerEvent) => {
+      const r = root.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      // 与 DepthText 同款归一：光标相对中心越偏，倾角越大
+      const nx = (e.clientX - (r.left + r.width / 2)) / (r.width * 0.7);
+      const ny = (e.clientY - (r.top + r.height / 2)) / (r.height * 0.7);
+      target.y = clamp(nx) * TILT;
+      target.x = -clamp(ny) * TILT;
+    };
+    const onLeave = () => {
+      hovering = false;
+      target.x = 0;
+      target.y = 0;
+      ensureLoop();
+    };
+
+    root.addEventListener("pointerenter", onEnter);
+    root.addEventListener("pointermove", onMove);
+    root.addEventListener("pointerleave", onLeave);
+    return () => {
+      root.removeEventListener("pointerenter", onEnter);
+      root.removeEventListener("pointermove", onMove);
+      root.removeEventListener("pointerleave", onLeave);
+      cancelAnimationFrame(raf);
+      stage.style.transform = "";
+    };
+  }, []);
+
   return (
     <header className="enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-200/70 pb-3">
-      <svg
-        width="30"
-        height="30"
-        viewBox="0 0 1024 1024"
-        fill="var(--color-brand)"
-        aria-hidden="true"
+      <a
+        href="https://github.com/zlZayn/imagora"
+        target="_blank"
+        rel="noreferrer"
+        ref={brandRootRef}
+        className="brand-swing"
+        title="打开远程仓库（GitHub）"
       >
-        <path d="M755.242667 396.224L643.84 168.32l-0.064-0.106667Q634.176 149.333333 612.373333 149.333333t-31.424 18.901334l-0.917333 1.813333v0.213333l-124.906667 255.488-0.064 0.128q-2.709333 6.037333 1.045334 11.52 3.541333 5.205333 9.92 5.290667h45.802666q8.682667 0.042667 12.501334-7.658667l88.106666-180.330666 60.906667 124.714666H597.76q-8.832-0.085333-12.586667 7.829334l-18.709333 38.506666-0.042667 0.128q-2.709333 6.037333 1.024 11.52 3.562667 5.205333 9.92 5.290667h146.389334q18.453333 0.405333 28.8-14.549333 10.581333-15.253333 2.688-31.914667z m-2.922667-237.44l-0.725333-1.557333q-3.776-7.872-12.565334-7.872h-21.290666l0.021333 0.021333h-24.085333q-6.506667 0.042667-10.069334 5.333333-3.754667 5.568-0.917333 11.648l130.474667 274.709334q3.754667 7.850667 12.565333 7.850666h45.376q6.357333 0.064 10.005333-5.184 3.818667-5.546667 1.024-11.626666l-0.064-0.106667-126.101333-265.557333-3.626667-7.658667zM471.466667 247.402667l3.626666-0.170667 0.213334-0.021333q15.808-1.557333 26.24-13.034667 10.56-11.690667 9.728-27.136-0.853333-15.402667-12.586667-25.962667Q487.125333 170.666667 471.253333 170.666667H208.106667l-4.778667 0.128h-0.128q-35.114667 1.877333-59.328 26.090666Q119.466667 221.290667 119.466667 254.954667v573.952l0.128 4.544v0.149333q2.026667 33.578667 27.84 56.618667Q173.034667 913.066667 208.213333 913.066667h607.701334l4.757333-0.128h0.128q35.114667-1.877333 59.328-26.090667 24.405333-24.405333 24.405333-58.069333V501.12l-0.213333-3.52v-0.234667q-1.706667-15.338667-13.994667-25.28-12.117333-9.792-27.946666-9.024-15.872 0.768-26.88 11.712-10.346667 10.261333-11.157334 24.234667l-4.757333 4.970667q-70.741333 72.768-140.992 116.053333-60.394667 37.226667-91.925333 37.226667-30.442667 0-69.717334-27.477334l-5.802666-4.096-0.106667 0.128q-1.066667-1.024-2.474667-2.048l-6.613333-4.864q-10.24-7.488-15.701333-11.392l-9.024-6.186666-0.085334-0.064q-14.72-9.621333-27.605333-14.890667-18.773333-7.722667-37.248-7.722667-52.992 0-212.565333 110.336V255.232l0.106666-1.514667q1.066667-6.314667 8.362667-6.314666H471.466667z m-129.493334 441.514666l0.021334-0.021333 5.717333-3.349333q51.733333-30.08 64.426667-30.272 3.178667 0.170667 6.058666 1.493333l0.213334 0.085333 4.565333 1.770667q3.093333 1.344 5.909333 3.456l41.984 30.165333Q530.56 733.866667 586.666667 733.866667q95.338667 0 237.610666-126.890667v221.504l-0.106666 1.514667q-1.066667 6.314667-8.362667 6.314666H208.426667l-1.706667-0.106666q-7.04-1.024-7.018667-7.445334v-44.821333q86.613333-62.08 142.250667-95.04z" />
-      </svg>
-      <h1 className="text-lg font-semibold tracking-wide">Imagora</h1>
+        <div ref={brandStageRef} className="brand-swing__stage">
+          {brandLayers.map((index) => (
+            <span
+              key={index}
+              className="brand-swing__layer"
+              style={{ transform: `translateZ(${-index * BRAND_DEPTH}px)` }}
+            >
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 1024 1024"
+                aria-hidden="true"
+                style={{ fill: brandLayerColor(LOGO_FACE, LOGO_DEPTH, index) }}
+              >
+                <path d={BRAND_LOGO_PATH} />
+              </svg>
+              <h1 className="text-lg font-semibold tracking-wide" style={{ color: brandLayerColor(TEXT_FACE, TEXT_DEPTH, index) }}>
+                Imagora
+              </h1>
+            </span>
+          ))}
+          <span className="brand-swing__face">
+            <svg
+              width="30"
+              height="30"
+              viewBox="0 0 1024 1024"
+              fill="var(--color-brand)"
+              aria-hidden="true"
+            >
+              <path d={BRAND_LOGO_PATH} />
+            </svg>
+            <h1 className="text-lg font-semibold tracking-wide">Imagora</h1>
+          </span>
+        </div>
+      </a>
       {windowId !== null && (
         <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
           窗口 #{windowId}
