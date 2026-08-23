@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { EXPECTED_CARDS, parsePromptContract, resolveCardSize, type PromptCardSpec } from "../promptContract";
+import { EXPECTED_CARDS, parsePromptImportFormat, resolveCardSize, type PromptCardSpec } from "../promptImportFormat";
 import type { SizeOption } from "../types";
 
 interface PromptImportModalProps {
@@ -11,13 +11,13 @@ interface PromptImportModalProps {
 }
 
 /**
- * 粘贴导入提示词卡片：把多模态模型的整段契约回复粘进来，实时解析预览。
+ * 粘贴导入提示词卡片：把多模态模型按导入格式输出的整段回复粘进来，实时解析预览。
  * 解析出的合法卡片逐条展示（标题 / 比例 / 匹配尺寸 / 正文预览），
  * 有问题的条目（缺 ratio、重复标题等）标红列出；确认后批量建卡。
  */
 export function PromptImportModal({ sizes, onConfirm, onClose }: PromptImportModalProps) {
   const [text, setText] = useState("");
-  const { cards, issues } = useMemo(() => parsePromptContract(text), [text]);
+  const { cards, issues } = useMemo(() => parsePromptImportFormat(text), [text]);
   const countMismatch = cards.length !== EXPECTED_CARDS;
 
   return (
@@ -28,7 +28,7 @@ export function PromptImportModal({ sizes, onConfirm, onClose }: PromptImportMod
       >
         <h3 className="mb-2 text-sm font-semibold">粘贴导入提示词卡片</h3>
         <p className="mb-3 text-xs text-neutral-500">
-          把模型回复整段粘贴到下方。契约格式：{"=== 标题 ==="} 行 + {"```text"} 围栏 + 块内首行 {"ratio: N:M"}。
+          把模型回复整段粘贴到下方。导入格式：{"=== 标题 ==="} 行 + {"```text"} 围栏 + 块内首行 {"ratio: N:M"}。
         </p>
         <textarea
           value={text}

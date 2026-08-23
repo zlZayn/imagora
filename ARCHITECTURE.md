@@ -48,7 +48,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `frontend/` | React SPA（见 2.3） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新：注册表+工作流迁移，默认只报告、`--apply` 才落盘备份校验） |
 | `tests/` | 后端 pytest（168 用例，纯函数 + 路由，不调上游） |
-| `docs/` | `prompt-contract.md`：提示词契约模板（发给多模态模型的输出格式规范） |
+| `docs/` | `prompt-import-format.md`：提示词导入格式（发给多模态模型的输出格式规范） |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流 |
 
@@ -75,7 +75,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `useGenerationTask.ts` —— 提交-轮询任务 hook：经典表单与画布共用，`submit/cancel/get/tasks/subscribe` 五个稳定成员。
 - `useCanvasRecovery.ts` —— 画布恢复：挂载时询问是否恢复最近存档，防抖自动保存。
 - `useCanvasDrop.tsx` —— 画布拖拽接线 hook（文件多图 / 工具栏按钮拖出共用）：落点示意显隐/定位/文案、拖放意图解析、window 级兜底守卫、工作区四事件；节点怎么建由回调上抛（onDropFiles/onDropNode），本 hook 不含业务。
-- 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/布局/连线/节点构建器/mergeSubmissionGraph 提交图合并）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案）、`promptContract.ts`（契约解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
+- 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/布局/连线/节点构建器/mergeSubmissionGraph 提交图合并）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案）、`promptImportFormat.ts`（导入格式解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
 - `components/`：`CanvasPage.tsx`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes.tsx`（三类节点组件）、`WorkflowModals.tsx`（保存/加载/放大预览弹窗）、`PromptImportModal.tsx`、`HistoryGallery.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`Select.tsx`、`FolderPicker.tsx`。
 
 ### 2.4 依赖规则
@@ -221,7 +221,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 节点落点只有两个来源，任何入口不得自带偏移：
 
-1. **视口中心（自动定位）**：所有创建入口（上传/历史导入/新建卡片/图片组/契约导入）统一以当前视口中心为落点：`getCreatePosition` 用 `screenToFlowPosition(容器中心)` 换算；连续创建由 `workflow.ts:staggerCreatePosition`（纯函数）阶梯错开（每次 +30px，视口移动后回到中心）。
+1. **视口中心（自动定位）**：所有创建入口（上传/历史导入/新建卡片/图片组/粘贴导入）统一以当前视口中心为落点：`getCreatePosition` 用 `screenToFlowPosition(容器中心)` 换算；连续创建由 `workflow.ts:staggerCreatePosition`（纯函数）阶梯错开（每次 +30px，视口移动后回到中心）。
 2. **拖拽落点（用户指定）**：文件或工具栏按钮（新建卡片/图片组）拖到画布松开的位置就是用户指定的画布坐标，直接 `screenToFlowPosition(松开点)` 落点，**不经** `getCreatePosition`；文件批次内多图仍由 `canvasEntriesToNodes` 从落点横向排开，节点构建走 `buildPromptNode/buildGroupNode`（与点击新建同一构建）。
 
 ## 6. 关键数据流
@@ -243,9 +243,9 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 `gen` 子命令：`resolve_size_with_ratio` + `build_default_output_path` → `generate_image` → 保存。
 
-### 6.4 提示词契约导入
+### 6.4 提示词粘贴导入
 
-多模态模型按 `docs/prompt-contract.md` 契约回复（`=== 标题 ===` + 代码围栏 + `ratio: N:M`）→ 「粘贴导入」弹窗内 `parsePromptContract` 实时解析（标题锚点切分 + 围栏配对 + 块内首行 ratio 校验，缺漏进 issues 标红，**绝不静默猜测**）→ 确认后 `buildPromptNodes` 批量建卡（尺寸按 label 匹配 `config.sizes`，找不到回退并标记）→ 视口中心平铺 + 入场动画。
+多模态模型按 `docs/prompt-import-format.md` 导入格式回复（`=== 标题 ===` + 代码围栏 + `ratio: N:M`）→ 「粘贴导入」弹窗内 `parsePromptImportFormat` 实时解析（标题锚点切分 + 围栏配对 + 块内首行 ratio 校验，缺漏进 issues 标红，**绝不静默猜测**）→ 确认后 `buildPromptNodes` 批量建卡（尺寸按 label 匹配 `config.sizes`，找不到回退并标记）→ 视口中心平铺 + 入场动画。
 
 ### 6.5 结果回流
 
@@ -416,7 +416,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_core_pathtrust.py` | 2 | 路径白名单（match_roots 双根/单根/跨盘不误伤） |
 | `frontend/src/workflow.test.ts` | 41 | 自动布局 / 复杂连接分层（结果图复用/多级链路/环容忍/结果块居中）/ 局部整理不漂移 / 动画类 / 连线约束 / 入边收集 / 落点阶梯 / 图片文件识别 / 节点构建器 |
 | `frontend/src/canvasDrop.test.ts` | 11 | 拖拽意图解析（文件/工具栏/放行+回退）/ 文件识别 / 数量统计 / 落点示意文案 |
-| `frontend/src/promptContract.test.ts` | 19 | 契约解析容错 / 尺寸映射 / 建卡 |
+| `frontend/src/promptImportFormat.test.ts` | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
 | `frontend/src/previewZoom.test.ts` | 5 | 缩放范围 / 平移夹紧 |
 | `frontend/src/canvasHistory.test.ts` | 2 | 撤销 / 恢复 / 新分支清空 |
 | `frontend/src/canvasStyles.test.ts` | 4 | 动效 CSS 选择器约束 |

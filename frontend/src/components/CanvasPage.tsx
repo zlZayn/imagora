@@ -68,7 +68,7 @@ import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 import HistoryGallery from "./HistoryGallery";
 import { PromptImportModal } from "./PromptImportModal";
 import { WorkflowLoadModal, WorkflowSaveModal, ZoomModal } from "./WorkflowModals";
-import { buildPromptNodes, type PromptCardSpec } from "../promptContract";
+import { buildPromptNodes, type PromptCardSpec } from "../promptImportFormat";
 
 /** 节点删除退场动画时长（与 .node-exiting 的 fade-out 0.2s 一致） */
 const FADE_DURATION = 200;
@@ -748,7 +748,7 @@ export default function CanvasPage({
     pushLog("已新建提示词卡片");
   }, [getCreatePosition, promptNodeDefaults, recordHistory, setNodes, pushLog]);
 
-  /** 契约导入建卡：解析出的合法卡片批量生成提示词节点（视口中心定位 + 入场动画） */
+  /** 粘贴导入建卡：解析出的合法卡片批量生成提示词节点（视口中心定位 + 入场动画） */
   const handleImportCards = useCallback(
     (cards: PromptCardSpec[]) => {
       if (!cards.length) return;
@@ -763,7 +763,7 @@ export default function CanvasPage({
         ).map((node, i) => withEnterAnim(node, nds.length + i)),
       ]);
       setShowImportModal(false);
-      pushLog(`已从契约导入 ${cards.length} 张提示词卡片`);
+      pushLog(`已从粘贴导入建卡 ${cards.length} 张提示词卡片`);
     },
     [config, defaultQuality, getCreatePosition, pushLog, recordHistory, setNodes],
   );

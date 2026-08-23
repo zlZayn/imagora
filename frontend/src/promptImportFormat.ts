@@ -1,6 +1,6 @@
-/** 提示词契约解析 —— 纯函数、零依赖
+/** 提示词导入格式解析 —— 纯函数、零依赖
  *
- * 契约格式（块式）：
+ * 导入格式（块式）：
  *   === 标题 ===
  *   ```text
  *   ratio: N:M
@@ -12,10 +12,10 @@
  * 块内首非空行为 ratio 元数据行。缺任何必需元素 → 进 issues，绝不静默猜测。
  */
 
-/** 模板预期的卡片数（与 docs/prompt-contract.md「恰好 10 块」对应） */
+/** 模板预期的卡片数（与 docs/prompt-import-format.md「恰好 10 块」对应） */
 export const EXPECTED_CARDS = 10;
 
-/** 契约中间结构：解析器 / 尺寸映射器 / 建卡构造器共用的唯一类型 */
+/** 导入格式中间结构：解析器 / 尺寸映射器 / 建卡构造器共用的唯一类型 */
 export interface PromptCardSpec {
   /** 标题行内容，如「轮播图1」 */
   title: string;
@@ -59,8 +59,8 @@ function containsFence(text: string): boolean {
   return text.split("\n").some((line) => FENCE_RE.test(line));
 }
 
-/** 契约文本 → 解析结果（标题锚点切分 + 段内首尾围栏配对） */
-export function parsePromptContract(text: string): PromptParseResult {
+/** 导入格式文本 → 解析结果（标题锚点切分 + 段内首尾围栏配对） */
+export function parsePromptImportFormat(text: string): PromptParseResult {
   // 预处理：去 BOM、统一换行
   const src = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const lines = src.split("\n");
@@ -187,7 +187,7 @@ export function resolveCardSize(ratio: string, sizes: SizeOption[]): ResolvedSiz
   return { value: match.value, fallback: false };
 }
 
-// ---- 建卡构造器：契约条目 → WorkflowNode 数组 ----
+// ---- 建卡构造器：导入格式条目 → WorkflowNode 数组 ----
 
 export interface PromptNodeBuildConfig {
   sizes: SizeOption[];

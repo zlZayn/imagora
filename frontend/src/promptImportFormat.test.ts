@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPromptNodes, parsePromptContract, resolveCardSize } from "./promptContract";
+import { buildPromptNodes, parsePromptImportFormat, resolveCardSize } from "./promptImportFormat";
 
-/** 构造一块契约文本（标题 + ```text 围栏 + ratio 行 + 正文） */
+/** 构造一块导入格式文本（标题 + ```text 围栏 + ratio 行 + 正文） */
 function block(title: string, ratio: string, prompt: string): string {
   return `=== ${title} ===\n\`\`\`text\nratio: ${ratio}\n\n${prompt}\n\`\`\`\n`;
 }
@@ -20,9 +20,9 @@ const SAMPLE_10 = [
   block("详情图5", "9:16", "closing shot, bottle centered with brand slogan, vertical banner"),
 ].join("\n");
 
-describe("parsePromptContract", () => {
+describe("parsePromptImportFormat", () => {
   it("解析标准 10 块：全部进 cards，标题/ratio/正文正确，无 issues", () => {
-    const result = parsePromptContract(SAMPLE_10);
+    const result = parsePromptImportFormat(SAMPLE_10);
     expect(result.cards).toHaveLength(10);
     expect(result.issues).toHaveLength(0);
     expect(result.skippedText).toEqual([]);
@@ -37,13 +37,13 @@ describe("parsePromptContract", () => {
   });
 
   it("单块最小合法性", () => {
-    const result = parsePromptContract(block("轮播图1", "1:1", "a bottle"));
+    const result = parsePromptImportFormat(block("轮播图1", "1:1", "a bottle"));
     expect(result.cards).toEqual([{ title: "轮播图1", ratio: "1:1", prompt: "a bottle" }]);
   });
 
   it("缺 ratio 行 → missing-ratio，块不进 cards", () => {
     const text = `=== 轮播图1 ===\n\`\`\`text\nsome prompt without ratio\n\`\`\`\n`;
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(0);
     expect(result.issues[0].code).toBe("missing-ratio");
     expect(result.issues[0].title).toBe("轮播图1");
@@ -52,26 +52,26 @@ describe("parsePromptContract", () => {
   it("ratio 行格式非法（abc / 1）→ bad-ratio", () => {
     const bad1 = `=== 轮播图1 ===\n\`\`\`text\nratio: abc\n\nbody\n\`\`\`\n`;
     const bad2 = `=== 轮播图1 ===\n\`\`\`text\nratio: 1\n\nbody\n\`\`\`\n`;
-    expect(parsePromptContract(bad1).issues[0].code).toBe("bad-ratio");
-    expect(parsePromptContract(bad2).issues[0].code).toBe("bad-ratio");
+    expect(parsePromptImportFormat(bad1).issues[0].code).toBe("bad-ratio");
+    expect(parsePromptImportFormat(bad2).issues[0].code).toBe("bad-ratio");
   });
 
   it("ratio 冒号后无空格也能解析（容错）", () => {
     const text = `=== 轮播图1 ===\n\`\`\`text\nratio:1:1\n\nbody\n\`\`\`\n`;
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards[0].ratio).toBe("1:1");
   });
 
   it("正文为空 → empty-prompt", () => {
     const text = `=== 轮播图1 ===\n\`\`\`text\nratio: 1:1\n\n\`\`\`\n`;
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(0);
     expect(result.issues[0].code).toBe("empty-prompt");
   });
 
   it("标题重复 → duplicate-title，保留首个、排除后续", () => {
     const text = `${block("轮播图1", "1:1", "first")}${block("轮播图1", "1:1", "second")}`;
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(1);
     expect(result.cards[0].prompt).toBe("first");
     expect(result.issues.some((i) => i.code === "duplicate-title")).toBe(true);
@@ -79,21 +79,21 @@ describe("parsePromptContract", () => {
 
   it("有标题无围栏 → missing-fence", () => {
     const text = `=== 轮播图1 ===\nplain text without fence\n`;
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(0);
     expect(result.issues[0].code).toBe("missing-fence");
   });
 
   it("全文无标题但存在围栏 → missing-header", () => {
     const text = "some intro\n```text\nratio: 1:1\n\nbody\n```\n";
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(0);
     expect(result.issues[0].code).toBe("missing-header");
   });
 
   it("块前解说文字 → 进 skippedText，块不受影响", () => {
     const text = `以下是 10 条提示词：\n${block("轮播图1", "1:1", "a bottle")}`;
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(1);
     expect(result.skippedText.some((s) => s.includes("以下是"))).toBe(true);
   });
@@ -101,7 +101,7 @@ describe("parsePromptContract", () => {
   it("CRLF + BOM 混合输入 → 正常解析", () => {
     const crlf = block("轮播图1", "1:1", "a bottle").replace(/\n/g, "\r\n");
     const text = `\uFEFF${crlf}`;
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(1);
     expect(result.cards[0].prompt).toBe("a bottle");
   });
@@ -110,14 +110,14 @@ describe("parsePromptContract", () => {
     const text =
       `=== 轮播图1 ===\n\`\`\`\nratio: 1:1\n\nbody A\n\`\`\`\n` +
       `=== 轮播图2 ===\n\`\`\`text\nratio: 1:1\n\nbody B\n\`\`\`\n`;
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(2);
     expect(result.cards.map((c) => c.prompt)).toEqual(["body A", "body B"]);
   });
 
   it("正文内嵌三反引号 → 取最后一个围栏闭合，正文保留", () => {
     const text = `=== 轮播图1 ===\n\`\`\`text\nratio: 1:1\n\nline with \`\`\` inside\nlast line\n\`\`\`\n`;
-    const result = parsePromptContract(text);
+    const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(1);
     expect(result.cards[0].prompt).toContain("inside");
     expect(result.cards[0].prompt).toContain("last line");
