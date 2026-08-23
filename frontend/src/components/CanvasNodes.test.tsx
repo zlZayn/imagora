@@ -5,11 +5,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ImageNode, PromptNode } from "./CanvasNodes";
+import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 
 afterEach(cleanup);
 
-function renderImageNode(onZoom = vi.fn(), onCanvasDoubleClick = vi.fn()) {
+function renderImageNode(onZoom = vi.fn(), onCanvasDoubleClick = vi.fn(), lod?: boolean) {
   const props = {
     id: "image-1",
     type: "image",
@@ -23,6 +23,7 @@ function renderImageNode(onZoom = vi.fn(), onCanvasDoubleClick = vi.fn()) {
       absPath: "C:\\sample.png",
     },
     selected: false,
+    lod,
     onZoom,
     onReplace: vi.fn(),
     onDelete: vi.fn(),
@@ -111,5 +112,90 @@ describe("PromptNode", () => {
     expect(pathInput.className).toContain("text-right");
     expect(pathInput.getAttribute("title")).toBe(outputDir);
     expect(document.querySelector(".react-flow__node-prompt")).toBeNull();
+  });
+});
+
+describe("LOD abstract mode", () => {
+  it("keeps the image thumbnail and double-click zoom but drops the action rail", () => {
+    const { onZoom } = renderImageNode(vi.fn(), vi.fn(), true);
+
+    expect(screen.getByAltText("sample.png")).toBeTruthy();
+    fireEvent.doubleClick(screen.getByAltText("sample.png"));
+    expect(onZoom).toHaveBeenCalledWith("image-1");
+    expect(screen.queryByTestId("image-action-rail")).toBeNull();
+    expect(screen.queryByRole("button", { name: "替换图片" })).toBeNull();
+  });
+
+  it("renders prompt cards as abstract read-only cards with status text", () => {
+    const props = {
+      id: "prompt-1",
+      type: "prompt",
+      data: {
+        prompt: "product photo",
+        title: "主图",
+        size: "1024x1024",
+        quality: "high",
+        outputDir: "output",
+        status: "done",
+        resultCount: 2,
+      },
+      selected: false,
+      lod: true,
+      onUpdate: vi.fn(),
+      onRun: vi.fn(),
+      onDelete: vi.fn(),
+      sizeOptions: [{ value: "1024x1024", label: "1:1" }],
+      qualityOptions: [{ value: "high", label: "high" }],
+    } as unknown as ComponentProps<typeof PromptNode>;
+
+    render(<ReactFlowProvider><PromptNode {...props} /></ReactFlowProvider>);
+
+    expect(screen.getByText("主图")).toBeTruthy();
+    expect(screen.getByText("完成 · 2 张")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "运行" })).toBeNull();
+  });
+
+  it("renders a group node without hover delete actions in LOD mode", () => {
+    const props = {
+      id: "group-1",
+      type: "group",
+      data: { name: "图片组", imageCount: 5, totalSize: 5 * 1024 * 1024 },
+      selected: false,
+      lod: true,
+      onDelete: vi.fn(),
+    } as unknown as ComponentProps<typeof GroupNode>;
+
+    render(<ReactFlowProvider><GroupNode {...props} /></ReactFlowProvider>);
+
+    expect(screen.getByText("5 张图")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "删除图片组" })).toBeNull();
+  });
+
+  it("renders a failed prompt status without leaking the failure message into the card", () => {
+    const props = {
+      id: "prompt-1",
+      type: "prompt",
+      data: {
+        prompt: "product photo",
+        size: "1024x1024",
+        quality: "high",
+        outputDir: "output",
+        status: "failed",
+        message: "secret provider detail",
+      },
+      selected: false,
+      lod: true,
+      onUpdate: vi.fn(),
+      onRun: vi.fn(),
+      onDelete: vi.fn(),
+      sizeOptions: [{ value: "1024x1024", label: "1:1" }],
+      qualityOptions: [{ value: "high", label: "high" }],
+    } as unknown as ComponentProps<typeof PromptNode>;
+
+    render(<ReactFlowProvider><PromptNode {...props} /></ReactFlowProvider>);
+
+    expect(screen.getByText("失败")).toBeTruthy();
+    expect(screen.queryByText("secret provider detail")).toBeNull();
   });
 });

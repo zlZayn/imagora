@@ -58,10 +58,55 @@ export function ImageNode({
   id,
   data,
   selected,
+  lod,
   onReplace,
   onDelete,
   onZoom,
-}: NodeProps<ImageFlowNode> & ImageNodeExtraProps) {
+}: NodeProps<ImageFlowNode> & ImageNodeExtraProps & { lod?: boolean }) {
+  // LOD 抽象模式：保留缩略图与双击放大，去掉右侧操作栏与引用行（节点多时轻量渲染）
+  if (lod) {
+    return (
+      <div
+        className={`panel-card relative !p-2 ${data.missing ? "!border-red-400" : ""} ${
+          selected ? "node-selected" : ""
+        }`}
+      >
+        <Handle
+          type="target"
+          position={Position.Top}
+          className="!rounded !border-0 !bg-brand/90"
+        />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          className="!rounded !border-0 !bg-brand"
+        />
+        {data.missing && (
+          <span className="absolute right-1 top-1 z-20 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
+            文件缺失
+          </span>
+        )}
+        <div
+          className="h-40 w-32 cursor-zoom-in overflow-hidden rounded bg-neutral-50"
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            onZoom(id);
+          }}
+        >
+          {data.url ? (
+            <img src={data.url} alt={data.name} className="block h-full w-full object-contain" draggable={false} />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center p-2 text-center text-[11px] text-red-500">
+              图片缺失
+            </div>
+          )}
+        </div>
+        <div className="mt-1 max-w-[128px] truncate text-[11px] text-neutral-600" title={data.name}>
+          {data.name}
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       className={`panel-card group relative !p-2 node-pop ${data.missing ? "!border-red-400" : ""} ${
@@ -129,8 +174,39 @@ interface GroupNodeExtraProps {
   onDelete: (nodeId: string) => void;
 }
 
-export function GroupNode({ id, data, selected, onDelete }: NodeProps<GroupFlowNode> & GroupNodeExtraProps) {
+export function GroupNode({
+  id,
+  data,
+  selected,
+  lod,
+  onDelete,
+}: NodeProps<GroupFlowNode> & GroupNodeExtraProps & { lod?: boolean }) {
   const mb = data.totalSize > 0 ? (data.totalSize / (1024 * 1024)).toFixed(1) : "0.0";
+  // LOD 抽象模式：去掉 hover 删除栏，只保留组本体（组节点本身已足够轻量）
+  if (lod) {
+    return (
+      <div
+        className={`relative w-56 rounded-lg bg-brand/5 !p-4 ${selected ? "node-selected" : ""}`}
+      >
+        <Handle
+          type="target"
+          position={Position.Top}
+          className="!rounded !border-0 !bg-brand/90"
+        />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          className="!rounded !border-0 !bg-brand"
+        />
+        <div className="py-2 text-center">
+          <div className="text-xl font-semibold leading-tight text-brand-dark">
+            {data.imageCount} 张图
+          </div>
+          <div className="mt-1 text-base text-neutral-500">{mb} MB</div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       className={`group relative w-56 rounded-lg bg-brand/5 !p-4 node-pop ${selected ? "node-selected" : ""}`}
@@ -210,19 +286,73 @@ function StatusLight({ data }: { data: CanvasPromptNodeData }) {
   );
 }
 
+/** LOD 抽象模式的提示词状态摘要：居中大字展示；title 带完整详情 */
+function promptStatusSummary(data: CanvasPromptNodeData): { text: string; detail: string; className: string } {
+  switch (data.status) {
+    case "queued":
+      return { text: "排队中", detail: "排队中", className: "text-amber-500" };
+    case "running":
+      return {
+        text: generatingLabel(data.elapsed ?? 0),
+        detail: generatingLabel(data.elapsed ?? 0),
+        className: "animate-pulse text-brand",
+      };
+    case "done":
+      return {
+        text: `完成 · ${data.resultCount ?? 0} 张`,
+        detail: `完成 · ${data.resultCount ?? 0} 张`,
+        className: "text-green-600",
+      };
+    case "failed":
+      return { text: "失败", detail: data.message ? `失败：${data.message}` : "失败", className: "text-red-500" };
+    default:
+      return { text: "就绪", detail: "就绪", className: "text-neutral-400" };
+  }
+}
+
 export const PromptNode = memo(function PromptNode({
   id,
   data,
   selected,
+  lod,
   onUpdate,
   onRun,
   onDelete,
   sizeOptions,
   qualityOptions,
-}: PromptNodeProps) {
+}: PromptNodeProps & { lod?: boolean }) {
   const running = data.status === "running";
   const queued = data.status === "queued";
   const busy = running || queued;
+  // LOD 抽象模式：标题大字 + 状态居中，不可编辑、无运行按钮；保留连接把手与拖拽
+  if (lod) {
+    const summary = promptStatusSummary(data);
+    return (
+      <div
+        className={`relative w-56 rounded-lg bg-white/85 !p-3 shadow-sm ${selected ? "node-selected" : ""}`}
+      >
+        <Handle
+          type="target"
+          position={Position.Top}
+          className="!rounded !border-0 !bg-brand/90"
+        />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          className="!rounded !border-0 !bg-brand"
+        />
+        <div
+          className="truncate text-center text-lg font-semibold leading-tight text-brand-dark"
+          title={data.title ?? "提示词生成"}
+        >
+          {data.title ?? "提示词生成"}
+        </div>
+        <div className={`mt-2 truncate text-center text-sm font-medium ${summary.className}`} title={summary.detail}>
+          {summary.text}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={`panel-card group relative !w-[380px] min-w-0 !p-3 node-pop ${selected ? "node-selected" : ""}`}>
       {/* 顶部接收参考图，底部输出生成结果。 */}

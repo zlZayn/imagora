@@ -75,6 +75,11 @@ const FADE_DURATION = 200;
 /** fitView 允许的最小缩放：画布节点很多时仍能一屏全览（低于 ReactFlow minZoom 属性，仅 fitView 生效） */
 const MIN_FIT_ZOOM = 0.02;
 
+/** LOD 抽象模式缩放阈值：缩小到 LOD_IN_ZOOM 以下进入抽象渲染，放大到 LOD_OUT_ZOOM 以上恢复完整渲染。
+ *  两值之间是迟滞带（0.5~0.65），避免在阈值附近反复缩放时抖动切换。 */
+const LOD_IN_ZOOM = 0.5;
+const LOD_OUT_ZOOM = 0.65;
+
 /** 工具栏统一样式按钮；dragStart 存在时按钮可拖出（拖到画布松开即新建，点击仍走 onClick） */
 function ToolbarButton({
   onClick,
@@ -151,6 +156,24 @@ export default function CanvasPage({
   const setCanvasZoom = useCallback((zoom: number) => {
     canvasRef.current?.style.setProperty("--canvas-zoom", String(zoom));
   }, []);
+  /** LOD 抽象模式：缩小视图后节点降级为轻量卡片（图片仍可双击放大、连线动画静止、不可编辑），
+   *  迟滞切换防抖动；只影响渲染，拖拽/选中/连线等基础交互不变 */
+  const [lod, setLod] = useState(false);
+  const lodRef = useRef(false);
+  const handleViewportMove = useCallback(
+    (_event: unknown, viewport: { zoom: number }) => {
+      setCanvasZoom(viewport.zoom);
+      const z = viewport.zoom;
+      if (!lodRef.current && z < LOD_IN_ZOOM) {
+        lodRef.current = true;
+        setLod(true);
+      } else if (lodRef.current && z > LOD_OUT_ZOOM) {
+        lodRef.current = false;
+        setLod(false);
+      }
+    },
+    [setCanvasZoom],
+  );
   /** 节点/边的最新引用：回调经 ref 读取，避免 useCallback 依赖 nodes/edges
    *  导致 nodeTypes 每次拖拽重建 -> 全节点重渲染闪烁 */
   const nodesRef = useRef<WorkflowNode[]>(nodes);
@@ -1258,6 +1281,7 @@ export default function CanvasPage({
       image: (props: object) => (
         <ImageNode
           {...(props as React.ComponentProps<typeof ImageNode>)}
+          lod={lod}
           onReplace={handleReplaceImage}
           onDelete={handleDeleteNode}
           onZoom={handleZoom}
@@ -1266,12 +1290,14 @@ export default function CanvasPage({
       group: (props: object) => (
         <GroupNode
           {...(props as React.ComponentProps<typeof GroupNode>)}
+          lod={lod}
           onDelete={handleDeleteNode}
         />
       ),
       prompt: (props: object) => (
         <PromptNode
           {...(props as React.ComponentProps<typeof PromptNode>)}
+          lod={lod}
           onRun={handleRun}
           onUpdate={handleNodeUpdate}
           onDelete={handleDeleteNode}
@@ -1281,6 +1307,7 @@ export default function CanvasPage({
       ),
     }),
     [
+      lod,
       handleRun,
       handleNodeUpdate,
       handleDeleteNode,
@@ -1442,14 +1469,19 @@ export default function CanvasPage({
           onNodeMouseLeave={onNodeMouseLeave}
           onNodeDragStart={recordHistory}
           onSelectionChange={onSelectionChange}
-          onMove={(_event, viewport) => setCanvasZoom(viewport.zoom)}
+          onMove={handleViewportMove}
           onInit={(instance) => {
             rfInstanceRef.current = instance;
             setCanvasZoom(instance.getViewport().zoom);
+            lodRef.current = instance.getViewport().zoom < LOD_IN_ZOOM;
+            setLod(lodRef.current);
           }}
           minZoom={0.05}
           maxZoom={2}
-          defaultEdgeOptions={{ animated: true }}
+          // LOD 抽象模式：连线动画静止（省逐帧重排）；完整模式保持流动
+          defaultEdgeOptions={{ animated: !lod }}
+          // 视口虚拟化：只渲染可视区域的节点，节点多时拖拽/平移不卡
+          onlyRenderVisibleElements
           deleteKeyCode={null}
           selectionKeyCode={null}
           // 显式启用 Ctrl(Windows)/Cmd(Mac)+点击多选：React Flow 默认 multiSelectionKeyCode='Meta'
