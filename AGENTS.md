@@ -2,7 +2,7 @@
 
 > **本文件是自维护文档**：每次工作完成后，当前会话的执行者必须就地更新本文件（当前工作、验证状态、待办、已知问题），保持与代码同步。文档滞后即技术债，下一个 agent 接手时先读这里。
 >
-> **放置约定**：本文件固定放在项目根目录 `/workspace/AGENTS.md`，被主流 AI 编程 agent（Claude Code / Cursor / Codex CLI / Windsurf / Copilot / Aider / Devin / DSH / OpenCode 等）在启动时自动发现并注入上下文，无需额外配置。统一维护这一份即可，不再使用 `.omo/CONTEXT.md`（已废弃）。
+> **放置约定**：本文件固定放在项目根目录（与 `README.md` / `ARCHITECTURE.md` 同级），被主流 AI 编程 agent（Claude Code / Cursor / Codex CLI / Windsurf / Copilot / Aider / Devin / DSH / OpenCode 等）在启动时自动发现并注入上下文，无需额外配置。统一维护这一份即可，不再使用 `.omo/CONTEXT.md`（已废弃）。
 
 ***
 
