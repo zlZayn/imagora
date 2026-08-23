@@ -158,6 +158,8 @@ describe("LOD abstract mode", () => {
     const card = screen.getByText("主图").parentElement!;
     expect(card.className).toContain("!w-[380px]");
     expect(card.className).toContain("min-h-[320px]");
+    expect(screen.getByText("主图").className).toContain("text-3xl");
+    expect(screen.getByText("完成 · 2 张").className).toContain("text-xl");
   });
 
   it("renders a group node without hover delete actions in LOD mode", () => {

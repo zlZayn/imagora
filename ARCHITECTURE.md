@@ -331,7 +331,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 8.4 视觉与动效
 
 - **动画类统一收敛**在 `index.css`，组件只引用类名不写内联动画；只动 transform/opacity（GPU 合成），缓动统一 easeOutQuint；`prefers-reduced-motion` 时全部降级瞬时。
-- **LOD 抽象渲染（节点多不卡）**：`CanvasPage` 按缩放阈值切换（进入 0.35 / 恢复 0.5，迟滞防抖动）——抽象模式下图片节点保留缩略图与双击预览、去掉操作栏；提示词卡片只渲染大字标题 + 居中状态摘要（`CanvasNodes.tsx:promptStatusSummary`，不可编辑、无运行按钮）；分组节点去掉 hover 操作栏；`defaultEdgeOptions.animated` 关闭（连线动画静止）；React Flow 开启 `onlyRenderVisibleElements` 视口虚拟化。抽象只影响渲染，节点拖拽/选中/连线把手等基础交互不变。阈值常量 `LOD_IN_ZOOM` / `LOD_OUT_ZOOM`，后续可按体感微调。
+- **LOD 抽象渲染（节点多不卡）**：`CanvasPage` 按缩放阈值切换（进入 0.1 / 恢复 0.2，迟滞防抖动）——抽象模式下图片节点保留缩略图与双击预览、去掉操作栏；提示词卡片只渲染大字标题 + 居中状态摘要（`CanvasNodes.tsx:promptStatusSummary`，不可编辑、无运行按钮）；分组节点去掉 hover 操作栏；`defaultEdgeOptions.animated` 关闭（连线动画静止）；React Flow 开启 `onlyRenderVisibleElements` 视口虚拟化。抽象只影响渲染，节点拖拽/选中/连线把手等基础交互不变。阈值常量 `LOD_IN_ZOOM` / `LOD_OUT_ZOOM`，后续可按体感微调。
 - **transition 约束**：只作用于 border-color/box-shadow/opacity，**禁用 `transition-all`**——否则 textarea 拉伸等交互被尺寸插值拖慢（曾误判为性能问题，实为 CSS 插值）。唯一例外：连线路径的 `stroke/stroke-width` 过渡（hover 亮起延迟，见 9.4 第 2 条）。
 - **画布节点动画**：作用在内层 `.node-pop`（外层 `.react-flow__node` 是定位 transform，不可位移）；动画类是运行时标记，保存/加载时剥离，不持久化。
 - **动效与浮层堆叠**：transform 动画（fill both）让元素成为 stacking context，含浮层的卡片需 `relative` + 更高 z-index 才能盖过后续卡片。

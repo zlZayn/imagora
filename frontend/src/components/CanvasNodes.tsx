@@ -345,12 +345,12 @@ export const PromptNode = memo(function PromptNode({
           className="!rounded !border-0 !bg-brand"
         />
         <div
-          className="max-w-full truncate text-center text-2xl font-semibold leading-tight text-brand-dark"
+          className="max-w-full truncate text-center text-3xl font-semibold leading-tight text-brand-dark"
           title={data.title ?? "提示词生成"}
         >
           {data.title ?? "提示词生成"}
         </div>
-        <div className={`max-w-full truncate text-center text-lg font-medium ${summary.className}`} title={summary.detail}>
+        <div className={`max-w-full truncate text-center text-xl font-medium ${summary.className}`} title={summary.detail}>
           {summary.text}
         </div>
       </div>
