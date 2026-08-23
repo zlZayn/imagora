@@ -15,7 +15,7 @@ AI 生图工作台：OpenAI 兼容接口，文生图 / 图生图一体。面向�
 | 无限画布 | 图片 / 提示词编排，连线即参考，结果回流迭代（见「画布工作流」） |
 | 提示词粘贴导入 | 多模态模型按格式返回整段提示词，粘入画布批量建卡 |
 
-> 提示词导入格式（发给多模态模型的输出规范）见 [docs/prompt-import-format.md](docs/prompt-import-format.md)。
+> 提示词导入格式（发给多模态模型的输出规范）见 [docs/prompt-import-format.md](docs/prompt-import-format.md)；电商商品图专用模板（固定轮播/详情顺序）见 [docs/ecom-prompt-import-format.md](docs/ecom-prompt-import-format.md)。
 
 ## 快速开始
 

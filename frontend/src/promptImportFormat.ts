@@ -10,14 +10,12 @@
  *
  * 解析策略：按标题锚点切分行段；段内取第一个围栏为开、最后一个围栏为闭；
  * 块内首非空行为 ratio 元数据行。缺任何必需元素 → 进 issues，绝不静默猜测。
+ * 块数量不设上限——通用工具，任意多卡片都能导入。
  */
-
-/** 模板预期的卡片数（与 docs/prompt-import-format.md「恰好 10 块」对应） */
-export const EXPECTED_CARDS = 10;
 
 /** 导入格式中间结构：解析器 / 尺寸映射器 / 建卡构造器共用的唯一类型 */
 export interface PromptCardSpec {
-  /** 标题行内容，如「轮播图1」 */
+  /** 标题行内容，如「示例图1」 */
   title: string;
   /** 元数据行解析出的比例，如 "1:1" */
   ratio: string;

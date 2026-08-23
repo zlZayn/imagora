@@ -16,6 +16,7 @@
 * **项目**：AI 生图工作台。FastAPI 单端口服务（`server.py` + `core/`）托管 React SPA（`frontend/`），唯一外部依赖是 `core/api.py` 调用的上游生图 API；本地单机工具，产物全落 `output/`（git 忽略）。
 * **存储**（详见 ARCHITECTURE.md 2.2 / 5.5）：`.assets/` 资产注册表（v2，内容 sha1 去重，kind=canvas/result/ref）+ `workflows/` 工作流 + `submissions/` 提交快照 + `logs/generation.jsonl` 账本；图片节点只存 registryId，路径由 `resolve_asset` 实时重建。
 * **CLI 与 web 对等**：`main.py` 五个子命令 `ui`/`menu`/`batch`/`gen`/`config`；`gen` 与网页表单完全对等，资产旁路统一走 `graphstore.persist_submission_assets`（server / CLI 共用，不两端分叉）。
+* **提示词粘贴导入**：解析器 `parsePromptImportFormat` 数量不设上限、不校验固定数（仅格式错误进 issues 标红），弹窗只显示「识别 N 张」；通用格式规范见 `docs/prompt-import-format.md`，电商专用模板（固定轮播/详情批次）见 `docs/ecom-prompt-import-format.md`。
 
 ## 验证状态（当前快照，Windows / Python 3.12.10 / ruff 0.16.2）
 
@@ -38,4 +39,4 @@
 
 ## 历史
 
-轮次记录不留在本文档（防流水账），见 `git log`。格式演进：8-13 v1→v2 迁移雏形 → 8-20 存储统一 + 目录改名 + dry-run 预检 → 8-23 CLI 全量功能 + 资产旁路公共函数 → 8-23 Windows 平台验证 + ruff 清理 + 文档职责重构。
+轮次记录不留在本文档（防流水账），见 `git log`。格式演进：8-13 v1→v2 迁移雏形 → 8-20 存储统一 + 目录改名 + dry-run 预检 → 8-23 CLI 全量功能 + 资产旁路公共函数 → 8-23 Windows 平台验证 + ruff 清理 + 文档职责重构 → 8-23 粘贴导入去数量硬编码（双文档模板拆分）+ 架构文档同步清洗。

@@ -48,7 +48,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `frontend/` | React SPA（见 2.3） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新：注册表+工作流迁移，默认只报告、`--apply` 才落盘备份校验） |
 | `tests/` | 后端 pytest（204 用例，纯函数 + 路由，不调上游） |
-| `docs/` | `prompt-import-format.md`：提示词导入格式（发给多模态模型的输出格式规范） |
+| `docs/` | `prompt-import-format.md`（通用导入格式规范）+ `ecom-prompt-import-format.md`（电商专用模板，固定轮播/详情批次） |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流 |
 
