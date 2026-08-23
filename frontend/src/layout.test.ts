@@ -375,6 +375,53 @@ describe("layout anchors", () => {
   });
 });
 
+describe("layout balancing", () => {
+  it("centers selected bands inside a wide selection box", () => {
+    const a = { ...imageNode("a"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const b = { ...imageNode("b"), position: { x: 1000, y: 0 } } as WorkflowNode;
+    const nodes = [a, b];
+
+    const arranged = layoutSelection(nodes, [], new Set(["a", "b"]));
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    // 选中包围盒 0..1144，中心 572；两图一块（宽 304）应居中于 572
+    const blockCenter = (center(byId.get("a")!) + center(byId.get("b")!)) / 2;
+    expect(Math.abs(blockCenter - 572)).toBeLessThanOrEqual(1);
+    expect(byId.get("a")!.position.y).toBe(byId.get("b")!.position.y);
+  });
+
+  it("keeps the left edge when the band is wider than the selection box", () => {
+    const a = { ...imageNode("a"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const b = { ...imageNode("b"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const nodes = [a, b];
+
+    const arranged = layoutSelection(nodes, [], new Set(["a", "b"]));
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    // 内容宽 304 ≥ 包围盒宽 304：贴左缘（相对 0），不向左漂移
+    expect(byId.get("a")!.position.x).toBe(0);
+    expect(byId.get("b")!.position.x).toBe(160);
+  });
+
+  it("aligns a selected prompt card to the center of its selection instead of drifting far right", () => {
+    // 用户场景：画布左侧放图/组，右侧很远放卡片；选中全部整理后应整体居中
+    const g = { ...groupNode("g"), position: { x: 0, y: 200 } } as WorkflowNode;
+    const p = { ...promptNode("p"), position: { x: 1600, y: 600 } } as WorkflowNode;
+    const img = { ...imageNode("img"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const nodes = [g, p, img];
+    const edges = [edge("img", "g"), edge("g", "p")];
+
+    const arranged = layoutSelection(nodes, edges, new Set(["g", "p", "img"]));
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    // 三条链整体居中：包围盒 0..1900，中心 950；层0 链宽 144（img）
+    const mid = 950;
+    expect(Math.abs(center(byId.get("img")!) - mid)).toBeLessThanOrEqual(144);
+    expect(Math.abs(center(byId.get("g")!) - mid)).toBeLessThanOrEqual(224);
+    expect(Math.abs(center(byId.get("p")!) - mid)).toBeLessThanOrEqual(300);
+  });
+});
+
 describe("layout bipartite mesh", () => {
   it("disperses source images by downstream centroid instead of left-aligning them", () => {
     const a = imageNode("a");

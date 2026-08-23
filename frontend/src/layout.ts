@@ -124,12 +124,14 @@ interface LayoutRun {
   /** 需要输出位置的节点 id（其余为只读锚点） */
   moves: ReadonlySet<string>;
   origin?: { x: number; y: number };
+  /** 选中包围盒宽度（origin 模式的层平衡锚）：每层内容在其中居中，内容超宽才贴左缘 */
+  boundsWidth?: number;
 }
 
 /** 布局一次：分层 → 逐层放置三趟（forward → backward 层 0 → forward 收敛）。
  *  返回值只改写 moves 内节点的 position；锚点与无关节点原样返回。 */
 function runLayout(run: LayoutRun): WorkflowNode[] {
-  const { nodes, edges, moves, origin } = run;
+  const { nodes, edges, moves, origin, boundsWidth } = run;
   if (!nodes.length) return nodes;
   const baseX = origin ? 0 : LAYOUT.leftMargin;
   const baseY = origin ? 0 : LAYOUT.topMargin;
@@ -264,6 +266,19 @@ function runLayout(run: LayoutRun): WorkflowNode[] {
       cursorX = x - LAYOUT.nodeGap;
       i = j + 1;
     }
+    // 层平衡：内容在选中包围盒内居中（宽于包围盒才贴左缘，不向左超界、不产生二次漂移）
+    if (boundsWidth !== undefined) {
+      const minX = Math.min(...movable.map((node) => positions.get(node.id)!.x));
+      const maxX = Math.max(...movable.map((node) => positions.get(node.id)!.x + nodeSize(node).width));
+      const bandWidth = maxX - minX;
+      if (bandWidth < boundsWidth) {
+        const dx = baseX + boundsWidth / 2 - (minX + bandWidth / 2);
+        for (const node of movable) {
+          const pos = positions.get(node.id)!;
+          positions.set(node.id, { x: pos.x + dx, y: pos.y });
+        }
+      }
+    }
   };
 
   // 2) forward：浅 → 深（层 0 无前驱，先按左基准展开，随后 backward 重排）
@@ -319,12 +334,14 @@ export function layoutSelection(
   }
   const anchors = nodes.filter((node) => anchorIds.has(node.id));
   const minX = Math.min(...selected.map((node) => node.position.x));
+  const maxX = Math.max(...selected.map((node) => node.position.x + nodeSize(node).width));
   const minY = Math.min(...selected.map((node) => node.position.y));
   const arranged = runLayout({
     nodes: [...selected, ...anchors],
     edges: boundsEdges,
     moves: selectedIds,
     origin: { x: minX, y: minY },
+    boundsWidth: Math.max(maxX - minX, 1),
   });
   const positioned = new Map(arranged.map((node) => [node.id, node]));
   return nodes.map((node) => positioned.get(node.id) ?? node);
