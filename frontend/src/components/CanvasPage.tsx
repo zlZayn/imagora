@@ -54,10 +54,7 @@ import {
   computeCounts,
   extractAnimClasses,
   isImageFile,
-  layoutPromptResults,
-  layoutSelection,
   mergeSubmissionGraph,
-  nodeSize,
   staggerCreatePosition,
   stripAnimClasses,
   updatePromptNode,
@@ -65,6 +62,7 @@ import {
   withEnterAnim,
   workflowToCanvas,
 } from "../workflow";
+import { layoutPromptResults, layoutSelection, nodeSize } from "../layout";
 import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 import HistoryGallery from "./HistoryGallery";
 import { PromptImportModal } from "./PromptImportModal";

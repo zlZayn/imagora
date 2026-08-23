@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoConnectSelection, autoLayout, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, layoutPromptResults, layoutSelection, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoLayout, layoutPromptResults, layoutSelection } from "./layout";
+import { autoConnect, autoConnectSelection, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
