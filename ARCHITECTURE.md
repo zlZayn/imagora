@@ -405,13 +405,13 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-后端 `uv run pytest`（204 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，94 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
+后端 `uv run pytest`（204 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，117 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
 | `tests/test_core_api.py` | 13 | 尺寸解析 / 默认输出路径（并发唯一）/ 错误格式化 |
 | `tests/test_core_batch.py` | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
-| `tests/test_core_config.py` | 14 | API Key（环境变量 / 跟随 profile / 缺失报错）/ profile 解析（优先级 / 缺失回退 / 白名单校验）/ RATIOS 表结构 |
+| `tests/test_core_config.py` | 15 | API Key（环境变量 / 跟随 profile / 缺失报错）/ profile 解析（优先级 / 缺失回退 / 白名单校验）/ RATIOS 表结构 |
 | `tests/test_server_helpers.py` | 22 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 |
 | `tests/test_core_logging.py` | 8 | 日志写入 / 并发串行 / 路径相对化 |
 | `tests/test_core_history.py` | 7 | 历史读取 / 坏行容忍 / 筛选 / backfill（报告不写·补齐备份·幂等·跳过无法反查·坏行保留） |
@@ -424,7 +424,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_main_process.py` | 4 | 端口探测 / 祖先链回溯 |
 | `tests/test_main_cli.py` | 25 | CLI gen 子命令全链路：`_validate_gen_args` 必填/互斥/取值校验 / `_resolve_output` 文件路径/目录/后缀解析 / `handle_gen_command` 文生图+图生图+多参考图+失败+`--no-asset`+比例档位端到端 / `handle_config_command` 输出 / `build_argument_parser` 子命令挂接 |
 | `tests/test_core_pathtrust.py` | 2 | 路径白名单（match_roots 双根/单根/跨盘不误伤） |
-| `frontend/src/layout.test.ts` | 24 | 分层布局 / 复杂连接分层（结果图复用/多级链路/环容忍/结果块居中）/ 局部整理不漂移 / 只读锚点对齐 / 多对多网状质心摊平 / 群内标题排序 / 直连与组连同层 |
+| `frontend/src/layout.test.ts` | 29 | 分层布局 / 复杂连接分层（结果图复用/多级链路/环容忍/结果块居中）/ 局部整理不漂移 / 只读锚点对齐 / 多对多网状质心摊平 / 群内标题排序 / 直连与组连同层 |
 | `frontend/src/workflow.test.ts` | 31 | 自动连线（全图/仅选中）/ 动画类 / 连线约束 / 入边收集 / 落点阶梯 / 图片文件识别 / 节点构建器 |
 | `frontend/src/canvasDrop.test.ts` | 11 | 拖拽意图解析（文件/工具栏/放行+回退）/ 文件识别 / 数量统计 / 落点示意文案 |
 | `frontend/src/promptImportFormat.test.ts` | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
@@ -433,7 +433,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `frontend/src/canvasStyles.test.ts` | 4 | 动效 CSS 选择器约束 |
 | `frontend/src/recovery.test.ts` | 4 | 快照剥离动画类 / 运行期字段清除 |
 | `frontend/src/useGenerationTask.test.ts` | 2 | hook 稳定成员引用 |
-| `frontend/src/components/CanvasNodes.test.tsx` | 6 | 节点操作栏 / 双击行为 |
+| `frontend/src/components/CanvasNodes.test.tsx` | 10 | 节点操作栏 / 双击行为 |
 
 ### 10.2 端到端（E2E）
 
@@ -462,4 +462,4 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 11.3 文档同步
 
-功能变更后同步三处：`README.md`（用户视角）、`ARCHITECTURE.md`（本文档：结构/决策/防错清单）、`AGENTS.md`（项目根目录，跨会话交接，记录本轮改动与验证状态，主流 AI agent 自动发现）。文档滞后即技术债。
+功能变更后同步三处：`README.md`（用户视角，只写用途与用法）、`ARCHITECTURE.md`（本文档：结构/决策/防错清单，技术细节唯一归宿）、`AGENTS.md`（项目根目录，跨会话交接：验证状态 / 待办 / 已知问题，轮次记录进 git 不堆文档）。文档滞后即技术债。
