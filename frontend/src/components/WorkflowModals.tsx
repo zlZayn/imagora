@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { clampPreviewPan, clampZoom } from "../previewZoom";
 
@@ -122,7 +123,9 @@ export function WorkflowLoadModal({
  * 状态收敛为一个 view 对象（zoom + pan），所有更新走同一 clampView 出口，
  * 缩放锚定指针位置（transform-origin 为图片中心时的精确补偿），放大后拖拽平移，
  * 双击复位 1:1，Esc / 点击遮罩关闭。缩放与夹紧的数学在 previewZoom.ts（纯函数，有单测）。
- * 图片直接以 imageUrl 显示（前端统一传注册表派生的 url，画布节点与经典表单共用本组件）。 */
+ * 图片直接以 imageUrl 显示（前端统一传注册表派生的 url，画布节点与经典表单共用本组件）。
+ * 全屏布局：图片区占满整个窗口（contain 不裁切），控制条/文件名/提示悬浮叠加在底部，
+ * 不占图片空间（对照旧版 90vw×calc(100vh-9rem) 容器内布局）。 */
 
 /** 滚轮缩放步进 */
 const ZOOM_STEP = 1.2;
@@ -180,13 +183,13 @@ export function ZoomModal({
 
   const reset = useCallback(() => setView({ zoom: 1, pan: { x: 0, y: 0 } }), []);
 
-  /** 适应窗口：按图片自然尺寸缩放到当前可视区（含边距），保持整图可见 */
+  /** 适应窗口：按图片自然尺寸缩放到当前视口（全屏布局，控制条悬浮不占位，留 2% 呼吸） */
   const fitToWindow = useCallback(() => {
     const natural = naturalRef.current;
     const wrap = wrapRef.current;
     if (!natural || !wrap) return;
-    const availW = wrap.clientWidth * 0.9;
-    const availH = wrap.clientHeight * 0.85;
+    const availW = wrap.clientWidth * 0.98;
+    const availH = wrap.clientHeight * 0.98;
     const zoom = clampZoom(Math.min(1, availW / natural.width, availH / natural.height));
     setView({ zoom, pan: { x: 0, y: 0 } });
   }, []);
@@ -272,75 +275,78 @@ export function ZoomModal({
   const onOverlayPointerDown = (event: React.PointerEvent) => {
     const target = event.target as HTMLElement | null;
     if (!target) return;
-    if (target.closest("button, [data-zoom-image]")) return;
+    if (target.closest("button, [data-zoom-image], [data-zoom-controls]")) return;
     onClose();
   };
 
-  return (
+  // Portal 到 body：脱离带动画 transform 的祖先（如经典表单结果栏 panel-card enter-up，
+  // fill both 后 transform 仍非 none 会把 fixed 后代捕获进自己的包含块），保证真正全屏。
+  return createPortal(
     <div
       ref={wrapRef}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/60"
+      className="fixed inset-0 z-50 select-none bg-black/60"
       onPointerDown={onOverlayPointerDown}
     >
-      {/* 图片可视区：预留控制条/文件名/提示行空间，小屏也不溢出 */}
-      <div ref={viewportRef} className="relative flex h-[calc(100vh-9rem)] min-h-[40vh] w-[90vw] items-center justify-center">
-        <div
-          className="flex h-full w-full touch-none items-center justify-center"
-          style={{ cursor: dragging ? "grabbing" : view.zoom > 1 ? "grab" : "zoom-in" }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            reset();
+      {/* 图片可视区：占满整个窗口（contain 不裁切），四周无容器黑边，真正全屏 */}
+      <div
+        ref={viewportRef}
+        className="fixed inset-0 flex touch-none items-center justify-center"
+        style={{ cursor: dragging ? "grabbing" : view.zoom > 1 ? "grab" : "zoom-in" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          reset();
+        }}
+      >
+        <img
+          ref={imageRef}
+          data-zoom-image
+          src={imageUrl}
+          alt="预览"
+          draggable={false}
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            naturalRef.current = { width: img.naturalWidth, height: img.naturalHeight };
+            imageBoxRef.current = { width: img.clientWidth, height: img.clientHeight };
           }}
-        >
-          <img
-            ref={imageRef}
-            data-zoom-image
-            src={imageUrl}
-            alt="预览"
-            draggable={false}
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              naturalRef.current = { width: img.naturalWidth, height: img.naturalHeight };
-              imageBoxRef.current = { width: img.clientWidth, height: img.clientHeight };
-            }}
-            className="select-none object-contain"
-            style={{
-              maxWidth: "100%",
-              maxHeight: "100%",
-              transform: `translate(${view.pan.x}px, ${view.pan.y}px) scale(${view.zoom})`,
-              transformOrigin: "center center",
-              // 拖拽中禁用过渡，保证平移跟手；缩放/按钮操作保留轻微过渡
-              transition: dragging ? "none" : "transform 0.1s ease-out",
-            }}
-          />
+          className="select-none object-contain"
+          style={{
+            maxWidth: "100%",
+            maxHeight: "100%",
+            transform: `translate(${view.pan.x}px, ${view.pan.y}px) scale(${view.zoom})`,
+            transformOrigin: "center center",
+            // 拖拽中禁用过渡，保证平移跟手；缩放/按钮操作保留轻微过渡
+            transition: dragging ? "none" : "transform 0.1s ease-out",
+          }}
+        />
+      </div>
+      {/* 全屏悬浮控制条：不占图片空间，半透明叠加在底部（data-zoom-controls 供 overlay 排除，点击不误关） */}
+      <div
+        data-zoom-controls
+        className="absolute bottom-3 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 rounded-xl bg-black/40 px-3 py-2 text-xs text-white shadow-lg"
+      >
+        <div className="max-w-[70vw] truncate">{name}</div>
+        <div className="flex items-center gap-2">
+          <button type="button" className="px-1.5 hover:text-brand" onClick={() => setView((prev) => clampPan({ ...prev, zoom: clampZoom(prev.zoom * ZOOM_STEP) }))} aria-label="放大">
+            ＋
+          </button>
+          <button type="button" className="px-1.5 hover:text-brand" onClick={() => setView((prev) => clampPan({ ...prev, zoom: clampZoom(prev.zoom / ZOOM_STEP) }))} aria-label="缩小">
+            －
+          </button>
+          <span className="w-12 text-center tabular-nums">{Math.round(view.zoom * 100)}%</span>
+          <button type="button" className="rounded bg-white/10 px-2 py-0.5 hover:bg-white/20" onClick={fitToWindow}>
+            适应窗口
+          </button>
+          <button type="button" className="rounded bg-white/10 px-2 py-0.5 hover:bg-white/20" onClick={reset}>
+            1:1
+          </button>
         </div>
+        <div className="text-[10px] text-white/50">滚轮缩放 · 放大后拖拽平移 · 双击复位 · 点击空白处或 Esc 关闭</div>
       </div>
-      {/* 控制条：缩放按钮 + 百分比 + 复位 / 适应窗口（按钮已被 overlay 判定排除，不会误关） */}
-      <div className="mt-3 flex items-center gap-2 rounded-lg bg-black/40 px-2 py-1 text-xs text-white">
-        <button type="button" className="px-1.5 hover:text-brand" onClick={() => setView((prev) => clampPan({ ...prev, zoom: clampZoom(prev.zoom * ZOOM_STEP) }))} aria-label="放大">
-          ＋
-        </button>
-        <button type="button" className="px-1.5 hover:text-brand" onClick={() => setView((prev) => clampPan({ ...prev, zoom: clampZoom(prev.zoom / ZOOM_STEP) }))} aria-label="缩小">
-          －
-        </button>
-        <span className="w-12 text-center tabular-nums">{Math.round(view.zoom * 100)}%</span>
-        <button type="button" className="rounded bg-white/10 px-2 py-0.5 hover:bg-white/20" onClick={fitToWindow}>
-          适应窗口
-        </button>
-        <button type="button" className="rounded bg-white/10 px-2 py-0.5 hover:bg-white/20" onClick={reset}>
-          1:1
-        </button>
-      </div>
-      <div className="mt-2 max-w-[80vw] truncate rounded-md bg-black/40 px-3 py-1 text-xs text-white">
-        {name}
-      </div>
-      <div className="mt-1 text-[10px] text-white/50">
-        滚轮缩放 · 放大后拖拽平移 · 双击复位 · 点击空白处或 Esc 关闭
-      </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

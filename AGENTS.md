@@ -18,12 +18,12 @@
 * **CLI 与 web 对等**：`main.py` 五个子命令 `ui`/`menu`/`batch`/`gen`/`config`；`gen` 与网页表单完全对等，资产旁路统一走 `graphstore.persist_submission_assets`（server / CLI 共用，不两端分叉）。
 * **提示词粘贴导入**：解析器 `parsePromptImportFormat` 数量不设上限、不校验固定数（仅格式错误进 issues 标红），弹窗只显示「识别 N 张」；通用格式规范见 `docs/prompt-import-format.md`，电商专用模板（固定轮播/详情批次）见 `docs/ecom-prompt-import-format.md`。
 * **顶栏品牌区 3D**：左上角「logo + Imagora」借 React Bits DepthText 手法做 10 层挤出（`App.tsx` 顶部 `BRAND_LAYERS`/`BRAND_DEPTH`/`brandLayerColor` 可调，总深 ≈15px 克制偏浅），默认平面（挤出层被正面盖住）、鼠标靠近时立体摆动（指针跟随 ±11°，离开回摆平面），整体 `<a target="_blank">` 点击打开远程仓库。实现与防错细节见 ARCHITECTURE.md 8.4。
-* **预览统一（ZoomModal）**：画布与经典表单共用同一放大预览组件，统一传注册表派生的完整 url（不传存储路径）；经典表单双击入口——参考图缩略图（UploadZone，单击不触发文件选择器）与结果图（Gallery，250ms 延时区分单击开原图/双击放大）。细节见 ARCHITECTURE.md 8.3。
+* **预览统一（ZoomModal）**：画布与经典表单共用同一放大预览组件——`createPortal` 到 body 真全屏（避免动画 transform 祖先捕获 fixed，见 ARCHITECTURE.md 9.4 第 5 条），统一传注册表派生的完整 url（不传存储路径）；经典表单双击入口——参考图缩略图（UploadZone，单击不触发文件选择器）与结果图（Gallery，250ms 延时区分单击开原图/双击放大）。细节见 ARCHITECTURE.md 8.3。
 
 ## 验证状态（当前快照，Windows / Python 3.12.10 / ruff 0.16.2）
 
 * **后端 pytest：204 passed**（命令 `uv run pytest --basetemp=C:/t/imagora-pytest`——项目路径含中文「网店实习」，须指 ASCII tmp 路径）。含 5 个 Windows 专属测试（netstat 端口探测 / powershell 父进程链 / C: 绝对路径 / 跨盘相对化），在 Windows 全部通过。
-* **前端**：vitest **117 passed**；`tsc --noEmit` + `vite build` 成功；`npm run lint` 零告警。品牌区 3D 交互经 Playwright 专项验证：默认平面（rest transform=none）→ 悬停倾倒 ±5.5° 方向跟随光标 → 移出回摆 0°，10 层挤出（总深 ≈15px）+ 各层颜色渐变正常，reduced-motion 模拟下行为一致，无 console 报错（专项脚本为临时文件，用完即删）。经典表单双击放大经 Playwright 验证：上传参考图 → 单击缩略图不触发文件选择器 → 双击弹出预览（图片自然尺寸加载成功）→ 滚轮缩放 100%→120% → Esc 关闭，无 console 报错（专项脚本为临时文件，用完即删）。
+* **前端**：vitest **117 passed**；`tsc --noEmit` + `vite build` 成功；`npm run lint` 零告警。品牌区 3D 交互经 Playwright 专项验证：默认平面（rest transform=none）→ 悬停倾倒 ±5.5° 方向跟随光标 → 移出回摆 0°，10 层挤出（总深 ≈15px）+ 各层颜色渐变正常，reduced-motion 模拟下行为一致，无 console 报错（专项脚本为临时文件，用完即删）。经典表单双击放大经 Playwright 验证：上传参考图 → 单击缩略图不触发文件选择器 → 双击弹出预览（图片自然尺寸加载成功）→ 滚轮缩放 100%→120% → Esc 关闭，无 console 报错（专项脚本为临时文件，用完即删）。预览全屏布局复验：容器/图片可视区 == 视口 1280×800，方图 800×800 占满，控制条悬浮底部不占位，缩放与 Esc 正常，无 console 报错（专项脚本为临时文件，用完即删）。
 * **E2E** `frontend/e2e/verify_canvas.py`：**31/31 PASS**（Playwright headless，需先起服务：`.venv\Scripts\python.exe -m main ui --no-browser --port 7860`）。
 * **ruff**：`uv run ruff check .` 零告警。
 
@@ -41,4 +41,4 @@
 
 ## 历史
 
-轮次记录不留在本文档（防流水账），见 `git log`。格式演进：8-13 v1→v2 迁移雏形 → 8-20 存储统一 + 目录改名 + dry-run 预检 → 8-23 CLI 全量功能 + 资产旁路公共函数 → 8-23 Windows 平台验证 + ruff 清理 + 文档职责重构 → 8-23 粘贴导入去数量硬编码（双文档模板拆分）+ 架构文档同步清洗 → 8-23 顶栏品牌区 3D 挤出 + 指针跟随摆动 + 点击开远程仓库（三文档同步）→ 8-23 预览统一：经典表单参考图/结果图双击放大（复用画布 ZoomModal，传注册表 url）（三文档同步）。
+轮次记录不留在本文档（防流水账），见 `git log`。格式演进：8-13 v1→v2 迁移雏形 → 8-20 存储统一 + 目录改名 + dry-run 预检 → 8-23 CLI 全量功能 + 资产旁路公共函数 → 8-23 Windows 平台验证 + ruff 清理 + 文档职责重构 → 8-23 粘贴导入去数量硬编码（双文档模板拆分）+ 架构文档同步清洗 → 8-23 顶栏品牌区 3D 挤出 + 指针跟随摆动 + 点击开远程仓库（三文档同步）→ 8-23 预览统一：经典表单参考图/结果图双击放大（复用画布 ZoomModal，传注册表 url）（三文档同步）→ 8-23 预览全屏：ZoomModal createPortal 到 body（修动画 transform 祖先捕获 fixed）+ 控制条悬浮（9.4 新增防错条，三文档同步）。

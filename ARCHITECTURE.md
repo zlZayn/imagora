@@ -76,7 +76,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `useCanvasRecovery.ts` —— 画布恢复：挂载时询问是否恢复最近存档，防抖自动保存。
 - `useCanvasDrop.tsx` —— 画布拖拽接线 hook（文件多图 / 工具栏按钮拖出共用）：落点示意显隐/定位/文案、拖放意图解析、window 级兜底守卫、工作区四事件；节点怎么建由回调上抛（onDropFiles/onDropNode），本 hook 不含业务。
 - 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/连线/节点构建器/mergeSubmissionGraph 提交图合并）、`layout.ts`（自动整理布局管道：分层/质心排序/自底向上定位/幂等）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案）、`promptImportFormat.ts`（导入格式解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
-- `components/`：`CanvasPage.tsx`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes.tsx`（三类节点组件）、`WorkflowModals.tsx`（保存/加载/放大预览弹窗）、`PromptImportModal.tsx`、`HistoryGallery.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`Select.tsx`、`FolderPicker.tsx`。
+- `components/`：`CanvasPage.tsx`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes.tsx`（三类节点组件）、`WorkflowModals.tsx`（保存/加载/放大预览弹窗，ZoomModal 画布/经典表单共用）、`PromptImportModal.tsx`、`HistoryGallery.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`Select.tsx`、`FolderPicker.tsx`。
 
 ### 2.4 依赖规则
 
@@ -333,7 +333,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 - **落点示意是纯 DOM 特效**：跟随光标的小胶囊（portal 到 body 的 fixed 元素），位置由 JS 直接写 transform——高频 dragover 移动不触发 React 渲染，只有拖拽起止等低频事件才改状态；文案/图标按意图区分（文件数量 / 新建类型），与画布光标同款品牌色加号图形，风格统一。
 - **一屏全览**：不用 ReactFlow 初始 `fitView` prop——空画布时它会被 React Flow 延迟到「第一个节点出现」才执行，导致新建/上传后视口突然放大跳动（已实测复现）。统一走 `fitCanvasToContent()`（自动整理/加载工作流/恢复存档后调用），`minZoom` 放宽到 0.05，fitView 显式允许缩到 0.02，节点再多也能全览。
 - **自定义光标**：画布空白区域用高对比十字准星 SVG data-URI 光标（细十字 + 白描边 + 中心白底品牌色加号，与拖拽落点示意同款图形，风格统一），平移切抓手；文件拖拽悬停时切系统 `copy` 光标；可拖出按钮（新建卡片/图片组）悬浮时给 grab 光标 + 品牌色呼吸光晕 + 拖拽图标（`.btn-draggable`）——拖入时可放感明确、可拖出暗示明显。
-- **预览弹窗（ZoomModal，画布/经典表单共用）**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。入口两侧一致：画布图片节点双击或操作栏「预览大图」、经典表单参考图缩略图双击（UploadZone，单击缩略图不触发文件选择器）、结果图双击（Gallery，单击仍新窗口开原图——250ms 延时区分单击/双击，避免双击连开两个标签）。统一传注册表派生的完整 url，不传存储路径，组件内不再拼 `/api/image?path=`。
+- **预览弹窗（ZoomModal，画布/经典表单共用）**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。入口两侧一致：画布图片节点双击或操作栏「预览大图」、经典表单参考图缩略图双击（UploadZone，单击缩略图不触发文件选择器）、结果图双击（Gallery，单击仍新窗口开原图——250ms 延时区分单击/双击，避免双击连开两个标签）。统一传注册表派生的完整 url，不传存储路径，组件内不再拼 `/api/image?path=`。全屏布局：`createPortal` 到 body（脱离含动画 transform 的祖先——如结果栏 `panel-card enter-up` fill both 后 transform 仍非 none，会把 fixed 后代捕获进自己的包含块），图片区占满窗口（contain 不裁切），控制条/文件名/提示悬浮叠加底部、不占图片空间。
 - **选中操作栏**：选中 ≥1 个节点即出现「运行所选/自动整理/自动连线/设置输出路径/删除所选」，运行与设路径只作用于提示词卡片；自动连线只补选中节点之间的边（`workflow.ts:autoConnectSelection`，候选与新增边两端均限定在选中集合内），未选中节点不受影响；自动整理时未选中的参考图/组作为只读锚点参与对齐。
 
 ### 8.4 视觉与动效
@@ -388,6 +388,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 2. **连线 hover 亮起的延迟方向**。现象：想「悬停 0.1s 后才亮起」但用 base 规则的 transition-delay 导致**离开也延迟**（松手后还亮着）。规范：延迟只写在 `:hover` 规则里（`transition-delay: 0.1s`），base 规则只放属性与时长——进入延迟、离开立即回退；transition 只含 stroke/stroke-width（animated 边的 dasharray 动画不受影响）。该效果以人工验证为准，不做 E2E（合成悬停时序脆弱）。
 3. **transform 动画锁死 hover**。现象：hover 效果失效。规范：入场动画只动 opacity 的场景不用 fill both 的 transform；overflow-hidden 会裁剪悬浮操作栏/下拉面板——提示词卡片用 min-w-0 + truncate 防撑宽，不用 overflow-hidden。
 4. **浮层被后续卡片盖住**。规范：含浮层的卡片加 relative + 更高 z-index。
+5. **全屏浮层被动画 transform 祖先捕获**。现象：`fixed inset-0` 的弹窗只覆盖容器大小（如放大预览只出现在结果卡片内，四周不是全屏）。原因：入场动画 `fill both` 结束后 computed transform 仍是非 none 的矩阵，把 fixed 后代的包含块改成该祖先。规范：全屏浮层（如 ZoomModal）用 `createPortal(..., document.body)` 渲染，脱离任何 transform/filter 祖先；不要依赖"恰好没有动画祖先"。测试保障：Playwright 断言预览容器 boundingBox == 视口。
 
 ### 9.5 坐标与几何
 
