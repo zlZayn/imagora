@@ -10,7 +10,7 @@
 - 生成结果实时显示：每张图标注**分辨率、格式、文件大小与费用**，底部汇总**本次总费用与用时**
 - 输出目录自由选择：手输路径或系统文件夹选择器，生成后一键"打开文件夹"定位
 - 批量生图：按产品配置一次生成多张详情页图（任务预览表格 + 彩色进度条，预览模式不花钱）
-- 命令行单张生图：适合脚本化调用
+- 命令行单张生图（全量功能，与网页表单完全对等）：所有参数（尺寸/比例/质量/输出路径/参考图）显式指定，参考图可多张，生成成功后自动注册资产 + 落提交快照 + 写全量账本，与网页端产物同源可互查；`config` 子命令实时显示当前 profile 支持的尺寸/比例/质量取值
 - 提示词粘贴导入：把多模态模型按固定格式返回的整段提示词回复粘进画布，实时预览、批量建卡，卡片自动带标题与正确尺寸（格式见 `docs/prompt-import-format.md`）
 
 ## 首次使用：设置 API Key（必做）
@@ -68,7 +68,10 @@ cd Imagora
 uv run python -m main ui --port 8080         # 换端口启动
 cd Imagora/frontend; npm run dev               # 前端开发模式（热更新，需后端已启动）
 uv run python -m main batch --config ..\你的产品目录\batch_prompts.json --dry-run   # 批量生图（预览不花钱，需先准备 batch_prompts.json）
-uv run python -m main gen "a red apple on white background" -o out.png   # 单张生图
+uv run python -m main config                                              # 查看当前 profile 支持的尺寸/比例/质量
+uv run python -m main gen "a red apple" --size 1024x1024 --quality high -o out.png          # 文生图（必填：尺寸/质量/输出）
+uv run python -m main gen "戴墨镜的猫" --ratio 9:16 --tier 2K --quality high -o out.png       # 按比例+档位
+uv run python -m main gen "把背景换成蓝色" --size 1024x1024 --quality high -o out.png -i r1.png -i r2.png  # 图生图（多张参考图）
 uv run pytest                                # 运行后端测试（零成本，不调 API）
 uv run ruff check .                          # 后端 lint
 cd Imagora/frontend; npm test; npm run lint    # 前端测试 + lint
@@ -77,6 +80,47 @@ python Imagora/frontend/e2e/verify_canvas.py       # 画布交互 E2E（另开�
 ```
 
 > 批量配置 `batch_prompts.json` 需先在产品目录准备，格式见 `core/batch.py` 与 `ARCHITECTURE.md`。
+
+## 命令行（CLI）全量功能
+
+`gen` 子命令与网页表单完全对等：所有参数都显式指定（不传必填项立即报错退出码 2），参考图可多张（`-i` 多次传），生成成功后旁路注册资产 + 落提交快照 + 写全量账本，与网页端产物同源可互查。
+
+**必填参数**（缺一不可，否则报错并提示运行 `config` 查看可用值）：
+
+- `prompt`（位置参数）：提示词，英文优先
+- `--size` 或 `--ratio`（二选一）：分辨率字符串（如 `1024x1024`）或宽高比（如 `9:16`）
+- `--quality`：`low` / `medium` / `high`（取值见当前 profile）
+- `--output` / `-o`：输出路径（文件路径直接用，目录则自动生成 `ai_<时间戳>_<序号>.<后缀>` 文件名）
+
+**可选参数**：
+
+- `-i` / `--image`：参考图路径，可多次传实现多张参考图（传了即图生图）
+- `--tier`：配合 `--ratio` 的档位（`1K`/`2K`/`4K`，默认 `2K`）
+- `--model`：模型名（默认取当前 profile）
+- `--n`：生成张数（默认 1）
+- `--format`：输出格式 `png`/`jpg`/`webp`（默认 `png`；输出路径带后缀时以后缀为准）
+- `--no-asset`：跳过资产注册 + 提交快照（纯生成模式，账本无 `submissionId`/`assetIds` 字段）
+
+**`config` 子命令**：实时读取当前 profile 的 `config.json`，打印支持的尺寸（含费用）、比例 + 档位、质量取值、默认值，方便对照填参。
+
+```powershell
+uv run python -m main config
+# 输出示例：
+# 当前 profile: wanwu  ·  模型: gpt-image-2  ·  端点: https://2api.aiwanwu.cc
+# 默认尺寸: 1024x1024  ·  默认质量: high  ·  默认档位: 2K
+# 尺寸 SIZE_OPTIONS（--size 取 value）
+#   1024x1024      1024x1024 (1:1 1K)  费用 0.05 元
+#   ...
+# 比例 RATIOS（--ratio 取键，--tier 取档位）
+#   9:16     2K=1152x2048  4K=2160x3840
+#   ...
+# 质量 QUALITY_OPTIONS（--quality 取以下值）
+#   low
+#   medium
+#   high
+```
+
+CLI 单次同步等待结果（不进全局并发池），需多张并行可开多个终端各跑一条 `gen` 命令——并行调度由调用方负责，不在本项目职责内。
 
 ## 多开页面（并行生图）
 

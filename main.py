@@ -23,12 +23,9 @@ import time
 from itertools import count
 from pathlib import Path
 
-from core import api
-from core import canvas as canvas_mod
+from core import api, graphstore
 from core import config as config_mod
-from core import graphstore
-from core import registry
-from core.api import resolve_size_with_ratio, build_default_output_path, generate_image
+from core.api import generate_image, resolve_size_with_ratio
 from core.batch import run_batch_generation
 from core.config import (
     DEFAULT_MODEL,
@@ -100,8 +97,6 @@ def _validate_gen_args(args) -> None:
     - --quality 必须在当前 profile 的 QUALITY_OPTIONS 内
     - --size 必须在当前 profile 的 SIZE_OPTIONS 的 value 列表内
     """
-    import sys as _sys
-
     missing: list[str] = []
     if not args.size and not args.ratio:
         missing.append("--size 或 --ratio（二选一）")
@@ -113,67 +108,48 @@ def _validate_gen_args(args) -> None:
         print_error("缺少必填参数：" + " · ".join(missing))
         print_info("运行 `python -m main config` 查看当前 profile 支持的尺寸/比例/质量")
         print_info("示例：python -m main gen \"提示词\" --size 1024x1024 --quality high -o out.png")
-        _sys.exit(2)
+        sys.exit(2)
     if args.size and args.ratio:
         print_error("--size 与 --ratio 不能同时使用，二选一")
-        _sys.exit(2)
+        sys.exit(2)
     if args.ratio and args.ratio not in RATIOS:
         print_error(f"不支持的比例 {args.ratio}，可用: {', '.join(RATIOS.keys())}")
-        _sys.exit(2)
+        sys.exit(2)
     if args.ratio and args.tier not in RATIOS[args.ratio]:
         print_error(f"比例 {args.ratio} 没有 {args.tier} 档，可用档位: {', '.join(RATIOS[args.ratio].keys())}")
-        _sys.exit(2)
+        sys.exit(2)
     quality_values = [q.get("value") if isinstance(q, dict) else str(q) for q in QUALITY_OPTIONS]
     if args.quality not in quality_values:
         print_error(f"不支持的质量 {args.quality}，可用: {', '.join(quality_values)}")
-        _sys.exit(2)
+        sys.exit(2)
     if args.size:
         size_values = [s.get("value") for s in SIZE_OPTIONS]
         if args.size not in size_values:
             print_error(f"不支持的尺寸 {args.size}，可用: {', '.join(size_values)}")
-            _sys.exit(2)
+            sys.exit(2)
 
 
-def _persist_cli_submission(prompt: str, size: str, quality: str, output_dir: str,
-                            ref_paths: list[str], result_path: str, submission_id: str) -> dict | None:
-    """旁路：把本次 CLI 生成的结果 + 参考图注册进 .assets 并落提交快照。
+def _resolve_output(args) -> tuple[str, str, str]:
+    """解析 --output 参数为 (output_path, output_dir, output_format)。
 
-    与 server._persist_submission 等价（资产语义、submission_save 调用方式、返回结构一致）：
-      - 参考图：register_asset(kind="ref", source_key=submission_id)
-      - 结果图：register_asset(kind="result", source_key=submission_id)
-      - 落 submission_save（submissions/<id>.json），可在 web 画布"导入提交"复用
-    返回 {"input_asset_ids": [...], "output_asset_ids": [...]}；无结果或全失败返回 None。
+    与 web 表单的 output_dir 行为对齐：
+      - 传目录（已存在目录 或 以路径分隔符结尾）→ 在该目录下自动生成文件名
+        （ai_<时间戳>_<序号>.<后缀>，与 server.run_generation 同算法，序号保证并发唯一）
+      - 传文件路径 → 直接使用该路径
+    后缀决定 output_format，无后缀回退 --format。
     """
-    input_entries: list[dict] = []
-    seen_input: set[str] = set()
-    for ref in ref_paths:
-        try:
-            entry = canvas_mod.register_asset(ref, Path(ref).name, kind="ref", source_key=submission_id)
-        except Exception:
-            entry = None
-        if entry and entry["id"] not in seen_input:
-            seen_input.add(entry["id"])
-            input_entries.append(entry)
-
-    result_entries: list[dict] = []
-    seen_result: set[str] = set()
-    if result_path and os.path.isfile(result_path):
-        try:
-            entry = canvas_mod.register_asset(result_path, os.path.basename(result_path), kind="result", source_key=submission_id)
-        except Exception:
-            entry = None
-        if entry and entry["id"] not in seen_result:
-            seen_result.add(entry["id"])
-            result_entries.append(entry)
-
-    if not result_entries:
-        return None
-    params = {"size": size, "quality": quality, "outputDir": output_dir}
-    canvas_mod.submission_save(submission_id, prompt, params, input_entries, result_entries, 0)
-    return {
-        "input_asset_ids": [e["id"] for e in input_entries],
-        "output_asset_ids": [e["id"] for e in result_entries],
-    }
+    output_format = os.path.splitext(args.output)[1].lstrip(".") or args.format
+    if os.path.isdir(args.output) or args.output.endswith(("\\", "/")):
+        output_dir = args.output.rstrip("\\/") or DEFAULT_OUTPUT_DIR
+        os.makedirs(output_dir, exist_ok=True)
+        seq = next(_SEQ)
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        output_path = os.path.join(output_dir, f"ai_{stamp}_{seq:03d}.{output_format}")
+    else:
+        output_path = args.output
+        output_dir = os.path.dirname(os.path.abspath(args.output)) or "."
+        os.makedirs(output_dir, exist_ok=True)
+    return output_path, output_dir, output_format
 
 
 def handle_gen_command(args):
@@ -181,21 +157,13 @@ def handle_gen_command(args):
 
     与 web 端的差异仅在调度：CLI 单次同步等待结果（不进入全局任务池），其余链路一致：
       - 尺寸/质量/参考图/格式/张数无损透传到模型 API
-      - 成功后旁路 register_asset + submission_save + log_generation 全量字段
+      - 成功后旁路 persist_submission_assets（与 server 共用同一资产旁路逻辑）
       - 计费走 config.cost_for_size（与 server.size_cost 同源）
     """
     _validate_gen_args(args)
 
-    output_format = os.path.splitext(args.output)[1].lstrip(".") or args.format
+    output_path, output_dir, output_format = _resolve_output(args)
     size = resolve_size_with_ratio(args.size, args.ratio, args.tier)
-    # output 必填：若是目录，自动生成文件名（与 web output_dir 行为一致）
-    if os.path.isdir(args.output) or args.output.endswith(("\\", "/")):
-        output_path = build_default_output_path(None, output_format)
-        output_dir = args.output.rstrip("\\/")
-    else:
-        output_path = args.output
-        output_dir = os.path.dirname(os.path.abspath(args.output))
-    os.makedirs(output_dir, exist_ok=True)
 
     ref_paths: list[str] = []
     for p in args.image or []:
@@ -205,44 +173,48 @@ def handle_gen_command(args):
             sys.exit(2)
         ref_paths.append(abs_p)
 
-    submission_id = graphstore.next_submission_id()
+    # --no-asset 模式不生成 submission_id（不写提交快照、不进资产旁路、账本无联动字段）
+    submission_id = "" if args.no_asset else graphstore.next_submission_id()
     cost = config_mod.cost_for_size(size)
     started_at = time.time()
-    dest = ""
+    dest = output_path
     ok = False
     try:
         if ref_paths:
             # 图生图：多张参考图一次请求提交（与 web 表单 images 字段等价）
-            dest = os.path.join(output_dir, f"img2img_{time.strftime('%Y%m%d_%H%M%S')}_{next(_SEQ):03d}.{output_format}")
-            messages_hint = f"图生图 · 参考图 {len(ref_paths)} 张"
+            print_info(f"图生图 · 参考图 {len(ref_paths)} 张")
             generate_image(
                 prompt=args.prompt, images=ref_paths, size=size,
                 quality=args.quality, model=args.model, n=args.n,
                 output_format=output_format, output_path=dest,
             )
         else:
-            dest = os.path.join(output_dir, f"txt2img_{time.strftime('%Y%m%d_%H%M%S')}_{next(_SEQ):03d}.{output_format}")
-            messages_hint = "文生图"
+            print_info("文生图")
             generate_image(
                 prompt=args.prompt, image_path=None, size=size,
                 quality=args.quality, model=args.model, n=args.n,
                 output_format=output_format, output_path=dest,
             )
         ok = True
-        print_success(f"{messages_hint} · 已保存: {dest}（{size}）· 费用 {cost:.2f} 元")
+        print_success(f"已保存: {dest}（{size}）· 费用 {cost:.2f} 元")
     except Exception as e:
         print_error(f"生成失败: {api.format_error(e)}")
 
-    # 旁路：注册资产 + 落提交快照（除非 --no-asset；失败不影响生成结果）
+    # 旁路：注册资产 + 落提交快照（委托 graphstore 公共函数，与 server 同源；
+    # --no-asset 或生成失败时跳过；任何失败不抛，不影响生成结果）
     submission_meta: dict | None = None
-    if ok and not args.no_asset:
+    if ok and submission_id:
         try:
-            submission_meta = _persist_cli_submission(
-                args.prompt, size, args.quality, output_dir, ref_paths, dest, submission_id,
+            params = {"size": size, "quality": args.quality, "outputDir": output_dir}
+            submission_meta = graphstore.persist_submission_assets(
+                submission_id, args.prompt, params, ref_paths, [dest], 0,
             )
         except Exception:
             submission_meta = None
 
+    # 只在确实落了提交快照时才记 submissionId（失败 / --no-asset / persist 抛错 都不记），
+    # 避免账本里出现「指向不存在 submission_*.json 的孤儿 id」
+    log_submission_id = submission_id if submission_meta is not None else ""
     log_generation(
         prompt=args.prompt,
         mode="img2img" if ref_paths else "txt2img",
@@ -254,7 +226,7 @@ def handle_gen_command(args):
         cost=cost if ok else 0.0,
         seconds=time.time() - started_at,
         win=None,
-        submission_id=submission_id if ok else "",
+        submission_id=log_submission_id,
         input_asset_ids=(submission_meta or {}).get("input_asset_ids"),
         output_asset_ids=(submission_meta or {}).get("output_asset_ids"),
     )

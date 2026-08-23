@@ -13,7 +13,6 @@ from itertools import count
 from core.config import DEFAULT_OUTPUT_DIR
 from core.registry import resolve_asset
 
-
 SUBMISSIONS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "submissions")
 
 # 提交 id 自增序号（进程级，多线程共享；与 server / CLI 入口共用同一生成器）
@@ -277,6 +276,62 @@ def submission_save(
     except (OSError, TypeError, ValueError) as e:
         return {"ok": False, "error": str(e)}
 
+
+def persist_submission_assets(
+    submission_id: str,
+    prompt: str,
+    params: dict,
+    ref_paths: list[str],
+    result_paths: list[str],
+    win: int = 0,
+) -> dict | None:
+    """旁路：把本次生成的参考图 + 结果图注册进 .assets 并落提交图快照。
+
+    server（web 表单）与 main（CLI）共用同一份资产旁路逻辑，保证两端产物同源：
+      - 参考图：register_asset(kind="ref", source_key=submission_id)
+      - 结果图：register_asset(kind="result", source_key=submission_id)
+      - 落 submission_save（output/submissions/<id>.json），可在 web 画布「导入提交」复用
+
+    调用方负责筛选 ref_paths 中的路径是否符合白名单（web 端只把 ref_bases 晋升为 ref 资产，
+    multipart 兜底的 temp_bases 不晋升；CLI 端把所有 -i 传进来的参考图都晋升）。
+
+    返回 {"input_asset_ids": [...], "output_asset_ids": [...]} 供账本联动；
+    无结果或全部注册失败返回 None（任何失败不抛，由调用方 try/except 兜底）。
+    """
+    from core.registry import register_asset
+
+    def _register_one(path: str, kind: str) -> dict | None:
+        if not path or not os.path.isfile(path):
+            return None
+        try:
+            return register_asset(path, os.path.basename(path), kind=kind, source_key=submission_id)
+        except Exception:
+            return None
+
+    input_entries: list[dict] = []
+    seen_input: set[str] = set()
+    for ref in ref_paths:
+        entry = _register_one(ref, "ref")
+        if entry and entry["id"] not in seen_input:
+            seen_input.add(entry["id"])
+            input_entries.append(entry)
+
+    result_entries: list[dict] = []
+    seen_result: set[str] = set()
+    for res in result_paths:
+        entry = _register_one(res, "result")
+        if entry and entry["id"] not in seen_result:
+            seen_result.add(entry["id"])
+            result_entries.append(entry)
+
+    if not result_entries:
+        return None
+    submission_save(submission_id, prompt, params, input_entries, result_entries, win)
+    return {
+        "input_asset_ids": [e["id"] for e in input_entries],
+        "output_asset_ids": [e["id"] for e in result_entries],
+    }
+
 def submission_load(submission_id: str) -> dict:
     """读取提交图快照并按注册表实时解析图片节点路径（同 workflow_load 规则）。
 
@@ -434,6 +489,7 @@ def upgrade_workflow(path: str, apply: bool) -> dict:
 def _atomic_write_workflow_backup(path: str, payload: dict) -> str:
     """工作流迁移：备份旧文件 .bak-<ts> 后原子写新 payload（复用 graphstore._atomic_write_json 语义）。"""
     import shutil
+
     from core.registry import _mig_ts
     backup = None
     if os.path.isfile(path):

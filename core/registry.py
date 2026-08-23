@@ -11,9 +11,9 @@ import threading
 import time
 from pathlib import Path
 from urllib.parse import quote
+
 from core.config import DEFAULT_OUTPUT_DIR
 from core.imageinfo import image_dimensions
-
 
 ASSET_DIR = os.path.join(DEFAULT_OUTPUT_DIR, ".assets")
 

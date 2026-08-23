@@ -42,10 +42,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from core import canvas
+from core import canvas, config, graphstore, history
 from core.api import format_error, generate_image
 from core.canvas import safe_ref_path_allowlist
-from core import config
 from core.config import (
     ACTIVE_PROFILE,
     BASE_URL,
@@ -58,8 +57,6 @@ from core.config import (
     WORK_ROOT,
     get_api_key,
 )
-from core import history
-from core.graphstore import next_submission_id
 from core.history import read_generation_history
 from core.logging import log_generation
 from core.tasks import MAX_CONCURRENCY, GenerationTask, TaskManager
@@ -587,11 +584,12 @@ def run_generation(task: GenerationTask) -> None:
 
 
 def _persist_submission(task: GenerationTask) -> dict | None:
-    """旁路：把本次成功结果 + 参考图注册进 .canvas 并落提交图快照。
+    """旁路：把本次成功结果 + 参考图注册进 .assets 并落提交图快照。
 
-    参考图只对 ref_bases（已在 .refs/.canvas 白名单）晋升为 kind='ref'；
-    multipart 兜底的未同步本地图（temp_bases）不晋升，仅结果注册。
-    任何失败不抛（由调用方 try/except 兜底），成功与否不影响生成结果。
+    委托 graphstore.persist_submission_assets 公共函数（与 CLI 共用同一资产旁路逻辑）：
+      - 参考图只对 ref_bases（已在 .refs/.assets 白名单）晋升为 kind='ref'；
+        multipart 兜底的未同步本地图（temp_bases）不晋升，仅结果注册。
+      - 任何失败不抛（由调用方 try/except 兜底），成功与否不影响生成结果。
     返回 {"input_asset_ids": [...], "output_asset_ids": [...]} 供账本联动；无结果返回 None。
     """
     def _path_from_url(url: str) -> str:
@@ -601,43 +599,19 @@ def _persist_submission(task: GenerationTask) -> dict | None:
         except Exception:
             return ""
 
-    input_entries: list[dict] = []
-    seen_input: set[str] = set()
-    for rb in task.ref_bases:
-        try:
-            entry = canvas.register_asset(rb, Path(rb).name, kind="ref", source_key=task.submission_id)
-        except Exception:
-            entry = None
-        if entry and entry["id"] not in seen_input:
-            seen_input.add(entry["id"])
-            input_entries.append(entry)
-
-    result_entries: list[dict] = []
-    seen_result: set[str] = set()
+    # 把 task.results 的 url 反解成绝对路径（与 generation 阶段 dest 一致）
+    result_paths: list[str] = []
     for res in task.results:
         if res.get("status") != "ok" or not res.get("url"):
             continue
         dest = _path_from_url(res["url"])
-        if not dest or not os.path.isfile(dest):
-            continue
-        try:
-            entry = canvas.register_asset(dest, os.path.basename(dest), kind="result", source_key=task.submission_id)
-        except Exception:
-            entry = None
-        if entry and entry["id"] not in seen_result:
-            seen_result.add(entry["id"])
-            result_entries.append(entry)
+        if dest:
+            result_paths.append(dest)
 
-    if not result_entries:
-        return None
     params = {"size": task.size, "quality": task.quality, "outputDir": task.output_dir}
-    canvas.submission_save(
-        task.submission_id, task.prompt, params, input_entries, result_entries, task.win,
+    return graphstore.persist_submission_assets(
+        task.submission_id, task.prompt, params, task.ref_bases, result_paths, task.win,
     )
-    return {
-        "input_asset_ids": [e["id"] for e in input_entries],
-        "output_asset_ids": [e["id"] for e in result_entries],
-    }
 
 
 # 全局生成任务池：执行池大小即全局并发上限，所有窗口 / 模式共享（详见 core/tasks.py）
@@ -680,7 +654,7 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
 
     task = GenerationTask(
         prompt=prompt, size=size, quality=quality, output_dir=output_dir, win=win,
-        ref_bases=ref_bases, temp_bases=temp_bases, submission_id=next_submission_id(),
+        ref_bases=ref_bases, temp_bases=temp_bases, submission_id=graphstore.next_submission_id(),
     )
     task_id = task_manager.submit(task)
     return {"taskId": task_id, "status": task.status}

@@ -38,7 +38,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 | 路径 | 职责 |
 | --- | --- |
-| `main.py` | CLI 入口：`ui` / `menu` / `batch` / `gen` 四个子命令 |
+| `main.py` | CLI 入口：`ui` / `menu` / `batch` / `gen` / `config` 五个子命令（`gen` 与 web 表单完全对等：必填参数校验、多参考图、资产旁路、提交快照、全量账本） |
 | `server.py` | FastAPI 应用：全部 `/api/*` 路由 + 托管 `frontend/dist` |
 | `启动生图工作台.cmd` | 开发环境双击入口：构建检查 → 起服务 → 开窗 → 进入交互菜单 |
 | `config.json` | 公开配置（git 跟踪）：多 profile（中转站/模型/尺寸/质量/ratios），`default_profile` 指定公共默认 |
@@ -95,7 +95,8 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `ui` | 启动网页界面（FastAPI + 托管前端） | `--port`（默认 7860）、`--no-browser`（外部脚本控制开窗时用） |
 | `menu` | rich 交互菜单 | `--port`；N 开新窗口 / Q（或 Ctrl+C、点 X 关窗）退出并连根停止服务 |
 | `batch` | 批量生图 | `--config`、`--only`、`--dry-run`（预览不花钱） |
-| `gen` | 单张生图 | `prompt`、`-i` 参考图、`-o` 输出、`--ratio/--size/--tier/--quality/--model/--n/--format` |
+| `gen` | 单张生图（与 web 表单完全对等） | 必填：`prompt`、`--size`/`--ratio`（二选一）、`--quality`、`-o`/`--output`；可选：`-i`（多张参考图）、`--tier`、`--model`、`--n`、`--format`、`--no-asset` |
+| `config` | 显示当前 profile 支持的尺寸/比例/质量/默认值（实时读 `config.json`） | 无 |
 
 ### 3.2 启动脚本三段流程（`启动生图工作台.cmd`）
 
@@ -241,7 +242,14 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 6.3 单张生成（命令行）
 
-`gen` 子命令：`resolve_size_with_ratio` + `build_default_output_path` → `generate_image` → 保存。
+`gen` 子命令与 web 表单完全对等，链路：`_validate_gen_args`（必填/互斥/取值校验，缺则退出码 2）→ `_resolve_output`（文件路径直接用 / 目录则生成 `ai_<时间戳>_<序号>.<后缀>`）→ `resolve_size_with_ratio` → `generate_image`（多参考图走 edits 接口）→ 旁路 `graphstore.persist_submission_assets`（注册参考图 + 结果图，落提交快照）→ `log_generation`（写全量账本，含 `submissionId`/`assetIds`，与 web 同源可互查）。
+
+- 必填参数缺失立即报错并提示运行 `config` 查看可用值（退出码 2），不进入生成；
+- `--no-asset` 跳过资产旁路与提交快照，账本无 `submissionId`/`assetIds` 字段；
+- 单次同步等待结果（不进并发池），失败写 `status=error`、退出码 1；
+- 多张并行：开多个终端各跑一条 `gen` 命令（并行调度不在项目职责内）。
+
+`config` 子命令实时读 `config.json` 当前 profile，打印支持的尺寸（含费用）/ 比例 + 档位 / 质量取值 / 默认值，避免传错值被 `_validate_gen_args` 拒绝。
 
 ### 6.4 提示词粘贴导入
 
@@ -407,13 +415,14 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_server_helpers.py` | 22 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 |
 | `tests/test_core_logging.py` | 8 | 日志写入 / 并发串行 / 路径相对化 |
 | `tests/test_core_history.py` | 7 | 历史读取 / 坏行容忍 / 筛选 / backfill（报告不写·补齐备份·幂等·跳过无法反查·坏行保留） |
-| `tests/test_core_canvas.py` | 27 | 注册表（v2 包装 + v1 裸清单兼容）/ 内容去重 / import 边界 / kind 来源标签 / workflow 归一化与自愈 / recovery / submission |
+| `tests/test_core_canvas.py` | 32 | 注册表（v2 包装 + v1 裸清单兼容）/ 内容去重 / import 边界 / kind 来源标签 / workflow 归一化与自愈 / recovery / submission / **persist_submission_assets 公共函数**（注册/去重/无结果返回 None/部分缺失） |
 | `tests/test_server_canvas.py` | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / 未知版本拒绝 / ref_paths 放行 |
 | `tests/test_core_imageinfo.py` | 10 | PNG/JPEG/GIF/WebP(VP8/VP8L/VP8X)/BMP 头解析 / 垃圾与截断返回 None |
 | `tests/test_core_migrate.py` | 19 | 注册表 detect/升级/重建/回填/迁目录 + pending-relocate dry-run 预检 + 工作流升级 + CLI 端到端 |
 | `tests/test_core_tasks.py` | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
 | `tests/test_server_tasks.py` | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
 | `tests/test_main_process.py` | 4 | 端口探测 / 祖先链回溯 |
+| `tests/test_main_cli.py` | 25 | CLI gen 子命令全链路：`_validate_gen_args` 必填/互斥/取值校验 / `_resolve_output` 文件路径/目录/后缀解析 / `handle_gen_command` 文生图+图生图+多参考图+失败+`--no-asset`+比例档位端到端 / `handle_config_command` 输出 / `build_argument_parser` 子命令挂接 |
 | `tests/test_core_pathtrust.py` | 2 | 路径白名单（match_roots 双根/单根/跨盘不误伤） |
 | `frontend/src/layout.test.ts` | 24 | 分层布局 / 复杂连接分层（结果图复用/多级链路/环容忍/结果块居中）/ 局部整理不漂移 / 只读锚点对齐 / 多对多网状质心摊平 / 群内标题排序 / 直连与组连同层 |
 | `frontend/src/workflow.test.ts` | 31 | 自动连线（全图/仅选中）/ 动画类 / 连线约束 / 入边收集 / 落点阶梯 / 图片文件识别 / 节点构建器 |

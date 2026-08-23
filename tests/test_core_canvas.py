@@ -396,3 +396,66 @@ def test_submission_invalid_id_rejected(canvas_env):
     assert canvas.submission_load("../evil")["ok"] is False
 
 
+# ---------- persist_submission_assets（server / CLI 共用的资产旁路公共函数）----------
+
+def test_persist_submission_assets_registers_refs_and_results(canvas_env):
+    """正常路径：参考图 + 结果图全部注册，提交快照落盘，返回 input/output asset_ids。"""
+    ref = _write_png(canvas_env / "ref.png", b"ref-bytes")
+    res = _write_png(canvas_env / "result.png", b"result-bytes")
+    meta = canvas.persist_submission_assets(
+        "sub-persist-1", "prompt", {"size": "1024x1024", "quality": "high"},
+        [str(ref)], [str(res)], win=0,
+    )
+    assert meta is not None
+    assert len(meta["input_asset_ids"]) == 1
+    assert len(meta["output_asset_ids"]) == 1
+    # 提交快照文件落盘
+    loaded = canvas.submission_load("sub-persist-1")
+    assert loaded["ok"] is True
+    assert loaded["missing"] == []
+
+
+def test_persist_submission_assets_dedups_repeated_refs(canvas_env):
+    """同一参考图重复传入 → 只注册一次（按资产 id 去重）。"""
+    ref = _write_png(canvas_env / "dup.png", b"dup-bytes")
+    res = _write_png(canvas_env / "r.png", b"r-bytes")
+    meta = canvas.persist_submission_assets(
+        "sub-dup", "p", {}, [str(ref), str(ref), str(ref)], [str(res)],
+    )
+    assert meta is not None
+    assert len(meta["input_asset_ids"]) == 1
+
+
+def test_persist_submission_assets_no_result_returns_none(canvas_env):
+    """无结果图 → 返回 None，不落提交快照（不污染 submissions 目录）。"""
+    ref = _write_png(canvas_env / "ref.png", b"r")
+    meta = canvas.persist_submission_assets(
+        "sub-no-result", "p", {}, [str(ref)], [],
+    )
+    assert meta is None
+    assert canvas.submission_load("sub-no-result")["ok"] is False
+
+
+def test_persist_submission_assets_nonexistent_result_returns_none(canvas_env):
+    """结果路径不存在 → 注册全部失败 → 返回 None，不落提交快照。"""
+    ref = _write_png(canvas_env / "ref.png", b"r")
+    meta = canvas.persist_submission_assets(
+        "sub-no-file", "p", {}, [str(ref)], [str(canvas_env / "nope.png")],
+    )
+    assert meta is None
+    assert canvas.submission_load("sub-no-file")["ok"] is False
+
+
+def test_persist_submission_assets_skips_nonexistent_refs(canvas_env):
+    """参考图部分缺失 → 只注册存在的，结果图正常 → 仍落快照。"""
+    ref = _write_png(canvas_env / "ref.png", b"r")
+    res = _write_png(canvas_env / "result.png", b"r")
+    meta = canvas.persist_submission_assets(
+        "sub-partial-refs", "p", {},
+        [str(ref), str(canvas_env / "missing.png")], [str(res)],
+    )
+    assert meta is not None
+    assert len(meta["input_asset_ids"]) == 1  # 只有一张参考图注册成功
+    assert len(meta["output_asset_ids"]) == 1
+
+
