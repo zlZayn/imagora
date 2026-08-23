@@ -104,6 +104,9 @@ export function ImageNode({
         <div className="mt-1 max-w-[128px] truncate text-[11px] text-neutral-600" title={data.name}>
           {data.name}
         </div>
+        <div className={`text-[10px] ${data.refCount > 0 ? "text-brand" : "text-neutral-400"}`}>
+          {data.refCount > 0 ? `引用 ${data.refCount} 处` : "未引用"}
+        </div>
       </div>
     );
   }
@@ -329,7 +332,7 @@ export const PromptNode = memo(function PromptNode({
     const summary = promptStatusSummary(data);
     return (
       <div
-        className={`relative w-56 rounded-lg bg-white/85 !p-3 shadow-sm ${selected ? "node-selected" : ""}`}
+        className={`panel-card flex min-h-[320px] !w-[380px] flex-col items-center justify-center gap-3 !p-3 ${selected ? "node-selected" : ""}`}
       >
         <Handle
           type="target"
@@ -342,12 +345,12 @@ export const PromptNode = memo(function PromptNode({
           className="!rounded !border-0 !bg-brand"
         />
         <div
-          className="truncate text-center text-lg font-semibold leading-tight text-brand-dark"
+          className="max-w-full truncate text-center text-2xl font-semibold leading-tight text-brand-dark"
           title={data.title ?? "提示词生成"}
         >
           {data.title ?? "提示词生成"}
         </div>
-        <div className={`mt-2 truncate text-center text-sm font-medium ${summary.className}`} title={summary.detail}>
+        <div className={`max-w-full truncate text-center text-lg font-medium ${summary.className}`} title={summary.detail}>
           {summary.text}
         </div>
       </div>

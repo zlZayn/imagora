@@ -154,6 +154,10 @@ describe("LOD abstract mode", () => {
     expect(screen.getByText("完成 · 2 张")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("button", { name: "运行" })).toBeNull();
+    // 抽象卡片保持与完整模式相同的宽度与最小高度（尺寸不缩水，字放大）
+    const card = screen.getByText("主图").parentElement!;
+    expect(card.className).toContain("!w-[380px]");
+    expect(card.className).toContain("min-h-[320px]");
   });
 
   it("renders a group node without hover delete actions in LOD mode", () => {

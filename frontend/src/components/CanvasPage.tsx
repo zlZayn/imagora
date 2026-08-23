@@ -76,9 +76,9 @@ const FADE_DURATION = 200;
 const MIN_FIT_ZOOM = 0.02;
 
 /** LOD 抽象模式缩放阈值：缩小到 LOD_IN_ZOOM 以下进入抽象渲染，放大到 LOD_OUT_ZOOM 以上恢复完整渲染。
- *  两值之间是迟滞带（0.5~0.65），避免在阈值附近反复缩放时抖动切换。 */
-const LOD_IN_ZOOM = 0.5;
-const LOD_OUT_ZOOM = 0.65;
+ *  两值之间是迟滞带（0.35~0.5），避免在阈值附近反复缩放时抖动切换。 */
+const LOD_IN_ZOOM = 0.35;
+const LOD_OUT_ZOOM = 0.5;
 
 /** 工具栏统一样式按钮；dragStart 存在时按钮可拖出（拖到画布松开即新建，点击仍走 onClick） */
 function ToolbarButton({
