@@ -322,7 +322,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 - **独立任务模型**：连线 = 参考图输入（非执行顺序），提示词节点间无依赖，「全部运行」= 全部提交到服务端并发队列。
 - **自动整理=布局管道**（`layout.ts`，纯函数、边不变）：① 裁剪（选中节点 + 未选中的「只读锚点」固定参与对齐、不移动）→ ② 最长路径分层（环回边不计层；孤立图/组 0、提示词 1）→ ③ pass A 浅→深按前驱质心排序（确定群顺序：左卡片组/右卡片组）→ ④ pass B **自底向上定位**（深→浅，按后继质心：图片组站到其卡片簇中央上方、图片站到组中央上方、共享图站到多组中央；叶子层保持不动）→ ⑤ 块化放置（同源提示词成块、块内标题序、块间标准间距）。**重复整理严格幂等**：无锚点选区以「输入选中块中心」为锚整体对齐，连续点击不漂移。直连卡与组连卡共用「参考锚点 = 直接前驱」抽象（一跳/两跳，无特例）。多层链（提示词→结果图→组→提示词…）由分层 + 自底向上自然延伸，结果图被复用时按多个后继质心对称分叉。
-- **派生路径不落盘**：图片节点只持久化 registryId，url/absPath 加载时实时重建——项目目录改名/移动后旧存档自愈；URL 构建单一入口 `canvas.image_url()`，注册表解析单一入口 `resolve_asset(id)`。
+- **派生路径不落盘**：图片节点只持久化 registryId，url/absPath 加载时实时重建——项目目录改名/移动后旧存档自愈；URL 构建单一入口 `registry.image_url()`（canvas shim re-export 同名），注册表解析单一入口 `resolve_asset(id)`。
 - **统一存储模型**：画布与经典表单走后端同一套存储——`kind`（canvas/result/ref）标记图片来源；一次生成即一份提交图快照（`output/submissions/`，图片组→提示词→结果）；账本（`generation.jsonl`）每行带 `submissionId/inputAssetIds/outputAssetIds` 联动。「导入画布」= 按 registryId 整图重建（前端 `mergeSubmissionGraph` 去重复用），不产生重复节点。
 - **删除分层**：删节点仅断连线不删文件；删文件是图片节点显式操作。
 - **缺图守卫**：参考图文件缺失时明确报错中止运行，不静默跳过导致不带参考图生成错误结果。
@@ -385,8 +385,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 1. **transition-all 拖慢拖拽类交互**。规范：transition 只含 border-color/box-shadow/opacity。
 2. **连线 hover 亮起的延迟方向**。现象：想「悬停 0.1s 后才亮起」但用 base 规则的 transition-delay 导致**离开也延迟**（松手后还亮着）。规范：延迟只写在 `:hover` 规则里（`transition-delay: 0.1s`），base 规则只放属性与时长——进入延迟、离开立即回退；transition 只含 stroke/stroke-width（animated 边的 dasharray 动画不受影响）。该效果以人工验证为准，不做 E2E（合成悬停时序脆弱）。
-2. **transform 动画锁死 hover**。现象：hover 效果失效。规范：入场动画只动 opacity 的场景不用 fill both 的 transform；overflow-hidden 会裁剪悬浮操作栏/下拉面板——提示词卡片用 min-w-0 + truncate 防撑宽，不用 overflow-hidden。
-3. **浮层被后续卡片盖住**。规范：含浮层的卡片加 relative + 更高 z-index。
+3. **transform 动画锁死 hover**。现象：hover 效果失效。规范：入场动画只动 opacity 的场景不用 fill both 的 transform；overflow-hidden 会裁剪悬浮操作栏/下拉面板——提示词卡片用 min-w-0 + truncate 防撑宽，不用 overflow-hidden。
+4. **浮层被后续卡片盖住**。规范：含浮层的卡片加 relative + 更高 z-index。
 
 ### 9.5 坐标与几何
 
