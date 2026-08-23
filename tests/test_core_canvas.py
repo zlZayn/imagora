@@ -367,8 +367,8 @@ def test_submission_save_load_roundtrip(canvas_env):
             assert "absPath" not in n["data"]
     # 连线：组→提示词→结果
     edges = raw["edges"]
-    prompt_id = [n["id"] for n in raw["nodes"] if n["type"] == "prompt"][0]
-    group_id = [n["id"] for n in raw["nodes"] if n["type"] == "group"][0]
+    prompt_id = next(n["id"] for n in raw["nodes"] if n["type"] == "prompt")
+    group_id = next(n["id"] for n in raw["nodes"] if n["type"] == "group")
     assert any(e["target"] == prompt_id for e in edges)          # 组→提示词
     assert any(e["source"] == prompt_id for e in edges)         # 提示词→结果
     assert any(e["source"] == group_id for e in edges)           # 组出边

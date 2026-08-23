@@ -1,5 +1,6 @@
 """共享测试夹具：统一隔离输出目录（registry / graphstore / canvas shim 三处常量一并注入 tmp_path）。"""
 import pytest
+
 from core import canvas, graphstore, registry
 
 

@@ -333,10 +333,10 @@ def test_migrate_script_cli_output_root_end_to_end(tmp_path):
     wf = root / "workflows"; wf.mkdir(parents=True, exist_ok=True)
     (wf / "old.json").write_text(json.dumps({"version": 1, "name": "old"}), encoding="utf-8")
     script = str(Path(__file__).resolve().parent.parent / "scripts" / "migrate.py")
-    r0 = subprocess.run([sys.executable, script, "--output-root", str(root)], capture_output=True, text=True)
+    r0 = subprocess.run([sys.executable, script, "--output-root", str(root)], capture_output=True, text=True, check=False)
     assert r0.returncode == 0, r0.stderr
     assert not (root / ".assets").exists()
-    r1 = subprocess.run([sys.executable, script, "--output-root", str(root), "--apply"], capture_output=True, text=True)
+    r1 = subprocess.run([sys.executable, script, "--output-root", str(root), "--apply"], capture_output=True, text=True, check=False)
     assert r1.returncode == 0, r1.stderr
     assert (root / ".assets" / "canv_cli123.png").exists()
     reg = json.loads((root / ".assets" / "registry.json").read_text(encoding="utf-8"))

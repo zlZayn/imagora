@@ -20,9 +20,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import canvas as canvas_mod
-from core import graphstore
-from core import history
-from core import registry
+from core import graphstore, history, registry
 
 
 def _milestone(rel, reg, am):

@@ -21,11 +21,11 @@ from server import (
     canvas_image_delete,
     canvas_images,
     canvas_import,
+    canvas_import_submission,
     canvas_upload,
     canvas_workflow_list,
     canvas_workflow_load,
     canvas_workflow_save,
-    canvas_import_submission,
 )
 
 

@@ -204,8 +204,8 @@ def test_history_import_only_accepts_recorded_existing_output(monkeypatch, tmp_p
 
 def test_generation_history_resolves_via_registry_when_output_moved(monkeypatch, tmp_path):
     """历史以注册表为准：账本带 outputAssetIds 时，原 output 文件被移动/删除仍显示（注册表副本在）。"""
-    from server import generation_history
     from core import registry
+    from server import generation_history
 
     # 注册表副本（在 .assets 隔离区）：原 output 路径的文件已被删除
     src = tmp_path / "moved_away.png"

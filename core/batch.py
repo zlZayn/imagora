@@ -19,8 +19,8 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from core.api import format_error, generate_image
 import core.config as global_config
+from core.api import format_error, generate_image
 from core.config import DEFAULT_QUALITY
 from core.console import console, print_dim, print_panel
 from core.logging import log_generation
