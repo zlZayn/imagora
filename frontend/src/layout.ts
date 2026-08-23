@@ -1,11 +1,14 @@
 import type { WorkflowEdge, WorkflowNode } from "./types";
 
-/* ---------------- 布局引擎：按连线深度分层（广义三段式） ----------------
- * 层号 = 从任一源点的最长路径长度（入边指向更深层）。普通三段式恰好映射到
- * 参考图 0 / 图片组 1 / 提示词 2 / 结果 3；结果图被复用（连到图片组/别的提示词）或
- * 出现多级链路（提示词→结果→图片组→提示词）时自动向下延伸——连线只朝下，不横穿。
- * 未连线的孤立节点按类型保底（图片/组 0，提示词 1），保持"图在上、卡在下"的直觉。
- * 环（结果图回连自身提示词等）容忍：DFS 回边不计层，仅连线跨层，不死循环。 */
+/* ---------------- 布局引擎：分层 → 群排序 → 双向 barycenter → 块化放置 ----------------
+ * 架构：五阶段纯函数管道（全部不修改入参，边不变）：
+ *   0) 裁剪：参与布局的节点 + 未选中的"只读锚点"（固定位置参与对齐，不移动）
+ *   1) 分层：最长路径（环回边不计层）+ 类型保底（孤立图/组 0、提示词 1）
+ *   2) 排序：群 = 同参考来源（提示词的直接前驱集合）的节点；群内按标题，群间按质心
+ *   3) 坐标：forward（浅→深，前驱质心）→ backward（深→浅，无前驱节点随后继质心）→ forward 收敛
+ *   4) 输出：只改写移动节点位置，其余（含锚点）原样返回
+ * 多对多（图↔组网状）由双向质心摊平；"图片直连卡片"与"图片→组→卡片"共用同一
+ * "参考锚点 = 直接前驱" 抽象，无特例分支。 */
 
 /** 各节点类型的估算尺寸（用于对齐计算，无需与实际像素完全一致） */
 const NODE_SIZES: Record<WorkflowNode["type"], { width: number; height: number }> = {
@@ -45,6 +48,9 @@ const TYPE_LAYER_FLOOR: Record<WorkflowNode["type"], number> = {
   group: 0,
   prompt: 1,
 };
+
+/** 提示词卡片界面标题（顺序键）：data.title，缺省「提示词生成」 */
+const DEFAULT_PROMPT_TITLE = "提示词生成";
 
 /** 最长路径分层（纯递归）：返回 nodeId 的层号；环回边（正在访问的节点）返回 -1 不计层 */
 function longestPathLayer(
@@ -104,38 +110,49 @@ export function layoutPromptResults(
   });
 }
 
-/** 分层布局：
- *  按连线深度（最长路径）把节点分到逐层纵带，层内按「前驱中心均值（barycenter）」
- *  排序并块居中放置——结果图天然对齐在提示词正下方、图片组成员对齐在组下方，
- *  复用/多级链路自动往下延伸。origin 可选：整套布局平移到该坐标
- *  （局部整理选中节点时用，选中块原地重排不跳位）。返回带新 position 的节点数组（边不变）。 */
-export function autoLayout(
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-  origin?: { x: number; y: number },
-): WorkflowNode[] {
+/* ---------------- 分层布局核心（layoutSelection / autoLayout 共用） ---------------- */
+
+/** 提示词的参考来源键：直接前驱 id 排序拼接；非提示词返回 null（不参与群内标题排序） */
+function promptSourceKey(node: WorkflowNode, preds: Map<string, string[]>): string | null {
+  if (node.type !== "prompt") return null;
+  return (preds.get(node.id) ?? []).slice().sort().join("|");
+}
+
+interface LayoutRun {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  /** 需要输出位置的节点 id（其余为只读锚点） */
+  moves: ReadonlySet<string>;
+  origin?: { x: number; y: number };
+}
+
+/** 布局一次：分层 → 逐层放置三趟（forward → backward 层 0 → forward 收敛）。
+ *  返回值只改写 moves 内节点的 position；锚点与无关节点原样返回。 */
+function runLayout(run: LayoutRun): WorkflowNode[] {
+  const { nodes, edges, moves, origin } = run;
   if (!nodes.length) return nodes;
-  // 布局基准：origin 存在时（局部整理）以选中块左上角为新原点，内部坐标从 0 起算，
-  // 最后整体平移到 origin——避免把画布边距 (60,40) 与 origin 叠加导致每次整理整体右移/下移。
   const baseX = origin ? 0 : LAYOUT.leftMargin;
   const baseY = origin ? 0 : LAYOUT.topMargin;
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  // 入边表：只收两端都在本次节点集合内的边（局部整理时忽略指向未选中节点的边）
+
+  // 入边/出边表（两端都在本次节点集合内的边）
   const preds = new Map<string, string[]>();
+  const succs = new Map<string, string[]>();
   for (const edge of edges) {
     if (!byId.has(edge.source) || !byId.has(edge.target)) continue;
-    const list = preds.get(edge.target) ?? [];
-    list.push(edge.source);
-    preds.set(edge.target, list);
+    const p = preds.get(edge.target) ?? [];
+    p.push(edge.source);
+    preds.set(edge.target, p);
+    const s = succs.get(edge.source) ?? [];
+    s.push(edge.target);
+    succs.set(edge.source, s);
   }
-  // 1) 分层：最长路径 + 类型保底（孤立图片/组 0、提示词 1）
+
+  // 1) 分层：最长路径 + 类型保底
   const layer = new Map<string, number>();
   const visiting = new Set<string>();
   for (const node of nodes) {
-    const l = Math.max(
-      longestPathLayer(node.id, preds, layer, visiting),
-      TYPE_LAYER_FLOOR[node.type],
-    );
+    const l = Math.max(longestPathLayer(node.id, preds, layer, visiting), TYPE_LAYER_FLOOR[node.type]);
     layer.set(node.id, l);
   }
   const layerGroups = new Map<number, WorkflowNode[]>();
@@ -146,79 +163,146 @@ export function autoLayout(
   }
   const sortedLayers = [...layerGroups.keys()].sort((a, b) => a - b);
 
-  // 2) 逐层放置：层内 barycenter 排序 + 同中心块居中，层间按最大高度 + 层距错开
+  // 只读锚点：坐标平移进布局局部系（origin 模式），位置固定参与对齐
   const positions = new Map<string, { x: number; y: number }>();
-  let bandY = baseY;
-  const centerOf = (node: WorkflowNode) => (positions.get(node.id)?.x ?? node.position.x) + nodeSize(node).width / 2;
-
-  for (const layerIndex of sortedLayers) {
-    const layerNodes = layerGroups.get(layerIndex)!;
-    // 期望中心：有已放置前驱（在更浅层）用前驱中心均值；无前驱（层 0 / 环回边）一律左对齐打底——
-    // 不用原始坐标，否则 origin 平移模式会双重偏移导致二次整理漂移
-    const desired = new Map<string, number>();
-    for (const node of layerNodes) {
-      const centers = (preds.get(node.id) ?? [])
-        .map((pred) => byId.get(pred))
-        .filter((pred): pred is WorkflowNode => pred !== undefined && positions.has(pred.id))
-        .map((pred) => centerOf(pred));
-      desired.set(
-        node.id,
-        centers.length
-          ? centers.reduce((sum, c) => sum + c, 0) / centers.length
-          : baseX + nodeSize(node).width / 2,
-      );
+  for (const node of nodes) {
+    if (!moves.has(node.id)) {
+      positions.set(node.id, {
+        x: node.position.x - (origin?.x ?? 0),
+        y: node.position.y - (origin?.y ?? 0),
+      });
     }
-    // 稳定排序：提示词卡片之间按左上角标题升序（界面标题 data.title，缺省「提示词生成」）；
-    // 其余按期望中心升序；同中心按原始 x（结果保持确定性）
-    const promptTitle = (node: WorkflowNode) =>
-      node.type === "prompt" ? node.data.title ?? "提示词生成" : undefined;
-    const ordered = [...layerNodes].sort((a, b) => {
-      const ta = promptTitle(a);
-      const tb = promptTitle(b);
-      if (ta !== undefined && tb !== undefined) {
+  }
+  const centerOf = (node: WorkflowNode) => (positions.get(node.id)?.x ?? node.position.x) + nodeSize(node).width / 2;
+  // 锚点实际底边参与层带累计：移动节点落在锚点（含视觉偏移）正下方，不与锚点重叠
+  const bandY = new Map<number, number>();
+  {
+    let y = baseY;
+    for (const li of sortedLayers) {
+      const layerBottom = layerGroups
+        .get(li)!
+        .reduce((bottom, node) => {
+          const fixed = positions.get(node.id);
+          if (fixed && !moves.has(node.id)) return Math.max(bottom, fixed.y + nodeSize(node).height);
+          return Math.max(bottom, y + nodeSize(node).height);
+        }, y);
+      bandY.set(li, y);
+      y = layerBottom + LAYOUT.layerGap;
+    }
+  }
+
+  /** 期望中心：已放置前驱（更浅层或锚点）的中心均值；无前驱 → 左基准 */
+  const desiredByPreds = (node: WorkflowNode) => {
+    const centers = (preds.get(node.id) ?? [])
+      .map((pred) => byId.get(pred))
+      .filter((pred): pred is WorkflowNode => pred !== undefined && positions.has(pred.id))
+      .map((pred) => centerOf(pred));
+    return centers.length
+      ? centers.reduce((sum, c) => sum + c, 0) / centers.length
+      : baseX + nodeSize(node).width / 2;
+  };
+  /** 期望中心：已放置后继（更深层或锚点）的中心均值；无后继 → 左基准 */
+  const desiredBySuccs = (node: WorkflowNode) => {
+    const centers = (succs.get(node.id) ?? [])
+      .map((succ) => byId.get(succ))
+      .filter((succ): succ is WorkflowNode => succ !== undefined && positions.has(succ.id))
+      .map((succ) => centerOf(succ));
+    return centers.length
+      ? centers.reduce((sum, c) => sum + c, 0) / centers.length
+      : baseX + nodeSize(node).width / 2;
+  };
+
+  /** 放置一层：排序（群间质心、群内标题）→ 块化（同期望中心且同参考来源的提示词合块）→ 落位 */
+  const placeLayer = (layerIndex: number, desiredOf: (node: WorkflowNode) => number) => {
+    const movable = layerGroups.get(layerIndex)!.filter((node) => moves.has(node.id));
+    if (!movable.length) return;
+    const desired = new Map<string, number>();
+    for (const node of movable) desired.set(node.id, desiredOf(node));
+    const sourceKey = (node: WorkflowNode) => promptSourceKey(node, preds);
+    // 排序：期望中心主键；同源提示词组内按标题；其余按原始 x（稳定确定）
+    const ordered = [...movable].sort((a, b) => {
+      const da = desired.get(a.id)!;
+      const db = desired.get(b.id)!;
+      if (Math.abs(da - db) >= 0.5) return da - db;
+      const ka = sourceKey(a);
+      const kb = sourceKey(b);
+      if (ka !== null && kb !== null && ka === kb && a.type === "prompt" && b.type === "prompt") {
+        const ta: string = a.data.title ?? DEFAULT_PROMPT_TITLE;
+        const tb: string = b.data.title ?? DEFAULT_PROMPT_TITLE;
         const byTitle = ta.localeCompare(tb, "zh");
         if (byTitle !== 0) return byTitle;
       }
-      return desired.get(a.id)! - desired.get(b.id)! || a.position.x - b.position.x;
+      return a.position.x - b.position.x;
     });
-    // 块化放置：连续同期望中心的节点合成一块，块居中于该中心；与左侧已放节点碰撞时右移避让
-    let cursorX = baseX;
+    // 块化：同期望中心；且块内所有提示词共享同一参考来源（不同来源的提示词不混块）
+    const sameSource = (block: WorkflowNode[], node: WorkflowNode) =>
+      block.every((m) => sourceKey(m) === null || sourceKey(m) === sourceKey(node));
+    // 块间保持标准间距：cursorX 从左侧留一个 nodeGap 起步，避免相邻块紧贴/右推累积
+    let cursorX = baseX - LAYOUT.nodeGap;
     let i = 0;
     while (i < ordered.length) {
       const center = desired.get(ordered[i].id)!;
       let j = i;
-      while (j + 1 < ordered.length && Math.abs(desired.get(ordered[j + 1].id)! - center) < 0.5) j += 1;
+      while (
+        j + 1 < ordered.length &&
+        Math.abs(desired.get(ordered[j + 1].id)! - center) < 0.5 &&
+        sameSource(ordered.slice(i, j + 1), ordered[j + 1])
+      ) {
+        j += 1;
+      }
       const block = ordered.slice(i, j + 1);
       const blockWidth = block.reduce(
         (width, node, index) => width + nodeSize(node).width + (index ? LAYOUT.nodeGap : 0),
         0,
       );
-      let x = Math.max(cursorX, center - blockWidth / 2);
+      const y = bandY.get(layerIndex)!;
+      let x = Math.max(cursorX + LAYOUT.nodeGap, center - blockWidth / 2);
       for (const node of block) {
-        positions.set(node.id, { x, y: bandY });
+        positions.set(node.id, { x, y });
         x += nodeSize(node).width + LAYOUT.nodeGap;
       }
       cursorX = x - LAYOUT.nodeGap;
       i = j + 1;
     }
-    // 下一层纵带：本层最大高度 + 层距（不重叠）
-    bandY += layerNodes.reduce((height, node) => Math.max(height, nodeSize(node).height), 0) + LAYOUT.layerGap;
+  };
+
+  // 2) forward：浅 → 深（层 0 无前驱，先按左基准展开，随后 backward 重排）
+  for (const li of sortedLayers) placeLayer(li, desiredByPreds);
+  // 3) backward：层 0 无前驱节点随后继质心（多对多摊平；孤立无后继保持左基准）
+  if (sortedLayers.includes(0)) placeLayer(0, desiredBySuccs);
+  // 4) forward 收敛：深层重新对齐最新层 0（层 0 不再动）
+  for (const li of sortedLayers) {
+    if (li > 0) placeLayer(li, desiredByPreds);
   }
 
   return nodes.map((node) => {
+    if (!moves.has(node.id)) return node;
     const pos = positions.get(node.id);
-    if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
-      return origin
-        ? { ...node, position: { x: pos.x + origin.x, y: pos.y + origin.y } }
-        : { ...node, position: pos };
-    }
-    return node;
+    if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return node;
+    return origin
+      ? { ...node, position: { x: pos.x + origin.x, y: pos.y + origin.y } }
+      : { ...node, position: pos };
   });
 }
 
-/** 局部整理：只重排选中的节点，其余节点保持原位。
- *  以选中节点包围盒左上角为原点跑分层布局（origin 平移），
- *  未选中节点原样返回。边不变。 */
+/** 分层布局（全画布）：所有节点参与移动。origin 可选：整套布局平移到该坐标。 */
+export function autoLayout(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  origin?: { x: number; y: number },
+): WorkflowNode[] {
+  if (!nodes.length) return nodes;
+  return runLayout({
+    nodes,
+    edges,
+    moves: new Set(nodes.map((node) => node.id)),
+    origin,
+  });
+}
+
+/** 局部整理：只重排选中的节点；与选中节点相邻的未选中节点作为"只读锚点"
+ *  参与对齐（卡片仍对准自己的参考图/组），但位置永不改变。
+ *  以选中节点包围盒左上角为原点（origin 平移），未选中节点原样返回，边不变。 */
 export function layoutSelection(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
@@ -227,9 +311,21 @@ export function layoutSelection(
   if (!selectedIds.size) return nodes;
   const selected = nodes.filter((node) => selectedIds.has(node.id));
   if (!selected.length) return nodes;
+  const boundsEdges = edges.filter((edge) => selectedIds.has(edge.source) || selectedIds.has(edge.target));
+  const anchorIds = new Set<string>();
+  for (const edge of boundsEdges) {
+    if (!selectedIds.has(edge.source)) anchorIds.add(edge.source);
+    if (!selectedIds.has(edge.target)) anchorIds.add(edge.target);
+  }
+  const anchors = nodes.filter((node) => anchorIds.has(node.id));
   const minX = Math.min(...selected.map((node) => node.position.x));
   const minY = Math.min(...selected.map((node) => node.position.y));
-  const arranged = autoLayout(selected, edges, { x: minX, y: minY });
+  const arranged = runLayout({
+    nodes: [...selected, ...anchors],
+    edges: boundsEdges,
+    moves: selectedIds,
+    origin: { x: minX, y: minY },
+  });
   const positioned = new Map(arranged.map((node) => [node.id, node]));
   return nodes.map((node) => positioned.get(node.id) ?? node);
 }
