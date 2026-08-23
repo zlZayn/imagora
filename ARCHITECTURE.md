@@ -462,4 +462,4 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 11.3 文档同步
 
-功能变更后同步三处：`README.md`（用户视角）、`ARCHITECTURE.md`（本文档：结构/决策/防错清单）、`.omo/CONTEXT.md`（跨会话交接，记录本轮改动与验证状态）。文档滞后即技术债。
+功能变更后同步三处：`README.md`（用户视角）、`ARCHITECTURE.md`（本文档：结构/决策/防错清单）、`AGENTS.md`（项目根目录，跨会话交接，记录本轮改动与验证状态，主流 AI agent 自动发现）。文档滞后即技术债。

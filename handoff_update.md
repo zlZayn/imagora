@@ -187,4 +187,4 @@ python scripts/migrate.py --apply --output-root 路径  # 指定别的 output �
 | [frontend/src/promptImportFormat.ts](file:///workspace/frontend/src/promptImportFormat.ts) | 提示词导入格式解析 |
 | [docs/prompt-import-format.md](file:///workspace/docs/prompt-import-format.md) | 导入格式模板 |
 
-更详细的架构与防错规范见 [ARCHITECTURE.md](file:///workspace/ARCHITECTURE.md)，跨会话交接见 [.omo/CONTEXT.md](file:///workspace/.omo/CONTEXT.md)。
+更详细的架构与防错规范见 [ARCHITECTURE.md](file:///workspace/ARCHITECTURE.md)，跨会话交接见 [AGENTS.md](file:///workspace/AGENTS.md)。

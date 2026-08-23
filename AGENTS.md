@@ -1,6 +1,10 @@
-# 上下文交接文档（CONTEXT）
+# AGENTS.md — 项目上下文与交接文档
 
-> 维护约定：本文件随工作进展持续更新，记录跨会话交接所需的关键事实——当前工作、架构决策、验证状态、已知问题。交接时先读这里。
+> **本文件是自维护文档**：每次工作完成后，当前会话的执行者必须就地更新本文件（当前工作、验证状态、待办、已知问题），保持与代码同步。文档滞后即技术债，下一个 agent 接手时先读这里。
+>
+> **放置约定**：本文件固定放在项目根目录 `/workspace/AGENTS.md`，被主流 AI 编程 agent（Claude Code / Cursor / Codex CLI / Windsurf / Copilot / Aider / Devin / DSH / OpenCode 等）在启动时自动发现并注入上下文，无需额外配置。统一维护这一份即可，不再使用 `.omo/CONTEXT.md`（已废弃）。
+
+***
 
 ## 当前工作（2026-08-23，CLI 全量功能 + 资产旁路公共函数抽取 + 文档同步）
 
@@ -73,6 +77,8 @@
   * `tests/test_server_helpers.py::test_display_path_cross_drive_hides_drive_letter` —— 测 `Z:/foreign/image.png` 隐藏盘符（Linux 无盘符）
 
 * 这 5 个都是平台特定测试，非本轮回归；如 Windows 也失败再修，否则保持现状（不要在 Linux 上为兼容而 skip，会掩盖 Windows 真实行为）
+
+***
 
 ## 上一轮工作（2026-08-20，迁移 dry-run 预检增强 + 文档过期项清理）
 
@@ -148,7 +154,7 @@
 
 * 待确认应用从 .assets 正常运行（启动看到 363 图、能生成）后，再删 542MB 备份：rm -rf output/.canvas-bak-20260820-210134；工作流 .bak 可随时删
 
-## 验证状态（本轮）
+## 验证状态（上一轮）
 
 * 后端 pytest：168 passed（注意 pytest 需 --basetemp 指向 ASCII 路径，项目路径含中文「网店实习」会触发 tmp\_path 坑；用 C:/t/imagora-pytest）
 
@@ -172,5 +178,5 @@
 
 * 可选（未做，低优先）：/api/canvas/\* 端点与 CanvasPage 等画布功能名保持 canvas（正确域标签，不建议再改）；注册表 JSON 键 images 为数据格式键（保留）
 
-* 历史（8-13 v1→v2 迁移雏形 → 8-20 存储统一+目录改名 → 8-20 dry-run 预检增强）见 git 历史
+* 历史（8-13 v1→v2 迁移雏形 → 8-20 存储统一+目录改名 → 8-20 dry-run 预检增强 → 8-23 CLI 全量功能）见 git 历史
 
