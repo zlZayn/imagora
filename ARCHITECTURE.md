@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `output/…/submissions/` | 经典提交图快照（复用工作流格式，kind='submission'），提供整图导入画布 |
 | `frontend/` | React SPA（见 2.3） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新：注册表+工作流迁移，默认只报告、`--apply` 才落盘备份校验） |
-| `tests/` | 后端 pytest（168 用例，纯函数 + 路由，不调上游） |
+| `tests/` | 后端 pytest（204 用例，纯函数 + 路由，不调上游） |
 | `docs/` | `prompt-import-format.md`：提示词导入格式（发给多模态模型的输出格式规范） |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流 |
@@ -58,7 +58,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `api.py` —— 上游请求封装：`generate_image`（文生图/图生图一次请求）、尺寸解析、错误格式化。依赖 config 与 console。
 - `tasks.py` —— 异步任务管线：`TaskManager` 提交登记、线程池并发执行、快照查询、取消、TTL 清理。
 - `registry.py` —— 资产注册表（`ASSET_DIR`/`register_asset`/`import_assets`/`delete_asset`/`list_assets`/`resolve_asset`/`image_url`，内容去重、原子写、可选来源标签 kind/sourceKey）。命名语义：`asset/资产`=被持久化的图，`canvas`=前端编排视图。
-- `graphstore.py` —— 图/工作流存储（`workflow_*`/`submission_*`/`recovery_*`、`_resolve_image_node_paths`/`_strip_derived_node_paths`、原子写），图片节点只存 registryId、路径由 `registry.resolve_asset` 重建。
+- `graphstore.py` —— 图/工作流存储（`workflow_*`/`submission_*`/`recovery_*`、`_resolve_image_node_paths`/`_strip_derived_node_paths`、原子写、`next_submission_id`、`persist_submission_assets` 资产旁路公共函数供 server/CLI 共用），图片节点只存 registryId、路径由 `registry.resolve_asset` 重建。
 - `canvas.py` —— 兼容 shim：保留旧模块名（`from core import canvas`）星号 re-export registry+graphstore（含私有 `_REGISTRY_LOCK`），供 server/migrate/旧引用过渡，无业务逻辑。
 - `pathtrust.py` —— 路径白名单单一实现（match_roots），`canvas.safe_ref_path_allowlist` 与 `server.safe_ref_path` 共同委托，消除重复与跨盘误判。
 - `imageinfo.py` —— 图片头解析（PNG/JPEG/GIF/WebP/BMP 宽高/格式），纯标准库零依赖；供注册表 v2 元数据与迁移工具。
@@ -80,7 +80,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 ### 2.4 依赖规则
 
-后端：`main.py` / `server.py` / `core/batch.py` 调用 `core/api.py`；`core/api.py` 依赖 `core/config.py` 与 `core/console.py`；`core/registry.py` / `core/graphstore.py`（及兼容 shim `core/canvas.py`）与 `core/history.py` 是纯逻辑模块（无 HTTP），由 server 路由薄层调用；`core/tasks.py` 是任务管线，server 的 `/api/generate` 只做校验与登记；`main.py` 的 `menu` 子命令通过 HTTP 接口（`/api/status`、`/api/window/next`）感知服务状态。
+后端：`main.py` / `server.py` / `core/batch.py` 调用 `core/api.py`；`core/api.py` 依赖 `core/config.py` 与 `core/console.py`；`core/registry.py` / `core/graphstore.py`（及兼容 shim `core/canvas.py`）与 `core/history.py` 是纯逻辑模块（无 HTTP），由 server 路由薄层与 `main.py` CLI 共同调用（资产旁路统一委托 `graphstore.persist_submission_assets`，杜绝两端分叉）；`core/tasks.py` 是任务管线，server 的 `/api/generate` 只做校验与登记；`main.py` 的 `menu` 子命令通过 HTTP 接口（`/api/status`、`/api/window/next`）感知服务状态。
 
 前端：`CanvasPage.tsx` 编排一切画布行为；节点组件（`CanvasNodes.tsx`）只负责展示与上抛事件，不持有画布状态；纯函数模块零依赖、可独立单测。
 
@@ -234,7 +234,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 3. `POST /api/generate` 提交即返回 `{taskId, status}`；前端 `useGenerationTask` 每 2s 轮询快照（竞态防护 + elapsed 本地计时，终态停止）。
 4. 服务端线程池执行 `generate_image`（多参考图一次请求）→ 解码 b64 写入输出目录 → 写回 results/messages/total_cost。
 5. 快照 `url=/api/image?path=` 回显（附带 fileSize/ext）；经典表单进画廊，画布按节点映射驱动状态灯并在 done 时**结果回流**（见 6.5）。
-6. **经典结果落盘（旁路，失败不影响生成）**：done 时 `run_generation` 把成功结果图 `kind='result'`、本次 `.refs` 参考图 `kind='ref'` 注册进 `.assets/`，并落一份提交图快照（`output/submissions/<submissionId>.json`）；账本该行带 `submissionId/inputAssetIds/outputAssetIds`。经典结果区「导入画布」= 整图重建到画布（图片组→提示词→结果连线）。
+6. **经典结果落盘（旁路，失败不影响生成）**：done 时 `run_generation` 委托 `graphstore.persist_submission_assets`（与 CLI 共用的资产旁路公共函数）把成功结果图 `kind='result'`、本次 `.refs` 参考图 `kind='ref'` 注册进 `.assets/`，并落一份提交图快照（`output/submissions/<submissionId>.json`）；账本该行带 `submissionId/inputAssetIds/outputAssetIds`。经典结果区「导入画布」= 整图重建到画布（图片组→提示词→结果连线）。
 
 ### 6.2 批量生成（命令行）
 
@@ -405,7 +405,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-后端 `uv run pytest`（168 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，94 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
+后端 `uv run pytest`（204 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，94 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |

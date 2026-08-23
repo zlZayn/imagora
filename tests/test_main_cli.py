@@ -20,7 +20,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import main
 from core import logging as log_module
 
-
 # ---------- 共享夹具 ----------
 
 @pytest.fixture
@@ -141,14 +140,14 @@ class TestResolveOutput:
 
     def test_trailing_slash_treated_as_directory(self, gen_env):
         out = str(gen_env / "outputs") + os.sep
-        path, dir_, fmt = main._resolve_output(_ns_gen(output=out))
+        path, dir_, _fmt = main._resolve_output(_ns_gen(output=out))
         assert dir_ == str(gen_env / "outputs")
         assert os.path.dirname(path) == str(gen_env / "outputs")
         assert path.endswith(".png")
 
     def test_format_fallback_when_no_extension(self, gen_env):
         out = str(gen_env / "noext_out")
-        path, dir_, fmt = main._resolve_output(_ns_gen(output=out, format="webp"))
+        path, _dir, fmt = main._resolve_output(_ns_gen(output=out, format="webp"))
         assert fmt == "webp"
         assert path == out
 
