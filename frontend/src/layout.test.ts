@@ -390,17 +390,91 @@ describe("layout balancing", () => {
     expect(byId.get("a")!.position.y).toBe(byId.get("b")!.position.y);
   });
 
-  it("keeps the left edge when the band is wider than the selection box", () => {
+  it("keeps the band centered on the selection center and stays idempotent", () => {
     const a = { ...imageNode("a"), position: { x: 0, y: 0 } } as WorkflowNode;
     const b = { ...imageNode("b"), position: { x: 0, y: 0 } } as WorkflowNode;
     const nodes = [a, b];
 
     const arranged = layoutSelection(nodes, [], new Set(["a", "b"]));
     const byId = new Map(arranged.map((node) => [node.id, node]));
+    const once = { a: byId.get("a")!.position, b: byId.get("b")!.position };
 
-    // 内容宽 304 ≥ 包围盒宽 304：贴左缘（相对 0），不向左漂移
-    expect(byId.get("a")!.position.x).toBe(0);
-    expect(byId.get("b")!.position.x).toBe(160);
+    // 内容宽 304 > 包围盒宽 144：以选中中心为锚对称展开（左 -80 / 右 +80）
+    expect(once.a.x).toBe(-80);
+    expect(once.b.x).toBe(80);
+    expect((center(byId.get("a")!) + center(byId.get("b")!)) / 2).toBe(72);
+
+    // 连续整理幂等：结果与第一次完全一致（不漂移）
+    const again = layoutSelection(arranged, [], new Set(["a", "b"]));
+    const againById = new Map(again.map((node) => [node.id, node]));
+    expect(againById.get("a")!.position).toEqual(once.a);
+    expect(againById.get("b")!.position).toEqual(once.b);
+  });
+
+  it("anchors groups above their card clusters and images above the groups, and never drifts on repeated layouts", () => {
+    // 用户场景：两个图片组各连 10 张卡片，两张图片各连一个组——自底向上定位：
+    // 卡片行（左 10 / 右 10）→ 组在各自卡片簇中央上方 → 图片在两个组中央上方
+    const makeCard = (id: string, groupId: string, index: number) => ({
+      ...promptNode(id),
+      position: { x: (groupId === "g1" ? 0 : 4000) + index * 40, y: 600 },
+      data: { ...promptNode(id).data, title: groupId + "-" + String(index + 1).padStart(2, "0") },
+    }) as WorkflowNode;
+    const nodes: WorkflowNode[] = [
+      { ...imageNode("a"), position: { x: 0, y: 0 } } as WorkflowNode,
+      { ...imageNode("b"), position: { x: 800, y: 0 } } as WorkflowNode,
+      { ...groupNode("g1"), position: { x: 400, y: 200 } } as WorkflowNode,
+      { ...groupNode("g2"), position: { x: 4400, y: 200 } } as WorkflowNode,
+    ];
+    const edges: WorkflowEdge[] = [edge("a", "g1"), edge("b", "g2")];
+    for (let i = 0; i < 10; i += 1) {
+      const p1 = makeCard("p" + i, "g1", i);
+      const p2 = makeCard("q" + i, "g2", i);
+      nodes.push(p1, p2);
+      edges.push(edge("g1", "p" + i), edge("g2", "q" + i));
+    }
+    const all = new Set(nodes.map((n) => n.id));
+
+    const once = layoutSelection(nodes, edges, all);
+    const onceById = new Map(once.map((node) => [node.id, node]));
+    const leftCards = once.filter((n) => n.type === "prompt" && String(n.id).startsWith("p"));
+    const rightCards = once.filter((n) => n.type === "prompt" && String(n.id).startsWith("q"));
+    const leftCenter = leftCards.reduce((s, n) => s + center(n), 0) / leftCards.length;
+    const rightCenter = rightCards.reduce((s, n) => s + center(n), 0) / rightCards.length;
+    const g1 = onceById.get("g1")!;
+    const g2 = onceById.get("g2")!;
+
+    // 组 = 各自卡片簇的中央上方；每张图站在自己的组中央上方（连接结构决定位置）
+    expect(Math.abs(center(g1) - leftCenter)).toBeLessThanOrEqual(3);
+    expect(Math.abs(center(g2) - rightCenter)).toBeLessThanOrEqual(3);
+    expect(Math.abs(center(onceById.get("a")!) - center(g1))).toBeLessThanOrEqual(3);
+    expect(Math.abs(center(onceById.get("b")!) - center(g2))).toBeLessThanOrEqual(3);
+    // 卡片行内部不混排：组内标题有序（标题组前缀 g1-01..g1-10）
+    for (let i = 1; i < leftCards.length; i += 1) {
+      expect(leftCards[i - 1].position.x).toBeLessThan(leftCards[i].position.x);
+    }
+    // 连续整理幂等：第二次结果与第一次完全一致（不漂移）
+    const twice = layoutSelection(once, edges, all);
+    for (const node of twice) {
+      expect(node.position).toEqual(onceById.get(node.id)!.position);
+    }
+  });
+
+  it("places a shared image exactly between two groups at the top", () => {
+    // 一张图同时连两个组：图站在两个组中央上方（对称分叉）
+    const shared = { ...imageNode("s"), position: { x: 0, y: 0 } } as WorkflowNode;
+    const g1 = { ...groupNode("g1"), position: { x: 100, y: 100 } } as WorkflowNode;
+    const g2 = { ...groupNode("g2"), position: { x: 500, y: 100 } } as WorkflowNode;
+    const p1 = { ...promptNode("p1"), position: { x: 50, y: 300 } } as WorkflowNode;
+    const p2 = { ...promptNode("p2"), position: { x: 550, y: 300 } } as WorkflowNode;
+    const nodes = [shared, g1, g2, p1, p2];
+    const edges = [edge("s", "g1"), edge("s", "g2"), edge("g1", "p1"), edge("g2", "p2")];
+
+    const arranged = layoutSelection(nodes, edges, new Set(nodes.map((n) => n.id)));
+    const byId = new Map(arranged.map((node) => [node.id, node]));
+
+    const gMid = (center(byId.get("g1")!) + center(byId.get("g2")!)) / 2;
+    expect(Math.abs(center(byId.get("s")!) - gMid)).toBeLessThanOrEqual(3);
+    expect(byId.get("s")!.position.y).toBeLessThan(byId.get("g1")!.position.y);
   });
 
   it("aligns a selected prompt card to the center of its selection instead of drifting far right", () => {

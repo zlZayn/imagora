@@ -124,7 +124,7 @@ interface LayoutRun {
   /** 需要输出位置的节点 id（其余为只读锚点） */
   moves: ReadonlySet<string>;
   origin?: { x: number; y: number };
-  /** 选中包围盒宽度（origin 模式的层平衡锚）：每层内容在其中居中，内容超宽才贴左缘 */
+  /** 选中包围盒宽度：仅"无锚点的局部整理"传入——布局后整体中心对齐到该宽度中心（重复整理幂等不漂移） */
   boundsWidth?: number;
 }
 
@@ -203,17 +203,6 @@ function runLayout(run: LayoutRun): WorkflowNode[] {
       ? centers.reduce((sum, c) => sum + c, 0) / centers.length
       : baseX + nodeSize(node).width / 2;
   };
-  /** 期望中心：已放置后继（更深层或锚点）的中心均值；无后继 → 左基准 */
-  const desiredBySuccs = (node: WorkflowNode) => {
-    const centers = (succs.get(node.id) ?? [])
-      .map((succ) => byId.get(succ))
-      .filter((succ): succ is WorkflowNode => succ !== undefined && positions.has(succ.id))
-      .map((succ) => centerOf(succ));
-    return centers.length
-      ? centers.reduce((sum, c) => sum + c, 0) / centers.length
-      : baseX + nodeSize(node).width / 2;
-  };
-
   /** 放置一层：排序（群间质心、群内标题）→ 块化（同期望中心且同参考来源的提示词合块）→ 落位 */
   const placeLayer = (layerIndex: number, desiredOf: (node: WorkflowNode) => number) => {
     const movable = layerGroups.get(layerIndex)!.filter((node) => moves.has(node.id));
@@ -266,28 +255,40 @@ function runLayout(run: LayoutRun): WorkflowNode[] {
       cursorX = x - LAYOUT.nodeGap;
       i = j + 1;
     }
-    // 层平衡：内容在选中包围盒内居中（宽于包围盒才贴左缘，不向左超界、不产生二次漂移）
-    if (boundsWidth !== undefined) {
-      const minX = Math.min(...movable.map((node) => positions.get(node.id)!.x));
-      const maxX = Math.max(...movable.map((node) => positions.get(node.id)!.x + nodeSize(node).width));
-      const bandWidth = maxX - minX;
-      if (bandWidth < boundsWidth) {
-        const dx = baseX + boundsWidth / 2 - (minX + bandWidth / 2);
-        for (const node of movable) {
+  };
+
+  // 2) pass A（top-down 排序与粗定位）：浅 → 深，按前驱质心——确定群顺序（左卡片组/右卡片组）；
+  //    也给出叶子层（最深层）的初始排列
+  for (const li of sortedLayers) placeLayer(li, desiredByPreds);
+  // 3) pass B（bottom-up 定位）：深 → 浅，按后继质心——
+  //    图片组站到其卡片组中央上方、图片站到两个组中央上方（自底向上逐层锚定）；
+  //    叶子（无后继）保持 pass A 位置（卡片行本身不动，只被上层引用）
+  for (const li of [...sortedLayers].reverse()) {
+    placeLayer(li, (node) => {
+      const centers = (succs.get(node.id) ?? [])
+        .map((succ) => byId.get(succ))
+        .filter((succ): succ is WorkflowNode => succ !== undefined && positions.has(succ.id))
+        .map((succ) => centerOf(succ));
+      if (centers.length) return centers.reduce((sum, c) => sum + c, 0) / centers.length;
+      const keep = positions.get(node.id);
+      return keep ? keep.x + nodeSize(node).width / 2 : baseX + nodeSize(node).width / 2;
+    });
+  }
+  // 4) 整体中心对齐（仅无锚点的局部整理）：输出块中心 = 输入选中块中心 → 布局是幂等映射，
+  //    连续点击整理结果不变（不漂移）；锚点场景不平移（卡片跟随固定参考）
+  if (boundsWidth !== undefined) {
+    const moved = nodes.filter((node) => moves.has(node.id));
+    if (moved.length) {
+      const minX = Math.min(...moved.map((node) => positions.get(node.id)!.x));
+      const maxX = Math.max(...moved.map((node) => positions.get(node.id)!.x + nodeSize(node).width));
+      const dx = baseX + boundsWidth / 2 - (minX + maxX) / 2;
+      if (dx !== 0) {
+        for (const node of moved) {
           const pos = positions.get(node.id)!;
           positions.set(node.id, { x: pos.x + dx, y: pos.y });
         }
       }
     }
-  };
-
-  // 2) forward：浅 → 深（层 0 无前驱，先按左基准展开，随后 backward 重排）
-  for (const li of sortedLayers) placeLayer(li, desiredByPreds);
-  // 3) backward：层 0 无前驱节点随后继质心（多对多摊平；孤立无后继保持左基准）
-  if (sortedLayers.includes(0)) placeLayer(0, desiredBySuccs);
-  // 4) forward 收敛：深层重新对齐最新层 0（层 0 不再动）
-  for (const li of sortedLayers) {
-    if (li > 0) placeLayer(li, desiredByPreds);
   }
 
   return nodes.map((node) => {
@@ -341,7 +342,8 @@ export function layoutSelection(
     edges: boundsEdges,
     moves: selectedIds,
     origin: { x: minX, y: minY },
-    boundsWidth: Math.max(maxX - minX, 1),
+    // 有锚点时不平移（卡片跟随固定参考）；无锚点（整体选区）时整体中心对齐保证幂等
+    boundsWidth: anchorIds.size === 0 ? Math.max(maxX - minX, 1) : undefined,
   });
   const positioned = new Map(arranged.map((node) => [node.id, node]));
   return nodes.map((node) => positioned.get(node.id) ?? node);
