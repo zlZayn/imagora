@@ -56,6 +56,8 @@ def check(name, ok, detail=""):
 
 
 def main():
+    # CI Windows runner 默认 stdout 为 cp1252，无法编码中文（PASS/FAIL 断言名）→ 强制 UTF-8
+    sys.stdout.reconfigure(encoding='utf-8')
     # 自包含测试图片：写临时文件，通过 file chooser 上传
     tmp_img = os.path.join(tempfile.gettempdir(), "imagora_e2e_pixel.png")
     with open(tmp_img, "wb") as f:
