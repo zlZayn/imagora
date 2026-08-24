@@ -344,6 +344,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 - **画布节点动画**：作用在内层 `.node-pop`（外层 `.react-flow__node` 是定位 transform，不可位移）；动画类是运行时标记，保存/加载时剥离，不持久化。
 - **动效与浮层堆叠**：transform 动画（fill both）让元素成为 stacking context，含浮层的卡片需 `relative` + 更高 z-index 才能盖过后续卡片。
 - **窗口主题色**：accent.ts 按窗口编号黄金角取色，运行时覆盖 `--color-brand`；favicon 同算法动态生成——多开一眼可辨；`--color-brand` 默认值是中性 slate 兜底（JS 加载前生效）。
+- **行动按钮体系（两档 + 状态类）**：视觉语言统一为胶囊圆角（rounded-full，Tailwind 计算值为极大半径）+ 窗口主题色 + 晕光/涟漪动效。`btn-primary` 实底填充 + hover 辉光上浮（主行动，视觉重）；`btn-ghost` 透明底 + `border: 2px currentColor` 描边 + hover 由 `::before` 圆形扩散填充（`--btn-fill` 固定基础色，hover 反白不影响涟漪色）并反白文字/加辉光/微放大（次要行动，视觉轻）。状态/修饰：`btn-busy`（生成中呼吸）、`btn-draggable`（可拖出）、`btn-danger`（红字红涟漪，配合 ghost）、`btn-flat`（半透明面板按钮——涟漪/反白用 `:not(.btn-flat)` 排除，面板样式由调用处 utilities 全权负责）。缓动 0.3s 主交互 + 0.6s 涟漪扩散（React Bits 类按钮范例）。非行动按钮（下拉触发/列表项/图标钮/分段控件/深色浮层条）不走本体系——语义是控件不是行动按钮。
 - **顶栏品牌区 3D（logo + 标题整体）**：借 React Bits DepthText 手法——`App.tsx` 顶部常量 `BRAND_LAYERS`（10）/ `BRAND_DEPTH`（1.5）生成 translateZ 挤出层（总深 ≈15px 克制偏浅），`brandLayerColor` 用 `color-mix` 让各层从正面色向深度色渐变（logo 正面 `var(--color-brand)` 随窗口主题色、标题正面 `#262626` = body 文字色，均不硬编码）；挤出层常驻 DOM 但被正面层（`z=0.6px`）盖住即平面态。指针跟踪（`pointerenter/move/leave` + rAF 平滑 0.14）只写 `--stage` 的 rotateX/rotateY：鼠标靠近才倾斜（±11°）显现立体并随光标摆动，离开回摆到平面。默认态无动画开销（停止 rAF 循环）；纯 JS 内联 transform 属直接操作型动效，不受全局 `prefers-reduced-motion` 降级影响；整体包 `<a target="_blank">` 点击打开远程仓库。
 
 ### 8.5 多开与继承

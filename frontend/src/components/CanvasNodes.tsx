@@ -35,7 +35,7 @@ function ActionButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`nodrag btn-ghost !px-1.5 !py-0.5 text-[10px] ${danger ? "text-red-500" : ""}`}
+      className={`nodrag btn-ghost !px-1.5 !py-0.5 text-[10px] ${danger ? "btn-danger" : ""}`}
     >
       {children}
     </button>

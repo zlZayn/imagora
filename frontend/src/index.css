@@ -59,30 +59,85 @@ body {
     @apply rounded-xl border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_12px_rgba(0,0,0,0.04)];
   }
 
-  /* 主按钮（生成） */
+  /* ============ 行动按钮体系：两档 + 状态类 ============
+   * 视觉语言统一：胶囊圆角（rounded-full）+ 品牌色（var(--color-brand)，跟随窗口主题色）+ 晕光/扩散动效。
+   * 两档层级：btn-primary 实底填充、hover 辉光上浮 = 主行动（视觉重）；
+   *            btn-ghost 透明描边（currentColor，danger 变体自动换红）、hover 圆形涟漪扩散填充 + 反白 = 次要行动（视觉轻）。
+   * 状态/修饰：btn-busy 生成中呼吸、btn-draggable 可拖出、btn-danger 危险色、
+   *            btn-flat 平面面板适配（画布选中操作栏毛玻璃按钮，自身有 hover 背景，禁用涟漪防打架）。
+   * 缓动 / 扩散节奏取自 React Bits 类按钮范例：0.3s 主交互 + 0.6s 涟漪扩散。 */
+
+  /* 主行动：实底 + 辉光 */
   .btn-primary {
-    @apply rounded-xl bg-brand py-3 font-semibold text-white shadow-sm transition-all duration-200;
+    @apply relative overflow-hidden rounded-full bg-brand py-3 font-semibold text-white shadow-sm;
+    isolation: isolate;
+    transition:
+      background-color 0.3s cubic-bezier(0.23, 1, 0.32, 1),
+      box-shadow 0.3s ease,
+      transform 0.2s ease;
   }
   .btn-primary:hover:not(:disabled) {
-    @apply bg-brand-dark shadow-md;
+    @apply bg-brand-dark;
+    box-shadow: 0 4px 18px color-mix(in srgb, var(--color-brand) 45%, transparent);
+    transform: scale(1.02);
   }
   .btn-primary:active:not(:disabled) {
-    @apply scale-[0.99];
+    @apply scale-[0.98];
   }
   .btn-primary:disabled {
     @apply cursor-not-allowed opacity-50;
   }
 
-  /* 次要按钮（选择文件夹等） */
+  /* 次要行动：透明描边 + 涟漪扩散填充（--btn-fill 固定基础色，hover 反白不影响涟漪颜色；
+     danger 变体仅需覆盖 color 与 --btn-fill 即自动红系） */
   .btn-ghost {
-    @apply whitespace-nowrap rounded-lg border border-neutral-300 px-4 py-2 text-sm transition-all duration-200;
+    @apply relative overflow-hidden whitespace-nowrap rounded-full border-2 px-4 py-2 text-sm font-semibold;
+    color: var(--color-brand);
+    --btn-fill: var(--color-brand);
+    border-color: currentColor;
+    background-color: transparent;
+    isolation: isolate;
+    transition:
+      color 0.3s cubic-bezier(0.23, 1, 0.32, 1),
+      box-shadow 0.3s ease,
+      transform 0.2s ease;
   }
-  .btn-ghost:hover:not(:disabled) {
-    @apply border-brand bg-brand/5 text-brand;
+  .btn-ghost:not(.btn-flat)::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 54px;
+    height: 54px;
+    border-radius: inherit;
+    background-color: var(--btn-fill);
+    transform: scale(0);
+    z-index: -1;
+    transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .btn-ghost:hover:not(:disabled):not(.btn-flat)::before {
+    transform: scale(3.2);
+  }
+  .btn-ghost:hover:not(:disabled):not(.btn-flat) {
+    color: #fff;
+    box-shadow: 0 0 20px color-mix(in srgb, var(--btn-fill) 40%, transparent);
+    transform: scale(1.04);
+  }
+  .btn-ghost:active:not(:disabled) {
+    transform: scale(1);
   }
   .btn-ghost:disabled {
     @apply cursor-not-allowed opacity-50;
   }
+
+  /* 危险修饰：文字与涟漪同为红色（配合 btn-ghost 使用） */
+  .btn-danger {
+    color: #dc2626;
+    --btn-fill: #dc2626;
+  }
+
+  /* 平面开关：半透明面板上的按钮（如画布选中操作栏）——自身已配面板 hover 背景，
+     用 :not(.btn-flat) 排除涟漪与反白，避免与面板背景打架；面板样式由调用处 utilities 全权负责 */
 }
 
 /* ============ 动效层：所有动画类统一收敛于此，组件只引用类名 ============ */

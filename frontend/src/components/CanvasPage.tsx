@@ -1424,7 +1424,7 @@ export default function CanvasPage({
               type="button"
               onClick={handleAutoLayout}
               title="局部整理选中的节点，其余保持原位（同层提示词卡片按左上角标题从左到右）"
-              className="nodrag btn-ghost !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
+              className="nodrag btn-ghost btn-flat !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
             >
               自动整理 ({selectedCount})
             </button>
@@ -1432,7 +1432,7 @@ export default function CanvasPage({
               type="button"
               onClick={handleAutoConnectSelected}
               title="只对选中的节点自动补齐明显连线，未选中节点不受影响"
-              className="nodrag btn-ghost !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
+              className="nodrag btn-ghost btn-flat !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
             >
               自动连线 ({selectedCount})
             </button>
@@ -1442,7 +1442,7 @@ export default function CanvasPage({
                 onClick={() => void handleSetSelectedOutputDir()}
                 disabled={pickingSelectedOutputDir}
                 title={selectedPromptCount ? `设置 ${selectedPromptCount} 张提示词卡片的输出路径` : "所选节点中没有提示词卡片"}
-                className="nodrag btn-ghost !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
+                className="nodrag btn-ghost btn-flat !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
               >
                 {pickingSelectedOutputDir ? "选择中..." : `设置输出路径 (${selectedPromptCount})`}
               </button>
@@ -1450,7 +1450,7 @@ export default function CanvasPage({
             <button
               type="button"
               onClick={handleDeleteSelected}
-              className="nodrag btn-ghost !border-red-300/60 !px-2 !py-1 text-xs !bg-red-50/40 text-red-500 hover:!bg-red-50/90"
+              className="nodrag btn-ghost btn-flat !border-red-300/60 !px-2 !py-1 text-xs !bg-red-50/40 text-red-500 hover:!bg-red-50/90"
             >
               删除所选 ({selectedCount})
             </button>
