@@ -61,8 +61,8 @@ body {
 
   /* ============ 行动按钮体系：两档 + 状态类 ============
    * 视觉语言统一：胶囊圆角（rounded-full）+ 品牌色（var(--color-brand)，跟随窗口主题色）+ 涟漪反转动效。
-   * 两档层级：btn-primary 常态实底白字，hover 白色涟漪从中心向左右展开（白底 + 主题色字）= 主行动；
-   *            btn-ghost 常态透明描边（currentColor，danger 变体自动换红），hover 主题色涟漪填充 + 反白 = 次要行动。
+   * 两档同源（均无边框胶囊 + 涟漪反转）：btn-primary 常态实底白字，hover 白色涟漪从中心向左右展开
+   *   （白底 + 主题色字）= 主行动（视觉重）；btn-ghost 常态透明底 + 主题色文字，hover 主题色涟漪填充 + 反白 = 次要行动（视觉轻）。
    * 涟漪层（::before）为按钮同形层（inset:0，圆角 inherit），scaleX(0)→1 从中心向左右横向展开——
    * 任意宽度（如 flex-1 撑满的「生成图片」）都完整覆盖，扩展方向是「中间往两边」而非四周放射。
    * 状态类：btn-busy 生成中呼吸、btn-draggable 可拖出、btn-danger 危险色。
@@ -108,13 +108,12 @@ body {
     @apply cursor-not-allowed opacity-50;
   }
 
-  /* 次要行动：透明描边 + 主题色涟漪填充 + 反白（--btn-fill 固定基础色，hover 反白不影响涟漪颜色；
-     danger 变体仅需覆盖 color 与 --btn-fill 即自动红系） */
+  /* 次要行动：与 primary 同源——无边框透明胶囊，常态主题色文字，hover 涟漪填充 + 反白
+     （--btn-fill 固定基础色，hover 反白不影响涟漪颜色；danger 变体覆盖 color/--btn-fill 即红系） */
   .btn-ghost {
-    @apply relative overflow-hidden whitespace-nowrap rounded-full border-2 px-4 py-2 text-sm font-semibold;
+    @apply relative overflow-hidden whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold;
     color: var(--color-brand);
     --btn-fill: var(--color-brand);
-    border-color: currentColor;
     background-color: transparent;
     isolation: isolate;
     transition:
