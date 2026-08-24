@@ -1407,15 +1407,16 @@ export default function CanvasPage({
       <div className="panel-card relative min-h-0 flex-1 overflow-hidden">
         {/* 选中操作栏：任意选中 ≥1 个节点即出现；「运行所选/设置输出路径」只作用于提示词卡片，
             图片与图片组自动忽略（混合选区不误伤）；「自动整理」局部重排选中节点；「自动连线」只补选中节点间的边；
-            「删除所选」作用于全部。半透明毛玻璃样式：悬停时更实，平时不遮挡画布内容。 */}
+            「删除所选」作用于全部。半透明毛玻璃面板 + 透明按钮（走 btn-ghost/btn-danger 两档体系，
+            常态透明、主题色描边文字，hover 涟漪填充反白——不遮挡画布内容也能一眼看出可点）。 */}
         {selectedCount >= 1 && (
-          <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-white/50 bg-white/50 p-1 shadow-sm backdrop-blur-md transition-colors hover:bg-white/75">
+          <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-white/50 bg-white/40 p-1 shadow-sm backdrop-blur-md">
             {selectedPromptCount > 0 && (
               <button
                 type="button"
                 onClick={handleRunSelected}
                 title={`运行 ${selectedPromptCount} 张选中的提示词卡片（只运行提示词，图片/图片组忽略）`}
-                className="nodrag btn-primary !px-2 !py-1 text-xs !bg-brand/85 hover:!bg-brand"
+                className="nodrag btn-primary !px-2 !py-1 text-xs"
               >
                 运行所选 ({selectedPromptCount})
               </button>
@@ -1424,7 +1425,7 @@ export default function CanvasPage({
               type="button"
               onClick={handleAutoLayout}
               title="局部整理选中的节点，其余保持原位（同层提示词卡片按左上角标题从左到右）"
-              className="nodrag btn-ghost btn-flat !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
+              className="nodrag btn-ghost !px-2 !py-1 text-xs"
             >
               自动整理 ({selectedCount})
             </button>
@@ -1432,7 +1433,7 @@ export default function CanvasPage({
               type="button"
               onClick={handleAutoConnectSelected}
               title="只对选中的节点自动补齐明显连线，未选中节点不受影响"
-              className="nodrag btn-ghost btn-flat !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
+              className="nodrag btn-ghost !px-2 !py-1 text-xs"
             >
               自动连线 ({selectedCount})
             </button>
@@ -1442,7 +1443,7 @@ export default function CanvasPage({
                 onClick={() => void handleSetSelectedOutputDir()}
                 disabled={pickingSelectedOutputDir}
                 title={selectedPromptCount ? `设置 ${selectedPromptCount} 张提示词卡片的输出路径` : "所选节点中没有提示词卡片"}
-                className="nodrag btn-ghost btn-flat !px-2 !py-1 text-xs !border-white/60 !bg-white/40 hover:!bg-white/80"
+                className="nodrag btn-ghost !px-2 !py-1 text-xs"
               >
                 {pickingSelectedOutputDir ? "选择中..." : `设置输出路径 (${selectedPromptCount})`}
               </button>
@@ -1450,7 +1451,7 @@ export default function CanvasPage({
             <button
               type="button"
               onClick={handleDeleteSelected}
-              className="nodrag btn-ghost btn-flat !border-red-300/60 !px-2 !py-1 text-xs !bg-red-50/40 text-red-500 hover:!bg-red-50/90"
+              className="nodrag btn-ghost btn-danger !px-2 !py-1 text-xs"
             >
               删除所选 ({selectedCount})
             </button>

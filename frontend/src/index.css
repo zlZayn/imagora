@@ -63,8 +63,7 @@ body {
    * 视觉语言统一：胶囊圆角（rounded-full）+ 品牌色（var(--color-brand)，跟随窗口主题色）+ 晕光/扩散动效。
    * 两档层级：btn-primary 实底填充、hover 辉光上浮 = 主行动（视觉重）；
    *            btn-ghost 透明描边（currentColor，danger 变体自动换红）、hover 圆形涟漪扩散填充 + 反白 = 次要行动（视觉轻）。
-   * 状态/修饰：btn-busy 生成中呼吸、btn-draggable 可拖出、btn-danger 危险色、
-   *            btn-flat 平面面板适配（画布选中操作栏毛玻璃按钮，自身有 hover 背景，禁用涟漪防打架）。
+   * 状态类：btn-busy 生成中呼吸、btn-draggable 可拖出、btn-danger 危险色。
    * 缓动 / 扩散节奏取自 React Bits 类按钮范例：0.3s 主交互 + 0.6s 涟漪扩散。 */
 
   /* 主行动：实底 + 辉光 */
@@ -102,7 +101,7 @@ body {
       box-shadow 0.3s ease,
       transform 0.2s ease;
   }
-  .btn-ghost:not(.btn-flat)::before {
+  .btn-ghost::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -115,10 +114,10 @@ body {
     z-index: -1;
     transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
   }
-  .btn-ghost:hover:not(:disabled):not(.btn-flat)::before {
+  .btn-ghost:hover:not(:disabled)::before {
     transform: scale(3.2);
   }
-  .btn-ghost:hover:not(:disabled):not(.btn-flat) {
+  .btn-ghost:hover:not(:disabled) {
     color: #fff;
     box-shadow: 0 0 20px color-mix(in srgb, var(--btn-fill) 40%, transparent);
     transform: scale(1.04);
@@ -135,9 +134,6 @@ body {
     color: #dc2626;
     --btn-fill: #dc2626;
   }
-
-  /* 平面开关：半透明面板上的按钮（如画布选中操作栏）——自身已配面板 hover 背景，
-     用 :not(.btn-flat) 排除涟漪与反白，避免与面板背景打架；面板样式由调用处 utilities 全权负责 */
 }
 
 /* ============ 动效层：所有动画类统一收敛于此，组件只引用类名 ============ */
