@@ -36,9 +36,9 @@ jobs:
       - name: Ruff
         run: uv run ruff check .
       - name: Pytest
-        # --basetemp 指 ASCII 路径：与本地约定一致，规避中文路径坑
-        # （CI runner 路径无中文，保留该参数保证命令两处可互拷）。
-        run: uv run pytest --basetemp=C:/t/imagora-pytest
+        # --basetemp 用 runner 内置临时目录（Windows 下 D:\a\_temp，纯 ASCII 且必定可写）：
+        # 本地开发仍用 C:/t/imagora-pytest（见 AGENTS.md 活跃坑），CI 与本地命令不再互拷。
+        run: uv run pytest --basetemp="${{ runner.temp }}/imagora-pytest"
 
   frontend:
     name: Frontend checks (lint + tsc + vitest + build)

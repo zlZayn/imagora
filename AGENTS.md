@@ -24,7 +24,7 @@
 
 ## 活跃坑 / 注意
 
-- pytest 必须 `--basetemp=C:/t/imagora-pytest`（中文目录触发 tmp_path 坑）
+- pytest 必须 `--basetemp=C:/t/imagora-pytest`（本地命令；中文目录触发 tmp_path 坑。CI 侧改用 `${{ runner.temp }}/imagora-pytest`，见 ci.yml，两者不再互拷）
 - server.py LSP 报「Argument missing for parameter id」是误报（GenerationTask.id 有 default_factory），勿修
 - `dist/` git 忽略：改前端后 `npm run build` 才在浏览器生效；CI/E2E 须自建 dist
 - E2E 只测画布交互、不触发生成链路；未来覆盖「生成→回流」前必须先 mock `core/api.py` 的 `generate_image`（ci.yml 注释 TODO）
