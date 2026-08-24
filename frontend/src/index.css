@@ -60,24 +60,45 @@ body {
   }
 
   /* ============ 行动按钮体系：两档 + 状态类 ============
-   * 视觉语言统一：胶囊圆角（rounded-full）+ 品牌色（var(--color-brand)，跟随窗口主题色）+ 晕光/扩散动效。
-   * 两档层级：btn-primary 实底填充、hover 辉光上浮 = 主行动（视觉重）；
-   *            btn-ghost 透明描边（currentColor，danger 变体自动换红）、hover 圆形涟漪扩散填充 + 反白 = 次要行动（视觉轻）。
+   * 视觉语言统一：胶囊圆角（rounded-full）+ 品牌色（var(--color-brand)，跟随窗口主题色）+ 涟漪反转动效。
+   * 两档层级：btn-primary 常态实底白字，hover 白色涟漪从中心向左右展开（白底 + 主题色字）= 主行动；
+   *            btn-ghost 常态透明描边（currentColor，danger 变体自动换红），hover 主题色涟漪填充 + 反白 = 次要行动。
+   * 涟漪层（::before）为按钮同形层（inset:0，圆角 inherit），scaleX(0)→1 从中心向左右横向展开——
+   * 任意宽度（如 flex-1 撑满的「生成图片」）都完整覆盖，扩展方向是「中间往两边」而非四周放射。
    * 状态类：btn-busy 生成中呼吸、btn-draggable 可拖出、btn-danger 危险色。
-   * 缓动 / 扩散节奏取自 React Bits 类按钮范例：0.3s 主交互 + 0.6s 涟漪扩散。 */
+   * 节奏取自 React Bits 类按钮范例：主交互 0.3s + 涟漪扩散 0.6s（文字变色与扩散同步）。 */
 
-  /* 主行动：实底 + 辉光 */
+  /* 涟漪层（两档共用）：从中心向左右展开填充，--btn-fill 定填充色 */
+  .btn-primary::before,
+  .btn-ghost::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-color: var(--btn-fill);
+    transform: scaleX(0);
+    transform-origin: 50% 50%;
+    z-index: -1;
+    transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .btn-primary:hover:not(:disabled)::before,
+  .btn-ghost:hover:not(:disabled)::before {
+    transform: scaleX(1);
+  }
+
+  /* 主行动：常态实底白字，hover 白涟漪反转 → 白底 + 主题色字 */
   .btn-primary {
     @apply relative overflow-hidden rounded-full bg-brand py-3 font-semibold text-white shadow-sm;
+    --btn-fill: #ffffff;
     isolation: isolate;
     transition:
-      background-color 0.3s cubic-bezier(0.23, 1, 0.32, 1),
+      color 0.6s cubic-bezier(0.23, 1, 0.32, 1),
       box-shadow 0.3s ease,
       transform 0.2s ease;
   }
   .btn-primary:hover:not(:disabled) {
-    @apply bg-brand-dark;
-    box-shadow: 0 4px 18px color-mix(in srgb, var(--color-brand) 45%, transparent);
+    color: var(--color-brand);
+    box-shadow: 0 0 20px color-mix(in srgb, var(--color-brand) 40%, transparent);
     transform: scale(1.02);
   }
   .btn-primary:active:not(:disabled) {
@@ -87,7 +108,7 @@ body {
     @apply cursor-not-allowed opacity-50;
   }
 
-  /* 次要行动：透明描边 + 涟漪扩散填充（--btn-fill 固定基础色，hover 反白不影响涟漪颜色；
+  /* 次要行动：透明描边 + 主题色涟漪填充 + 反白（--btn-fill 固定基础色，hover 反白不影响涟漪颜色；
      danger 变体仅需覆盖 color 与 --btn-fill 即自动红系） */
   .btn-ghost {
     @apply relative overflow-hidden whitespace-nowrap rounded-full border-2 px-4 py-2 text-sm font-semibold;
@@ -97,25 +118,9 @@ body {
     background-color: transparent;
     isolation: isolate;
     transition:
-      color 0.3s cubic-bezier(0.23, 1, 0.32, 1),
+      color 0.6s cubic-bezier(0.23, 1, 0.32, 1),
       box-shadow 0.3s ease,
       transform 0.2s ease;
-  }
-  .btn-ghost::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    margin: auto;
-    width: 54px;
-    height: 54px;
-    border-radius: inherit;
-    background-color: var(--btn-fill);
-    transform: scale(0);
-    z-index: -1;
-    transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
-  }
-  .btn-ghost:hover:not(:disabled)::before {
-    transform: scale(3.2);
   }
   .btn-ghost:hover:not(:disabled) {
     color: #fff;

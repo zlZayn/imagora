@@ -1410,7 +1410,7 @@ export default function CanvasPage({
             「删除所选」作用于全部。半透明毛玻璃面板 + 透明按钮（走 btn-ghost/btn-danger 两档体系，
             常态透明、主题色描边文字，hover 涟漪填充反白——不遮挡画布内容也能一眼看出可点）。 */}
         {selectedCount >= 1 && (
-          <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-white/50 bg-white/40 p-1 shadow-sm backdrop-blur-md">
+          <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-white/40 bg-white/20 p-1 shadow-sm backdrop-blur-md">
             {selectedPromptCount > 0 && (
               <button
                 type="button"
