@@ -1,13 +1,15 @@
 # CI —— 3 个并行 Job：Backend / Frontend / E2E
 #
-# 说明（草稿，首次启用前需人工复核）：
+# 说明（首次启用前需人工复核一次）：
 # 1. Backend 必须在 windows-latest：tests/ 含 5 个 Windows 专属测试
 #    （netstat 端口探测 / powershell 父进程链 / C: 绝对路径 / 跨盘相对化）。
 # 2. 依赖安装：后端 uv sync（pyproject.toml + uv.lock，无 requirements.txt）；
 #    前端 npm ci（package-lock.json）。dist/ 被 git 忽略，任何需要 UI 的
 #    Job（含 E2E）都必须自己构建 frontend/dist。
-# 3. pyproject [tool.uv] 的 index-url 指向 tuna 镜像；CI 若拉包慢/失败，
-#    可在 Job 级设 UV_INDEX_URL=https://pypi.org/simple 覆盖。
+# 3. 镜像：pyproject [tool.uv] index-url 指向 tuna 镜像（本地开发用）；
+#    CI runner 在海外，Backend/E2E Job 已用 job 级 env 显式覆盖
+#    UV_INDEX_URL=https://pypi.org/simple，避免 tuna 对海外 IP 超时。
+#    本地不用改 pyproject.toml。
 # 4. E2E 目前（verify_canvas.py，36 断言）只测画布交互，不触发生成接口，
 #    因此无需 mock 上游 API。未来若 E2E 覆盖「生成→回流」链路，必须先
 #    mock core/api.py 的 generate_image（monkeypatch 返回固定图），
@@ -24,6 +26,8 @@ jobs:
   backend:
     name: Backend checks (pytest + ruff)
     runs-on: windows-latest
+    env:
+      UV_INDEX_URL: https://pypi.org/simple
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -64,6 +68,8 @@ jobs:
     name: E2E (canvas regression, Playwright)
     needs: [backend, frontend]
     runs-on: windows-latest
+    env:
+      UV_INDEX_URL: https://pypi.org/simple
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
