@@ -5,4 +5,4 @@
 
 解析实现与容错规则见 [frontend/src/promptImportFormat.ts](../frontend/src/promptImportFormat.ts)（单测 [promptImportFormat.test.ts](../frontend/src/promptImportFormat.test.ts)）。
 
-架构与维护规范：设计决策见 [ARCHITECTURE.md](../ARCHITECTURE.md)，维护仪表盘见 [AGENTS.md](../AGENTS.md)。
+架构与维护规范：设计决策见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护仪表盘见 [../AGENTS.md](../AGENTS.md)。

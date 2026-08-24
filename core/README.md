@@ -141,6 +141,6 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 
 ## 参考
 
-- 设计背景（注册表/旁路/防错）：[../ARCHITECTURE.md](../ARCHITECTURE.md) 2.2 / 5.5 / 6.1 / 7.1 / 9.7
+- 设计背景（注册表/旁路/防错）：[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 2.2 / 5.5 / 6.1 / 7.1 / 9.7
 - 测试命令细节：[../tests/README.md](../tests/README.md)
 - 维护仪表盘（数字/待办/坑）：[../AGENTS.md](../AGENTS.md)

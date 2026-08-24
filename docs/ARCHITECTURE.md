@@ -53,7 +53,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 ### 2.2 后端 core/ 模块
 
-后端业务全部在 `core/`（无 HTTP 纯逻辑层）。**文件级索引（每文件职责 / 关键导出 / 被谁依赖 / 改后必测 / 变更影响路由）见 [core/README.md](core/README.md)**；本章只给宏观图谱：
+后端业务全部在 `core/`（无 HTTP 纯逻辑层）。**文件级索引（每文件职责 / 关键导出 / 被谁依赖 / 改后必测 / 变更影响路由）见 [core/README.md](../core/README.md)**；本章只给宏观图谱：
 
 - 配置 → 上游请求 → 任务：`config.py` → `api.py` → `tasks.py`（提交即返回的异步管线，`TaskManager`）
 - 存储三件套：`registry.py`（资产注册表：内容 sha1 去重、kind 来源标签、原子写、迁移入口 `migrate()`）、`graphstore.py`（工作流/提交/恢复快照 + `persist_submission_assets` 资产旁路公共函数，图片节点只存 registryId）、`history.py`（账本 JSONL 读取 + 回填迁移）
@@ -64,7 +64,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 ### 2.3 前端 src/ 模块
 
-**文件索引（职责 / 关键导出 / 变更影响路由）见 [frontend/README.md](frontend/README.md)**；本章只给宏观图谱：
+**文件索引（职责 / 关键导出 / 变更影响路由）见 [frontend/README.md](../frontend/README.md)**；本章只给宏观图谱：
 
 - 外壳：`main.tsx` / `App.tsx` —— 入口与双模式外壳（经典表单 / 无限画布切换，`?mode=canvas` 直达），多窗口编号与主题色、标题栏品牌区 3D（见 8.4）
 - 契约：`api.ts`（`/api/*` 封装）+ `types.ts`（前后端类型契约，见 7.2）
@@ -409,7 +409,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 - 后端 pytest：**205 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
 - 前端 vitest：**120 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
-- **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](tests/README.md) 文件索引**
+- **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 
 ### 10.2 端到端（E2E）
 

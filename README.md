@@ -159,7 +159,7 @@ uv run python -m main config
 ### 保存与迁移
 
 - 画布存为 JSON 工作流随时还原；项目改名 / 移动后旧工作流仍可恢复
-- 数据版本化（v1/v2 自动兼容）；迁移 / 清单修复用 `scripts/migrate.py`，属维护向操作，见 [ARCHITECTURE.md](ARCHITECTURE.md) 第 5.5 节
+- 数据版本化（v1/v2 自动兼容）；迁移 / 清单修复用 `scripts/migrate.py`，属维护向操作，见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 第 5.5 节
 
 ## 计费说明
 
@@ -169,5 +169,5 @@ uv run python -m main config
 
 ## 更多
 
-- 技术细节、模块依赖、API 契约、关键决策：见 [ARCHITECTURE.md](ARCHITECTURE.md)
+- 技术细节、模块依赖、API 契约、关键决策：见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 维护交接、验证状态、待办、已知问题：见 [AGENTS.md](AGENTS.md)

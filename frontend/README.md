@@ -1,6 +1,6 @@
 # frontend/ — React SPA（画布工作台 UI）
 
-React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。栈细节与设计决策见 [../ARCHITECTURE.md](../ARCHITECTURE.md) 第 8 章。
+React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。栈细节与设计决策见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 第 8 章。
 
 ## 本地常用命令（在本目录执行）
 
@@ -160,6 +160,6 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ## 参考
 
-- 设计决策（动画约束/按钮体系/品牌区 3D/预览统一）：[../ARCHITECTURE.md](../ARCHITECTURE.md) 8.4 / 9.4
+- 设计决策（动画约束/按钮体系/品牌区 3D/预览统一）：[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 8.4 / 9.4
 - E2E 与测试命令：[../tests/README.md](../tests/README.md)
 - 维护仪表盘（数字/待办/坑）：[../AGENTS.md](../AGENTS.md)
