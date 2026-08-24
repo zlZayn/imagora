@@ -4,14 +4,14 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 
 ## 本地常用命令
 
-- 全部 core 测试：`.venv\Scripts\python.exe -m pytest tests/test_core_*.py --basetemp=C:/t/imagora-pytest`
-- 单文件测试：`.venv\Scripts\python.exe -m pytest tests/test_core_config.py -v --basetemp=C:/t/imagora-pytest`
+- 全部 core 测试：`.venv\Scripts\python.exe -m pytest tests/test_core_*.py --basetemp=<ASCII 临时目录>`
+- 单文件测试：`.venv\Scripts\python.exe -m pytest tests/test_core_config.py -v --basetemp=<ASCII 临时目录>`
 - Ruff 检查：`.venv\Scripts\python.exe -m ruff check core`
 
 ## 该目录特有坑
 
 - `canvas.py` 只是兼容 shim（星号 re-export registry + graphstore），**不在这里加新逻辑**
-- pytest 必须加 `--basetemp=C:/t/imagora-pytest`（项目路径含中文「网店实习」，默认 tmp 路径会挂）
+- pytest 必须加 `--basetemp=<ASCII 临时目录>`（工作目录含中文，默认 tmp 路径会挂）
 - 单测绝不真调上游生图 API（花钱）：`api.py` 走 monkeypatch mock，保持接口可注入
 - 展示与导入同源防错条（ARCHITECTURE 9.7）：`resolve_history_asset_path` 在 `server.py`，不在 core
 

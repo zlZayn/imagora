@@ -6,16 +6,16 @@ FastAPI 路由级 + 纯逻辑测试，**不调真实上游 API、不花钱**。�
 
 ```powershell
 # 后端全量（205 用例）
-.\.venv\Scripts\python.exe -m pytest --basetemp=C:/t/imagora-pytest
+.\.venv\Scripts\python.exe -m pytest --basetemp=<ASCII 临时目录>
 # 按模块筛选
-.\.venv\Scripts\python.exe -m pytest tests/test_core_config.py tests/test_server_helpers.py --basetemp=C:/t/imagora-pytest
+.\.venv\Scripts\python.exe -m pytest tests/test_core_config.py tests/test_server_helpers.py --basetemp=<ASCII 临时目录>
 # 前端（frontend/ 目录内）
 cd frontend; npm test
 ```
 
 ## 该目录特有坑
 
-- **必须 `--basetemp=C:/t/imagora-pytest`**：项目路径含中文「网店实习」，不指定会触发 tmp_path 挂死（已知问题，勿忘）
+- **必须 `--basetemp=<ASCII 临时目录>`**：工作目录含中文，不指定会触发 tmp_path 挂死（已知问题，勿忘）
 - **5 个 Windows 专属测试**：netstat 端口探测 / powershell 父进程链 / C: 绝对路径 / 跨盘相对化——只在 Windows 通过；CI 的 Backend/Backend 相关 Job 必须 `windows-latest`
 - 路由测试直接 `from server import ...`（import 即建 FastAPI app，属预期）
 - **测试数字是 AGENTS 仪表盘数据源**：增/删测试用例必须同步 AGENTS「当前仪表盘」；数字意外变化（非新增导致）必须报告维护者

@@ -13,7 +13,7 @@
 
 ## 仪表盘（最近验证快照）
 
-- 后端 pytest：**205 passed**（命令必带 `--basetemp=C:/t/imagora-pytest`——项目路径含中文「网店实习」）
+- 后端 pytest：**205 passed**（命令必带 `--basetemp=<ASCII 临时目录>`——工作目录含中文）
 - 前端 vitest：**120 passed**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 零告警
 - E2E `frontend/e2e/verify_canvas.py`：**36/36 PASS**（先起服务：`.venv\Scripts\python.exe -m main ui --no-browser --port 7860`）
 - 迁移（v1→v2 / .canvas→.assets / 账本回填）已于 8-20 完成，日常无需执行
@@ -24,7 +24,7 @@
 
 ## 活跃坑 / 注意
 
-- pytest 必须 `--basetemp=C:/t/imagora-pytest`（本地命令；中文目录触发 tmp_path 坑。CI 侧改用 `${{ runner.temp }}/imagora-pytest`，见 ci.yml，两者不再互拷）
+- pytest 必须 `--basetemp=<ASCII 临时目录>`（本地命令；中文目录触发 tmp_path 坑。CI 侧改用 `${{ runner.temp }}/imagora-pytest`，见 ci.yml，两者不再互拷）
 - server.py LSP 报「Argument missing for parameter id」是误报（GenerationTask.id 有 default_factory），勿修
 - `dist/` git 忽略：改前端后 `npm run build` 才在浏览器生效；CI/E2E 须自建 dist
 - E2E（`verify_canvas.py`，Python + playwright.sync_api）：playwright 已入 pyproject dev 组（uv sync 自动安装），本地/CI 只跑 `python -m playwright install chromium`；E2E 只测画布交互、不触发生成链路；未来覆盖「生成→回流」前必须先 mock `core/api.py` 的 `generate_image`（ci.yml 注释 TODO）

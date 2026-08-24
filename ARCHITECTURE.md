@@ -407,7 +407,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-- 后端 pytest：**205 用例**（Windows 下必带 `--basetemp=C:/t/imagora-pytest` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
+- 后端 pytest：**205 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
 - 前端 vitest：**120 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](tests/README.md) 文件索引**
 
