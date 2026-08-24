@@ -202,6 +202,30 @@ def test_history_import_only_accepts_recorded_existing_output(monkeypatch, tmp_p
     assert rejected["imported"] == []
     assert rejected["skipped"]
 
+def test_history_import_accepts_registry_copy_path(monkeypatch, tmp_path):
+    """导入与展示同源：账本带 outputAssetIds 时，注册表副本路径可导入（原 output 文件已删仍可）。"""
+    from server import import_history_asset
+
+    src = tmp_path / "original.png"
+    src.write_bytes(b"png")
+    copy = tmp_path / "registry_copy.png"
+    copy.write_bytes(b"png")
+    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
+        {"output": str(src), "outputAssetIds": ["abc123"]},
+    ])
+    monkeypatch.setattr("server.canvas.resolve_asset", lambda _img_id: {"absPath": str(copy)})
+    monkeypatch.setattr("server.canvas.register_asset", lambda path, name: {
+        "id": "xyz", "absPath": path, "name": name,
+    })
+
+    accepted = import_history_asset({"path": str(copy)})
+    assert accepted["imported"][0]["id"] == "xyz"
+
+    # 安全语义保留：未记录路径仍拒绝
+    rejected = import_history_asset({"path": str(tmp_path / "outside.png")})
+    assert rejected["imported"] == []
+    assert rejected["skipped"]
+
 def test_generation_history_resolves_via_registry_when_output_moved(monkeypatch, tmp_path):
     """历史以注册表为准：账本带 outputAssetIds 时，原 output 文件被移动/删除仍显示（注册表副本在）。"""
     from core import registry

@@ -198,6 +198,23 @@ def resolve_history_output_path(output: str) -> str:
     return history.resolve_output_path(output)
 
 
+def resolve_history_asset_path(record: dict) -> str:
+    """历史行的真实图片路径（展示与导入共用同一判定，防两端漂移）。
+
+    优先资产注册表：账本带 outputAssetIds 时按 resolve_asset 解析（.assets 注册表副本，
+    原 output 文件被移动/删除不丢）；无注册表副本才回退 output 路径（须真实存在）。
+    """
+    asset_ids = record.get("outputAssetIds")
+    if isinstance(asset_ids, list) and asset_ids:
+        resolved = canvas.resolve_asset(str(asset_ids[0]))
+        if resolved:
+            return resolved["absPath"]
+    out_path = resolve_history_output_path(str(record.get("output", "")))
+    if out_path and os.path.isfile(out_path):
+        return out_path
+    return ""
+
+
 @app.get("/api/health/details")
 def health_details():
     """启动自检：只返回布尔状态和处理建议，不泄漏配置值。"""
@@ -261,16 +278,7 @@ def generation_history(limit: int = 200, query: str = "", status: str = ""):
     records = read_generation_history(limit=limit, query=query, status=status)
     items = []
     for record in records:
-        abs_path = ""
-        asset_ids = record.get("outputAssetIds")
-        if isinstance(asset_ids, list) and asset_ids:
-            resolved = canvas.resolve_asset(str(asset_ids[0]))
-            if resolved:
-                abs_path = resolved["absPath"]
-        if not abs_path:
-            out_path = resolve_history_output_path(str(record.get("output", "")))
-            if out_path and os.path.isfile(out_path):
-                abs_path = out_path
+        abs_path = resolve_history_asset_path(record)
         exists = bool(abs_path and os.path.isfile(abs_path))
         items.append({
             **record,
@@ -283,12 +291,16 @@ def generation_history(limit: int = 200, query: str = "", status: str = ""):
 
 @app.post("/api/history/import")
 def import_history_asset(body: dict):
-    """把日志中真实存在的历史结果导入画布，拒绝任意未记录路径。"""
+    """把日志中真实存在的历史结果导入画布，拒绝任意未记录路径。
+
+    可导入白名单与 /api/history 展示同源（注册表副本路径优先）：
+    历史列表里看得到的图片必然能导入，两端判定永不漂移。
+    """
     requested = os.path.normcase(resolve_history_output_path(str(body.get("path", ""))))
     recorded_paths = {
-        os.path.normcase(resolve_history_output_path(str(record.get("output", ""))))
-        for record in read_generation_history(limit=500)
-        if record.get("output")
+        os.path.normcase(p)
+        for p in map(resolve_history_asset_path, read_generation_history(limit=500))
+        if p
     }
     if requested not in recorded_paths or not os.path.isfile(requested):
         return {"imported": [], "skipped": [{"path": requested, "reason": "不是可用的历史输出"}]}

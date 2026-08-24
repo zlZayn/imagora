@@ -285,7 +285,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | POST | `/api/canvas/image/delete` | { id } | { ok }（注册表移除 + 尽力删文件） |
 | GET | `/api/health/details` | 无 | { ok, checks, issues[] }（启动自检，不泄漏配置） |
 | GET | `/api/history` | ?limit=&query=&status= | { items }（存在性以资产注册表为准：带 outputAssetIds 走 resolve_asset，旧行回退 output 路径） |
-| POST | `/api/history/import` | { path } | { imported, skipped }（只接受日志中真实存在的路径；服务端函数名 import_history_asset） |
+| POST | `/api/history/import` | { path } | { imported, skipped }（白名单与展示同源：注册表副本路径优先、回退 output，拒绝任意未记录路径；函数 import_history_asset） |
 | POST | `/api/canvas/workflow/save` | { name, nodes, edges } | { ok, path }（图片节点归一化：只存 registryId+元数据） |
 | GET | `/api/canvas/workflow/list` | 无 | { workflows[ name, modified ] }（按修改时间倒序） |
 | GET | `/api/canvas/workflow/load` | ?name= | { name, nodes, edges, missing }（按 registry 实时解析，缺失进 missing） |
@@ -404,18 +404,22 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 3. **多 worker 翻倍并发**：uvicorn 必须单 worker。
 4. **配置 typo 静默失效**：config.json 拼错键名/选不存在的 profile → 控制台警告 + 回退默认。规范：profile 键有白名单校验（`unknown_profile_keys`），新增键必须同步加入 config 白名单和测试。
 
+### 9.7 数据一致性
+
+1. **历史展示与导入判定漂移**。现象：生成历史列表显示图片（`exists=true`）但「导入当前画布」报「不是可用的历史输出」。根因：展示按资产注册表解析（账本带 outputAssetIds → `resolve_asset`，`.assets` 副本在、原 output 文件被移动/删除仍显示），导入白名单却只认账本 `output` 原路径——输出目录设在项目外、原文件被清理后必然出现「列表有图、导入失败」。规范：展示与导入共用 `resolve_history_asset_path`（注册表副本优先、回退 output 路径）——历史里看得到的图片必然能导入；白名单仍只来自账本记录，任意未记录路径拒绝（不能退化成任意路径读取接口）。测试：test_server_helpers.py「只接受记录路径」+「注册表副本路径可导入」。
+
 ## 10. 测试与验证
 
 ### 10.1 单元测试
 
-后端 `uv run pytest`（204 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，117 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
+后端 `uv run pytest`（205 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，117 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
 | `tests/test_core_api.py` | 13 | 尺寸解析 / 默认输出路径（并发唯一）/ 错误格式化 |
 | `tests/test_core_batch.py` | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
 | `tests/test_core_config.py` | 15 | API Key（环境变量 / 跟随 profile / 缺失报错）/ profile 解析（优先级 / 缺失回退 / 白名单校验）/ RATIOS 表结构 |
-| `tests/test_server_helpers.py` | 22 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 |
+| `tests/test_server_helpers.py` | 23 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 / 导入与展示同源（注册表副本可导入 + 未记录路径拒绝） |
 | `tests/test_core_logging.py` | 8 | 日志写入 / 并发串行 / 路径相对化 |
 | `tests/test_core_history.py` | 7 | 历史读取 / 坏行容忍 / 筛选 / backfill（报告不写·补齐备份·幂等·跳过无法反查·坏行保留） |
 | `tests/test_core_canvas.py` | 32 | 注册表（v2 包装 + v1 裸清单兼容）/ 内容去重 / import 边界 / kind 来源标签 / workflow 归一化与自愈 / recovery / submission / **persist_submission_assets 公共函数**（注册/去重/无结果返回 None/部分缺失） |
