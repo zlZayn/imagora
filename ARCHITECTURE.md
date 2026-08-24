@@ -445,4 +445,6 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 - 子目录 README — 模块手册（文件索引 + 变更影响路由 + 上下游依赖）：`core/README.md` / `frontend/README.md` / `tests/README.md` / `scripts/README.md` / `docs/README.md`
 - `AGENTS.md` — 跨会话仪表盘（<80 行）：测试数字 / 待办 / 活跃坑 / 变更速查表；轮次记录进 git 不堆文档
 
+文档彼此**双向引用、层层递进**：根索引（本文档 / AGENTS.md）指向子 README，子 README「参考」节回引根，从任意一层都能回到索引；同一事实只在一层书写——用户层"怎么用" / 索引层"去哪查" / 手册层"是什么、改哪" / 圣经层"为什么、防什么"。改任何文档后复查：链接可解析（校验脚本）、本文档与 AGENTS 的数字/坑不过时。
+
 文档滞后即技术债。
