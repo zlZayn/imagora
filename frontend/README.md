@@ -40,12 +40,12 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ### 契约与 API（改动需双端同步）
 
-### types.ts
+### [types.ts](src/types.ts)
 - 职责：前后端契约类型全集（`AppConfig` / `GenerationTaskSnapshot` / `GenerateParams` / `ResultItem` / `AssetEntry` / `WorkflowNode` / `WorkflowEdge` …）
 - 被谁依赖：全部 src 与 components
 - 改后必测：`npx tsc --noEmit` + `npm test`；后端接口变更必须同步此处（ARCHITECTURE 7.2）
 
-### api.ts
+### [api.ts](src/api.ts)
 - 职责：后端全部 API 封装（`getConfig` / `uploadRefs` / `submitGenerate` / `fetchTask` / `cancelTask` / `canvasUpload` / `workflowSave` / `generationHistory` / `importHistoryAsset` / `selectFolder` …）
 - 被谁依赖：`App.tsx`、`CanvasPage.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`HistoryGallery.tsx`
 - 改后必测：`npm test`（若改类型）+ 对应 E2E
@@ -53,78 +53,78 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ### 纯函数模块（零 UI 依赖，全部有单测；改后跑 `npm test`，无需同步文档）
 
-### workflow.ts
+### [workflow.ts](src/workflow.ts)
 - 职责：节点构建（`buildImageNode`/`buildPromptNode`/`buildGroupNode`）、动画类（`withEnterAnim`/`stripAnimClasses`）、连线约束、落点阶梯（`staggerCreatePosition`）、`isImageFile`、`canvasEntriesToNodes`
 - 被谁依赖：CanvasPage、CanvasNodes、PromptImportModal
 - 注意：`CREATE_STAGGER_STEP`/`CREATE_STAGGER_RADIUS` 是落点阶梯常量
 
-### layout.ts
+### [layout.ts](src/layout.ts)
 - 职责：自动整理布局管道——`autoLayout`（全图）、`layoutSelection`（选中局部）、`layoutPromptResults`（结果回流排布）、`nodeSize`
 - 被谁依赖：CanvasPage（自动整理/回流）
 - 注意：局部整理不得漂移未选中节点（单测锁定）
 
-### canvasDrop.ts
+### [canvasDrop.ts](src/canvasDrop.ts)
 - 职责：拖拽意图解析（`resolveDropIntent`）、文件识别（`countDraggedFiles`/`extractImageFiles`）、落点示意文案（`dropChipLabel`）、画布内落点判定（`isInsideRect`）、常量 `CANVAS_DRAG_MIME`
 - 被谁依赖：useCanvasDrop.tsx
 - 注意：工具栏拖出画布外 = 取消（防错条 ARCHITECTURE 9.2.8）
 
-### previewZoom.ts
+### [previewZoom.ts](src/previewZoom.ts)
 - 职责：预览缩放/平移数学（`clampZoom` / `clampPreviewPan` / `ZOOM_MIN..MAX`）
 - 被谁依赖：WorkflowModals.tsx（ZoomModal）
 - 注意：数学进纯函数，UI 不重算（ARCHITECTURE 9.5）
 
-### canvasHistory.ts
+### [canvasHistory.ts](src/canvasHistory.ts)
 - 职责：撤销/恢复栈（`createCanvasHistory`，limit=50）
 - 被谁依赖：CanvasPage（undo/restore）
 
-### promptImportFormat.ts
+### [promptImportFormat.ts](src/promptImportFormat.ts)
 - 职责：粘贴导入解析（`parsePromptImportFormat` 容错解析）、尺寸映射（`resolveCardSize`）、批量建卡（`buildPromptNodes`）
 - 被谁依赖：PromptImportModal、CanvasPage
 - 注意：格式规范见 ../docs/README.md；缺漏进 issues 标红，绝不静默猜测
 
-### recovery.ts
+### [recovery.ts](src/recovery.ts)
 - 职责：恢复快照归一化（`buildRecoverySnapshot`，剥离动画类/运行期字段）
 - 被谁依赖：useCanvasRecovery.ts
 
-### format.ts
+### [format.ts](src/format.ts)
 - 职责：显示格式化（`formatBytes` / `generatingLabel` / `errMessage`）
 
-### accent.ts
+### [accent.ts](src/accent.ts)
 - 职责：窗口主题色（`accentForWindow`，黄金角取色 → 覆盖 `--color-brand`）
 
-### windowInherit.ts
+### [windowInherit.ts](src/windowInherit.ts)
 - 职责：新窗口继承（`saveInheritedState` / `readInheritedState` / `clearInheritedState`，sessionStorage）
 
 ### Hooks（组件级逻辑）
 
-### useCanvasDrop.tsx
+### [useCanvasDrop.tsx](src/useCanvasDrop.tsx)
 - 职责：拖放接线（落点示意显隐/定位/文案、window 兜底守卫、工作区四事件）；提示词卡片/图片组拖出画布外松手取消
 - 改后必测：`npm test` + E2E（verify_canvas.py 第 8-11 段）
 
-### useGenerationTask.ts
+### [useGenerationTask.ts](src/useGenerationTask.ts)
 - 职责：生成任务轮询/取消（`useGenerationTask`）
 - 注意：返回稳定成员引用（hook 单测锁定）
 
-### useCanvasRecovery.ts
+### [useCanvasRecovery.ts](src/useCanvasRecovery.ts)
 - 职责：恢复快照自动保存/恢复接线
 
 ### 组件（components/；改后跑 `npm test` + E2E）
 
-- `CanvasPage.tsx` — 无限画布主页面（React Flow 集成、选中操作栏、历史面板入口）
-- `CanvasNodes.tsx` — 三类节点（图片/图片组/提示词卡）+ `ActionButton`（nodrag 胶囊按钮）
-- `WorkflowModals.tsx` — 保存/加载/导入弹窗 + **`ZoomModal` 全屏预览**（createPortal 到 body，画布与经典表单共用）
-- `Gallery.tsx` — 经典表单结果图（双击放大 / 单击新窗口开原图，250ms 区分）
-- `UploadZone.tsx` — 参考图上传区（缩略图单击不触发文件选择器、双击放大）
-- `HistoryGallery.tsx` — 生成历史面板（导入当前画布）
-- `PromptImportModal.tsx` — 粘贴导入弹窗（实时解析 + 问题标红）
-- `FolderPicker.tsx` / `Select.tsx` — 目录选择 / 尺寸质量下拉
+- [`CanvasPage.tsx`](src/components/CanvasPage.tsx) — 无限画布主页面（React Flow 集成、选中操作栏、历史面板入口）
+- [`CanvasNodes.tsx`](src/components/CanvasNodes.tsx) — 三类节点（图片/图片组/提示词卡）+ `ActionButton`（nodrag 胶囊按钮）
+- [`WorkflowModals.tsx`](src/components/WorkflowModals.tsx) — 保存/加载/导入弹窗 + **`ZoomModal` 全屏预览**（createPortal 到 body，画布与经典表单共用）
+- [`Gallery.tsx`](src/components/Gallery.tsx) — 经典表单结果图（双击放大 / 单击新窗口开原图，250ms 区分）
+- [`UploadZone.tsx`](src/components/UploadZone.tsx) — 参考图上传区（缩略图单击不触发文件选择器、双击放大）
+- [`HistoryGallery.tsx`](src/components/HistoryGallery.tsx) — 生成历史面板（导入当前画布）
+- [`PromptImportModal.tsx`](src/components/PromptImportModal.tsx) — 粘贴导入弹窗（实时解析 + 问题标红）
+- [`FolderPicker.tsx`](src/components/FolderPicker.tsx) / [`Select.tsx`](src/components/Select.tsx) — 目录选择 / 尺寸质量下拉
 
 ### 根文件
 
-- `App.tsx` — 根组件：顶栏（品牌区 3D `brand-swing` 系、窗口徽章）、经典/画布模式切换。品牌区参数（`BRAND_LAYERS`/`BRAND_DEPTH`/`LOGO_FACE*`）与局部样式在 App.tsx 顶部
-- `main.tsx` — 入口（挂载 + accent 主题注入）
-- `index.css` — **唯一样式层**：Tailwind v4 + `@layer components` 组件类（btn 体系/panel-card/动效类）+ 品牌区 3D + 落点示意等；改样式只改这里
-- `e2e/verify_canvas.py` — 画布交互 E2E（36 断言，Playwright headless）
+- [`App.tsx`](src/App.tsx) — 根组件：顶栏（品牌区 3D `brand-swing` 系、窗口徽章）、经典/画布模式切换。品牌区参数（`BRAND_LAYERS`/`BRAND_DEPTH`/`LOGO_FACE*`）与局部样式在 App.tsx 顶部
+- [`main.tsx`](src/main.tsx) — 入口（挂载 + accent 主题注入）
+- [`index.css`](src/index.css) — **唯一样式层**：Tailwind v4 + `@layer components` 组件类（btn 体系/panel-card/动效类）+ 品牌区 3D + 落点示意等；改样式只改这里
+- [`verify_canvas.py`](e2e/verify_canvas.py) — 画布交互 E2E（36 断言，Playwright headless）
 
 ## 上下游依赖
 

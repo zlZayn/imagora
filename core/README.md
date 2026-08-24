@@ -17,79 +17,79 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 
 ## 文件索引（每个文件：职责 / 关键导出 / 被谁依赖 / 改后必测）
 
-### config.py
+### [config.py](config.py)
 - 职责：配置中心——profile 解析（优先级：环境变量 > config.json > 内置）、API Key、尺寸/质量选项、成本表
 - 关键导出：`resolve_profile_config()`、`unknown_profile_keys()`、`get_api_key()`、`cost_for_size()` + 模块常量（`SIZE_OPTIONS` / `QUALITY_OPTIONS` / `RATIOS` / `WORK_ROOT` / `DEFAULT_OUTPUT_DIR` 等）
 - 被谁依赖：`server.py`、`api.py`、`main.py`、`registry.py`、`history.py`
 - 改后必测：`tests/test_core_config.py`
 - 注意：新增 config.json profile 键必须同步 `unknown_profile_keys` 白名单 + 测试
 
-### api.py
+### [api.py](api.py)
 - 职责：上游生图 API 封装（全项目唯一外部网络调用点）
 - 关键导出：`generate_image()`、`format_error()`、`resolve_size_with_ratio()`、`build_default_output_path()`
 - 被谁依赖：`server.py`（/api/generate）、`main.py`（gen 子命令）
 - 改后必测：`tests/test_core_api.py` + `tests/test_main_cli.py`
 - 注意：单测已 mock 上游，不花钱；改接口签名要同步 `server.py` 与 `main.py` 两处调用
 
-### tasks.py
+### [tasks.py](tasks.py)
 - 职责：生成任务状态机（纯内存 TaskManager：queued → running → done/failed/cancelled，终态 TTL 清理）
 - 关键导出：`TaskManager`（`submit` / `snapshot` / `cancel`）、`GenerationTask`、`MAX_CONCURRENCY`
 - 被谁依赖：`server.py`（/api/generate、/api/tasks/*）
 - 改后必测：`tests/test_core_tasks.py` + `tests/test_server_tasks.py`
 - 注意：任务表纯内存；uvicorn 必须单 worker（见 ARCHITECTURE 9.6）
 
-### registry.py
+### [registry.py](registry.py)
 - 职责：资产注册表（`output/.assets`，v2 包装，内容 sha1 去重，kind=canvas/result/ref，永不自动清理）
 - 关键导出：`register_asset()`、`resolve_asset()`、`delete_asset()`、`list_assets()`、`import_assets()`、`image_url()`、`safe_ref_path_allowlist()`、`migrate(apply, rebuild, backfill)`（迁移入口）
 - 被谁依赖：`graphstore.py`、`server.py`（/api/canvas/*、/api/history）、`main.py`（CLI 旁路）、`scripts/migrate.py`、`core/canvas.py`（shim）
 - 改后必测：`tests/test_core_canvas.py` + `tests/test_core_migrate.py` + `tests/test_server_helpers.py`（history 注册表解析）
 - 注意：**改存储格式（schema/目录/字段语义）必须先 Handoff 确认**（硬边界）
 
-### graphstore.py
+### [graphstore.py](graphstore.py)
 - 职责：图/工作流存储——workflow（手动工作流）/ submission（提交快照）/ recovery（恢复快照），原子写
 - 关键导出：`workflow_save()` / `workflow_list()` / `workflow_load()`、`submission_save()` / `submission_load()`、`recovery_save()` / `recovery_latest()`、`persist_submission_assets()`（server/CLI 共用资产旁路）、`migrate_workflows()`、`next_submission_id()`、`sanitize_workflow_name()`
 - 被谁依赖：`server.py`（/api/canvas/workflow/*、/api/canvas/import-submission、recovery）、`main.py`（CLI 旁路）、`scripts/migrate.py`、shim
 - 改后必测：`tests/test_core_canvas.py` + `tests/test_server_canvas.py` + `tests/test_main_cli.py`
 - 注意：`persist_submission_assets` 两端共用，改前查 server 与 main 两处调用；**改存储格式必须先 Handoff 确认**
 
-### history.py
+### [history.py](history.py)
 - 职责：生成历史 JSONL 读取（容错坏行、筛选）+ 账本迁移（backfill）
 - 关键导出：`read_generation_history()`、`resolve_output_path()`、`backfill_output_asset_ids()`
 - 被谁依赖：`server.py`（/api/history、/api/history/import，白名单同源判定）
 - 改后必测：`tests/test_core_history.py` + `tests/test_server_helpers.py`
 - 注意：展示与导入同源（ARCHITECTURE 9.7）——改路径解析逻辑必须两端一致
 
-### logging.py
+### [logging.py](logging.py)
 - 职责：`logs/generation.jsonl` 账本写入（线程安全、路径相对化）
 - 关键导出：`log_generation()`
 - 被谁依赖：`server.py`、`main.py`（gen/batch）
 - 改后必测：`tests/test_core_logging.py`
 
-### console.py
+### [console.py](console.py)
 - 职责：终端输出（rich）——CLI 菜单/提示
 - 关键导出：`console`、`print_success()`、`print_error()`、`print_info()`、`print_warn()`、`print_panel()`
 - 被谁依赖：`main.py`
 - 改后必测：无专项测试（纯展示，人工验证）
 
-### imageinfo.py
+### [imageinfo.py](imageinfo.py)
 - 职责：图片头解析（PNG/JPEG/GIF/WebP/BMP 宽高/格式）
 - 关键导出：`image_dimensions()`
 - 被谁依赖：`registry.py`（登记时探测元数据）
 - 改后必测：`tests/test_core_imageinfo.py`
 
-### pathtrust.py
+### [pathtrust.py](pathtrust.py)
 - 职责：路径白名单校验（`match_roots`，双根/跨盘安全）
 - 关键导出：`match_roots()`
 - 被谁依赖：`server.py`（safe_ref_path_allowlist 委托）、`registry.py`
 - 改后必测：`tests/test_core_pathtrust.py`
 
-### batch.py
+### [batch.py](batch.py)
 - 职责：CLI 批量编排（config 读取、模块过滤、dry-run 预览、串行生成）
 - 关键导出：`load_batch_config()`、`resolve_base_image_paths()`、`filter_jobs_by_module()`、`run_batch_generation()`
 - 被谁依赖：`main.py`（batch 子命令）
 - 改后必测：`tests/test_core_batch.py`
 
-### canvas.py
+### [canvas.py](canvas.py)
 - 职责：**兼容 shim**——星号 re-export `registry` + `graphstore`（旧导入 `from core import canvas` 兼容）
 - 被谁依赖：`server.py`（`from core import canvas`）
 - 警告：不加新逻辑；新增公开函数应落在 registry/graphstore 本体

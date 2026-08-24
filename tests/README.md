@@ -16,7 +16,7 @@ cd frontend; npm test
 ## 该目录特有坑
 
 - **必须 `--basetemp=<ASCII 临时目录>`**：工作目录含中文，不指定会触发 tmp_path 挂死（已知问题，勿忘）
-- **5 个 Windows 专属测试**：netstat 端口探测 / powershell 父进程链 / C: 绝对路径 / 跨盘相对化——只在 Windows 通过；CI 的 Backend/Backend 相关 Job 必须 `windows-latest`
+- **5 个 Windows 专属测试**：netstat 端口探测 / powershell 父进程链 / C: 绝对路径 / 跨盘相对化——只在 Windows 通过；CI 相关 Job 必须 `windows-latest`
 - 路由测试直接 `from server import ...`（import 即建 FastAPI app，属预期）
 - **测试数字是 AGENTS 仪表盘数据源**：增/删测试用例必须同步 AGENTS「当前仪表盘」；数字意外变化（非新增导致）必须报告维护者
 
@@ -24,36 +24,36 @@ cd frontend; npm test
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
-| `test_core_api.py` | 13 | 尺寸解析 / 默认输出路径（并发唯一）/ 错误格式化 |
-| `test_core_batch.py` | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
-| `test_core_config.py` | 15 | API Key 跟随 profile / profile 解析优先级与缺失回退 / 白名单校验 / RATIOS 表结构 |
-| `test_core_logging.py` | 8 | 日志写入 / 并发串行 / 路径相对化 |
-| `test_core_history.py` | 7 | 历史读取 / 坏行容忍 / 筛选 / backfill（报告·补齐·幂等·跳过无法反查·坏行保留） |
-| `test_core_canvas.py` | 32 | 注册表（v2+v1 兼容）/ 内容去重 / import 边界 / kind 来源标签 / workflow 归一化与自愈 / recovery / submission / persist_submission_assets |
-| `test_core_imageinfo.py` | 10 | PNG/JPEG/GIF/WebP/BMP 头解析 / 垃圾与截断返回 None |
-| `test_core_migrate.py` | 19 | 注册表 detect/升级/重建/回填/迁目录 / 工作流升级 / CLI 端到端 |
-| `test_core_tasks.py` | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
-| `test_core_pathtrust.py` | 2 | 路径白名单（match_roots 双根/单根/跨盘） |
-| `test_server_helpers.py` | 23 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 / 导入与展示同源 |
-| `test_server_canvas.py` | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / ref_paths 放行 |
-| `test_server_tasks.py` | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
-| `test_main_process.py` | 4 | 端口探测 / 祖先链回溯（Windows） |
-| `test_main_cli.py` | 25 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ config 输出 |
+| [`test_core_api.py`](test_core_api.py) | 13 | 尺寸解析 / 默认输出路径（并发唯一）/ 错误格式化 |
+| [`test_core_batch.py`](test_core_batch.py) | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
+| [`test_core_config.py`](test_core_config.py) | 15 | API Key 跟随 profile / profile 解析优先级与缺失回退 / 白名单校验 / RATIOS 表结构 |
+| [`test_core_logging.py`](test_core_logging.py) | 8 | 日志写入 / 并发串行 / 路径相对化 |
+| [`test_core_history.py`](test_core_history.py) | 7 | 历史读取 / 坏行容忍 / 筛选 / backfill（报告·补齐·幂等·跳过无法反查·坏行保留） |
+| [`test_core_canvas.py`](test_core_canvas.py) | 32 | 注册表（v2+v1 兼容）/ 内容去重 / import 边界 / kind 来源标签 / workflow 归一化与自愈 / recovery / submission / persist_submission_assets |
+| [`test_core_imageinfo.py`](test_core_imageinfo.py) | 10 | PNG/JPEG/GIF/WebP/BMP 头解析 / 垃圾与截断返回 None |
+| [`test_core_migrate.py`](test_core_migrate.py) | 19 | 注册表 detect/升级/重建/回填/迁目录 / 工作流升级 / CLI 端到端 |
+| [`test_core_tasks.py`](test_core_tasks.py) | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
+| [`test_core_pathtrust.py`](test_core_pathtrust.py) | 2 | 路径白名单（match_roots 双根/单根/跨盘） |
+| [`test_server_helpers.py`](test_server_helpers.py) | 23 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 / 导入与展示同源 |
+| [`test_server_canvas.py`](test_server_canvas.py) | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / ref_paths 放行 |
+| [`test_server_tasks.py`](test_server_tasks.py) | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
+| [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
+| [`test_main_cli.py`](test_main_cli.py) | 25 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ config 输出 |
 
 ## 文件索引（前端 vitest，共 120，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
-| `layout.test.ts` | 29 | 分层布局 / 复杂连接 / 局部整理不漂移 / 多对多摊平 |
-| `workflow.test.ts` | 31 | 自动连线 / 动画类 / 连线约束 / 落点阶梯 / 节点构建器 |
-| `canvasDrop.test.ts` | 14 | 拖拽意图解析 / 文件识别 / 数量统计 / 示意文案 / isInsideRect |
-| `previewZoom.test.ts` | 5 | 缩放范围 / 平移夹紧 |
-| `canvasHistory.test.ts` | 2 | 撤销 / 恢复 / 新分支清空 |
-| `canvasStyles.test.ts` | 4 | 动效 CSS 选择器约束 |
-| `recovery.test.ts` | 4 | 快照剥离动画类 / 运行期字段清除 |
-| `useGenerationTask.test.ts` | 2 | hook 稳定成员引用 |
-| `CanvasNodes.test.tsx` | 10 | 节点操作栏 / 双击行为 |
-| `promptImportFormat.test.ts` | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
+| [`layout.test.ts`](../frontend/src/layout.test.ts) | 29 | 分层布局 / 复杂连接 / 局部整理不漂移 / 多对多摊平 |
+| [`workflow.test.ts`](../frontend/src/workflow.test.ts) | 31 | 自动连线 / 动画类 / 连线约束 / 落点阶梯 / 节点构建器 |
+| [`canvasDrop.test.ts`](../frontend/src/canvasDrop.test.ts) | 14 | 拖拽意图解析 / 文件识别 / 数量统计 / 示意文案 / isInsideRect |
+| [`previewZoom.test.ts`](../frontend/src/previewZoom.test.ts) | 5 | 缩放范围 / 平移夹紧 |
+| [`canvasHistory.test.ts`](../frontend/src/canvasHistory.test.ts) | 2 | 撤销 / 恢复 / 新分支清空 |
+| [`canvasStyles.test.ts`](../frontend/src/canvasStyles.test.ts) | 4 | 动效 CSS 选择器约束 |
+| [`recovery.test.ts`](../frontend/src/recovery.test.ts) | 4 | 快照剥离动画类 / 运行期字段清除 |
+| [`useGenerationTask.test.ts`](../frontend/src/useGenerationTask.test.ts) | 2 | hook 稳定成员引用 |
+| [`CanvasNodes.test.tsx`](../frontend/src/components/CanvasNodes.test.tsx) | 10 | 节点操作栏 / 双击行为 |
+| [`promptImportFormat.test.ts`](../frontend/src/promptImportFormat.test.ts) | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
 
 ## 变更影响路由（改前必看）
 
@@ -69,7 +69,7 @@ cd frontend; npm test
 ## CI 要求
 
 - Backend Job：**windows-latest**（5 个 Windows 专属测试）
-- `--basetemp` 参数保留（与本地命令可互拷）
+- `--basetemp` 指向 ASCII 临时目录（本地自选目录，CI 用 `${{ runner.temp }}`，见 ci.yml）
 - 细节见 [../.github/workflows/ci.yml](../.github/workflows/ci.yml)（草稿）
 
 ## 参考
