@@ -61,6 +61,9 @@ def _print_report(report) -> None:
 
 
 def main() -> int:
+    # CI Windows runner 默认 stdout/stderr 为 cp1252，无法编码中文输出（如「模式：」）→ 强制 UTF-8
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description='Imagora 存储迁移：一步到最新（默认只报告，--apply 才落地备份校验）')
     parser.add_argument('--apply', action='store_true', help='落地迁移（先备份 .bak-<时间戳>，校验通过才保留）')
     parser.add_argument('--rebuild-registry', action='store_true', help='注册表缺失/损坏时按 .assets 图片文件重建')
