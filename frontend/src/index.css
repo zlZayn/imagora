@@ -66,7 +66,7 @@ body {
    * 涟漪层（::before）为按钮同形层（inset:0，圆角 inherit），scaleX(0)→1 从中心向左右横向展开——
    * 任意宽度（如 flex-1 撑满的「生成图片」）都完整覆盖，扩展方向是「中间往两边」而非四周放射。
    * 状态类：btn-busy 生成中呼吸、btn-draggable 可拖出、btn-danger 危险色。
-   * 节奏取自 React Bits 类按钮范例：主交互 0.3s + 涟漪扩散 0.6s（文字变色与扩散同步）。 */
+   * 节奏：涟漪扩散与文字变色同节奏 0.35s（横向展开，无 hover 缩放），主交互 0.3s。
 
   /* 涟漪层（两档共用）：从中心向左右展开填充，--btn-fill 定填充色 */
   .btn-primary::before,
@@ -79,27 +79,25 @@ body {
     transform: scaleX(0);
     transform-origin: 50% 50%;
     z-index: -1;
-    transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+    transition: transform 0.35s cubic-bezier(0.23, 1, 0.32, 1);
   }
   .btn-primary:hover:not(:disabled)::before,
   .btn-ghost:hover:not(:disabled)::before {
     transform: scaleX(1);
   }
 
-  /* 主行动：常态实底白字，hover 白涟漪反转 → 白底 + 主题色字 */
+  /* 主行动：常态实底白字，hover 白涟漪反转 → 白底 + 主题色字（无缩放） */
   .btn-primary {
     @apply relative overflow-hidden rounded-full bg-brand py-3 font-semibold text-white shadow-sm;
     --btn-fill: #ffffff;
     isolation: isolate;
     transition:
-      color 0.6s cubic-bezier(0.23, 1, 0.32, 1),
-      box-shadow 0.3s ease,
-      transform 0.2s ease;
+      color 0.35s cubic-bezier(0.23, 1, 0.32, 1),
+      box-shadow 0.3s ease;
   }
   .btn-primary:hover:not(:disabled) {
     color: var(--color-brand);
     box-shadow: 0 0 20px color-mix(in srgb, var(--color-brand) 40%, transparent);
-    transform: scale(1.02);
   }
   .btn-primary:active:not(:disabled) {
     @apply scale-[0.98];
@@ -108,7 +106,7 @@ body {
     @apply cursor-not-allowed opacity-50;
   }
 
-  /* 次要行动：与 primary 同源——无边框透明胶囊，常态主题色文字，hover 涟漪填充 + 反白
+  /* 次要行动：与 primary 同源——无边框透明胶囊，常态主题色文字，hover 涟漪填充 + 反白（无缩放）
      （--btn-fill 固定基础色，hover 反白不影响涟漪颜色；danger 变体覆盖 color/--btn-fill 即红系） */
   .btn-ghost {
     @apply relative overflow-hidden whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold;
@@ -117,17 +115,15 @@ body {
     background-color: transparent;
     isolation: isolate;
     transition:
-      color 0.6s cubic-bezier(0.23, 1, 0.32, 1),
-      box-shadow 0.3s ease,
-      transform 0.2s ease;
+      color 0.35s cubic-bezier(0.23, 1, 0.32, 1),
+      box-shadow 0.3s ease;
   }
   .btn-ghost:hover:not(:disabled) {
     color: #fff;
     box-shadow: 0 0 20px color-mix(in srgb, var(--btn-fill) 40%, transparent);
-    transform: scale(1.04);
   }
   .btn-ghost:active:not(:disabled) {
-    transform: scale(1);
+    @apply scale-[0.98];
   }
   .btn-ghost:disabled {
     @apply cursor-not-allowed opacity-50;
