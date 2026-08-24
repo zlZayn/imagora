@@ -76,3 +76,4 @@ cd frontend; npm test
 
 - 测试规范与数字口径：[../ARCHITECTURE.md](../ARCHITECTURE.md) 10
 - 被测模块手册：[../core/README.md](../core/README.md)、[../frontend/README.md](../frontend/README.md)
+- 维护仪表盘（数字/待办/坑）：[../AGENTS.md](../AGENTS.md)

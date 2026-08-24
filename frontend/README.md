@@ -162,3 +162,4 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 - 设计决策（动画约束/按钮体系/品牌区 3D/预览统一）：[../ARCHITECTURE.md](../ARCHITECTURE.md) 8.4 / 9.4
 - E2E 与测试命令：[../tests/README.md](../tests/README.md)
+- 维护仪表盘（数字/待办/坑）：[../AGENTS.md](../AGENTS.md)

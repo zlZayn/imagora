@@ -33,5 +33,6 @@
 
 ## 参考
 
-- 迁移设计：`ARCHITECTURE.md` 5.5
+- 迁移设计：[../ARCHITECTURE.md](../ARCHITECTURE.md) 5.5
 - 被测模块：[../core/README.md](../core/README.md)（registry / graphstore / history 节）
+- 维护仪表盘（数字/待办/坑）：[../AGENTS.md](../AGENTS.md)
