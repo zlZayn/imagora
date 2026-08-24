@@ -75,7 +75,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - `useGenerationTask.ts` —— 提交-轮询任务 hook：经典表单与画布共用，`submit/cancel/get/tasks/subscribe` 五个稳定成员。
 - `useCanvasRecovery.ts` —— 画布恢复：挂载时询问是否恢复最近存档，防抖自动保存。
 - `useCanvasDrop.tsx` —— 画布拖拽接线 hook（文件多图 / 工具栏按钮拖出共用）：落点示意显隐/定位/文案、拖放意图解析、window 级兜底守卫、工作区四事件；节点怎么建由回调上抛（onDropFiles/onDropNode），本 hook 不含业务。
-- 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/连线/节点构建器/mergeSubmissionGraph 提交图合并）、`layout.ts`（自动整理布局管道：分层/质心排序/自底向上定位/幂等）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案）、`promptImportFormat.ts`（导入格式解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
+- 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/连线/节点构建器/mergeSubmissionGraph 提交图合并）、`layout.ts`（自动整理布局管道：分层/质心排序/自底向上定位/幂等）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案/画布内落点判定）、`promptImportFormat.ts`（导入格式解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
 - `components/`：`CanvasPage.tsx`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes.tsx`（三类节点组件）、`WorkflowModals.tsx`（保存/加载/放大预览弹窗，ZoomModal 画布/经典表单共用）、`PromptImportModal.tsx`、`HistoryGallery.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`Select.tsx`、`FolderPicker.tsx`。
 
 ### 2.4 依赖规则
@@ -169,9 +169,9 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 5.4 画布交互层
 
-- **拖拽添加（文件 / 工具栏按钮，共用同一落点示意）**：拖本地图片（可多张）到画布任意位置松开即添加，或把「新建提示词卡片 / 新建图片组」按钮拖出到画布松开即建（点击仍自动居中）。接线统一收敛在 `useCanvasDrop` hook（意图解析/落点换算/示意/守卫），纯逻辑在 `canvasDrop.ts`，节点构建在 `workflow.ts:buildPromptNode/buildGroupNode`（与点击新建同一构建）。落点 = **鼠标松开处**（`screenToFlowPosition` 换算），批次内沿用 `canvasEntriesToNodes` 横向排开；文件走 `isImageFile` 过滤 + `POST /api/canvas/upload`，工具栏拖走自定义 dataTransfer 类型（`application/x-imagora-canvas`，值 prompt/group）。
-  - **落点示意**：跟随光标的小胶囊（portal 到 body + fixed 定位，工具栏拖出可全局跟随），图标/文案按意图区分（图片数量 / 「松开新建提示词卡片」等）；位置由 JS 直接写外层 transform（高频 dragover 不触发 React 渲染）、数量从 `dataTransfer.items`（kind==="file"）统计——**dragover 阶段 `dataTransfer.files` 为空**（浏览器延迟到 drop 才填充）；拖入时画布切系统 `copy` 光标（`.canvas-drop-active`）。
-  - **防护**：dragenter/leave 计数平衡防闪烁（仅文件拖拽）；拖放接管挂在**整个工作区**（含工具栏/帮助栏），UI 上不出现浏览器禁止标志，落点在画布外先夹紧到画布边缘（`dropPointFromEvent`）；意图判定带 `dropIntentRef` 回退（真实浏览器 dragover 阶段 getData 偶发为空）；窗口级只拦截携带 Files 的拖拽（防落画布外触发浏览器打开文件导航）；`dragend`/失焦复位拖拽状态；drop 前先判定意图，文本/其他拖拽**放行**（输入框原生行为不受影响）；弹窗打开时暂停接管。
+- **拖拽添加（文件 / 工具栏按钮，共用同一落点示意）**：拖本地图片（可多张）到画布任意位置松开即添加，或把「新建提示词卡片 / 新建图片组」按钮拖出到画布松开即建（**拖到画布外松手则取消**；点击仍自动居中）。接线统一收敛在 `useCanvasDrop` hook（意图解析/落点换算/示意/守卫），纯逻辑在 `canvasDrop.ts`，节点构建在 `workflow.ts:buildPromptNode/buildGroupNode`（与点击新建同一构建）。落点 = **鼠标松开处**（`screenToFlowPosition` 换算），批次内沿用 `canvasEntriesToNodes` 横向排开；文件走 `isImageFile` 过滤 + `POST /api/canvas/upload`，工具栏拖走自定义 dataTransfer 类型（`application/x-imagora-canvas`，值 prompt/group）。
+  - **落点示意**：跟随光标的小胶囊（portal 到 body + fixed 定位，工具栏拖出可全局跟随），图标/文案按意图区分（图片数量 / 「松开新建提示词卡片」等）；**图标双态 + 文案随位置实时切换**——画布内 = 新建类型图标（Type/Layers/Plus）+「松开新建…」，画布外 = 红色 X +「松开取消」（`is-outside` 类与 textContent 直接写 DOM）；位置由 JS 直接写外层 transform（高频 dragover 不触发 React 渲染）、数量从 `dataTransfer.items`（kind==="file"）统计——**dragover 阶段 `dataTransfer.files` 为空**（浏览器延迟到 drop 才填充）；拖入时画布切系统 `copy` 光标（`.canvas-drop-active`）。
+  - **防护**：dragenter/leave 计数平衡防闪烁（仅文件拖拽）；拖放接管挂在**整个工作区**（含工具栏/帮助栏），UI 上不出现浏览器禁止标志——文件拖入落点在画布外夹紧到画布边缘（`dropPointFromEvent`），**工具栏拖出画布外松手即取消**（drop 前 `isInsideRect` 判定，不再夹紧放置）；意图判定带 `dropIntentRef` 回退（真实浏览器 dragover 阶段 getData 偶发为空）；窗口级只拦截携带 Files 的拖拽（防落画布外触发浏览器打开文件导航）；`dragend`/失焦复位拖拽状态；drop 前先判定意图，文本/其他拖拽**放行**（输入框原生行为不受影响）；弹窗打开时暂停接管。
 - **右键拖拽框选**：右键按下→拖拽→松开，起点/终点用 `screenToFlowPosition` 换算，松开时按「节点完全包含于选框」落定选中；`mouseup` 挂 window（画布外松开也生效）。
 - **右键菜单屏蔽**：window 捕获层**无状态**屏蔽非输入区 contextmenu（文本框/输入框保留原生菜单），不依赖任何时序标志。
 - **选中操作栏**：任意选中 ≥1 个节点后右上角出现——运行所选（只跑提示词卡片）/ 自动整理（局部重排）/ 自动连线（只补选中节点之间的边，未选中节点不受影响）/ 设置输出路径 / 删除所选。样式为**半透明毛玻璃**（bg-white/50 + backdrop-blur，悬停变实），选中操作时基本不遮挡画布内容。
@@ -330,7 +330,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 8.3 界面与交互
 
 - **拖拽落点即用户指定坐标**：文件/工具栏按钮拖到哪节点就放在哪（首个图片左上角 = 鼠标松开处的画布坐标，多图从落点向右排开），不做重新居中——所见即所放；落点是唯一不经视口中心定位的创建来源（见 5.6）。
-- **落点示意是纯 DOM 特效**：跟随光标的小胶囊（portal 到 body 的 fixed 元素），位置由 JS 直接写 transform——高频 dragover 移动不触发 React 渲染，只有拖拽起止等低频事件才改状态；文案/图标按意图区分（文件数量 / 新建类型），与画布光标同款品牌色加号图形，风格统一。
+- **落点示意是纯 DOM 特效**：跟随光标的小胶囊（portal 到 body 的 fixed 元素），位置由 JS 直接写 transform——高频 dragover 移动不触发 React 渲染，只有拖拽起止等低频事件才改状态；文案/图标按意图区分（文件数量 / 新建类型），工具栏拖出画布外时**图标（红色 X）与文案（松开取消）同步切换**（`is-outside` 类直接写 DOM），与画布光标同款品牌色加号图形，风格统一。
 - **一屏全览**：不用 ReactFlow 初始 `fitView` prop——空画布时它会被 React Flow 延迟到「第一个节点出现」才执行，导致新建/上传后视口突然放大跳动（已实测复现）。统一走 `fitCanvasToContent()`（自动整理/加载工作流/恢复存档后调用），`minZoom` 放宽到 0.05，fitView 显式允许缩到 0.02，节点再多也能全览。
 - **自定义光标**：画布空白区域用高对比十字准星 SVG data-URI 光标（细十字 + 白描边 + 中心白底品牌色加号，与拖拽落点示意同款图形，风格统一），平移切抓手；文件拖拽悬停时切系统 `copy` 光标；可拖出按钮（新建卡片/图片组）悬浮时给 grab 光标 + 品牌色呼吸光晕 + 拖拽图标（`.btn-draggable`）——拖入时可放感明确、可拖出暗示明显。
 - **预览弹窗（ZoomModal，画布/经典表单共用）**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。入口两侧一致：画布图片节点双击或操作栏「预览大图」、经典表单参考图缩略图双击（UploadZone，单击缩略图不触发文件选择器）、结果图双击（Gallery，单击仍新窗口开原图——250ms 延时区分单击/双击，避免双击连开两个标签）。统一传注册表派生的完整 url，不传存储路径，组件内不再拼 `/api/image?path=`。全屏布局：`createPortal` 到 body（脱离含动画 transform 的祖先——如结果栏 `panel-card enter-up` fill both 后 transform 仍非 none，会把 fixed 后代捕获进自己的包含块），图片区占满窗口（contain 不裁切），控制条/文件名/提示悬浮叠加底部、不占图片空间。
@@ -375,6 +375,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 5. **pointer capture 重定向 click**。现象：预览弹窗点击关闭误判/失效。根因：放大态拖拽的 setPointerCapture 会把 click target 重定向到容器。规范：关闭判定用 pointerdown 的**真实按下元素**；放大态区分点击与拖拽用位移阈值（>5px 才算拖拽），未移动且按在空白 = 点击关闭。测试：E2E「放大后点图片边缘空白关闭」。
 6. **拦截型交互吞掉点击**。现象：容器 stopPropagation 后点击无处可去。规范：任何拦截 pointerdown 的交互必须自证「点击 vs 拖拽」，并在两种缩放态下都可关闭。
 7. **全局监听器残留**。现象：卸载后仍触发 setState。规范：effect 内注册的 window 监听必须成对 removeEventListener 清理。
+8. **工具栏拖出画布外误建**。现象：把「新建提示词卡片/图片组」拖到画布外（工具栏/帮助栏/空白）松手仍新建（旧行为落点夹紧到画布边缘）。规范：工具栏拖出 drop 前判定落点是否在画布容器内（`isInsideRect`），画布外松手即取消、不夹紧放置；示意随位置切换「松开取消」文案 + 红色 X 图标（内层胶囊 `is-outside` 类 + textContent，高频 dragover 只写 DOM 不渲染）；文件拖入仍夹紧放置（上传语义不受影响）。测试：E2E 第 11 段（画布外松手取消 + 图标/文案切换 + 拖回画布仍新建）。
 
 ### 9.3 状态与引用
 
@@ -433,7 +434,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | `tests/test_core_pathtrust.py` | 2 | 路径白名单（match_roots 双根/单根/跨盘不误伤） |
 | `frontend/src/layout.test.ts` | 29 | 分层布局 / 复杂连接分层（结果图复用/多级链路/环容忍/结果块居中）/ 局部整理不漂移 / 只读锚点对齐 / 多对多网状质心摊平 / 群内标题排序 / 直连与组连同层 |
 | `frontend/src/workflow.test.ts` | 31 | 自动连线（全图/仅选中）/ 动画类 / 连线约束 / 入边收集 / 落点阶梯 / 图片文件识别 / 节点构建器 |
-| `frontend/src/canvasDrop.test.ts` | 11 | 拖拽意图解析（文件/工具栏/放行+回退）/ 文件识别 / 数量统计 / 落点示意文案 |
+| `frontend/src/canvasDrop.test.ts` | 14 | 拖拽意图解析（文件/工具栏/放行+回退）/ 文件识别 / 数量统计 / 落点示意文案 / 画布内落点判定（isInsideRect） |
 | `frontend/src/promptImportFormat.test.ts` | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
 | `frontend/src/previewZoom.test.ts` | 5 | 缩放范围 / 平移夹紧 |
 | `frontend/src/canvasHistory.test.ts` | 2 | 撤销 / 恢复 / 新分支清空 |
@@ -444,7 +445,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.2 端到端（E2E）
 
-`frontend/e2e/verify_canvas.py`（Playwright，自包含测试图，需服务已启动）：新建/上传居中（精确到像素）、视口不突变、右键菜单屏蔽（拖出画布 + 单击）、预览打开与点击空白关闭（含放大态）、文件拖拽添加（落点示意跟随光标与数量 / 落点精确 / 多图批次排开 / 非图片过滤）、工具栏按钮拖出新建（提示词卡片 / 图片组，示意文案与全局跟随、松开即建）。改画布交互后必须跑通它再加 E2E 断言。
+`frontend/e2e/verify_canvas.py`（Playwright，自包含测试图，需服务已启动）：新建/上传居中（精确到像素）、视口不突变、右键菜单屏蔽（拖出画布 + 单击）、预览打开与点击空白关闭（含放大态）、文件拖拽添加（落点示意跟随光标与数量 / 落点精确 / 多图批次排开 / 非图片过滤）、工具栏按钮拖出新建（提示词卡片 / 图片组，示意文案与全局跟随、松开即建）、**拖到画布外松开取消（示意切「松开取消」+ 红色 X 图标，拖回画布仍新建）**。改画布交互后必须跑通它再加 E2E 断言。
 
 ### 10.3 未覆盖
 

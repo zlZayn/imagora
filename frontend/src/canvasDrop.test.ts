@@ -5,6 +5,7 @@ import {
   dragCarriesFiles,
   dropChipLabel,
   extractImageFiles,
+  isInsideRect,
   resolveDropIntent,
 } from "./canvasDrop";
 
@@ -99,5 +100,25 @@ describe("dropChipLabel", () => {
   it("shows the node type for toolbar button drags", () => {
     expect(dropChipLabel("prompt", 0)).toBe("松开新建提示词卡片");
     expect(dropChipLabel("group", 0)).toBe("松开新建图片组");
+  });
+});
+
+describe("isInsideRect", () => {
+  const rect = { left: 100, right: 500, top: 200, bottom: 600 };
+
+  it("returns true for points inside the rect", () => {
+    expect(isInsideRect(300, 400, rect)).toBe(true);
+  });
+
+  it("returns false for points outside (above / right / below / left)", () => {
+    expect(isInsideRect(300, 150, rect)).toBe(false); // 上方
+    expect(isInsideRect(600, 400, rect)).toBe(false); // 右侧
+    expect(isInsideRect(300, 700, rect)).toBe(false); // 下方
+    expect(isInsideRect(50, 400, rect)).toBe(false); // 左侧
+  });
+
+  it("counts boundary coordinates as inside (edges inclusive)", () => {
+    expect(isInsideRect(100, 200, rect)).toBe(true);
+    expect(isInsideRect(500, 600, rect)).toBe(true);
   });
 });

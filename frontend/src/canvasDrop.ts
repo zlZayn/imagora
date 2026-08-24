@@ -54,3 +54,15 @@ export function dropChipLabel(intent: CanvasDropIntent, draggedFileCount: number
   }
   return TOOLBAR_DROP_LABELS[intent];
 }
+
+/** 工具栏拖出时画布外的示意文案（松手 = 取消，拖回画布恢复新建文案） */
+export const TOOLBAR_DROP_LABEL_CANCEL = "松开取消";
+
+/** 屏幕坐标是否落在矩形内（工具栏拖出判定落点：画布容器内 = 新建，画布外松手 = 取消） */
+export function isInsideRect(
+  clientX: number,
+  clientY: number,
+  rect: Pick<DOMRect, "left" | "right" | "top" | "bottom">,
+): boolean {
+  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+}

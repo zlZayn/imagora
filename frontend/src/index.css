@@ -354,6 +354,17 @@ body {
     transform: scale(1);
   }
 }
+/* 示意图标双态：画布内 = 新建类型图标（Type/Layers/Plus）；画布外（松开取消）= 红色 X。
+ * 拖动中由 JS 切换内层胶囊的 is-outside 类（高频 dragover 直接写 DOM，不经 React 状态）。 */
+.canvas-drop-chip .drop-chip-icon--cancel {
+  display: none;
+}
+.canvas-drop-chip.is-outside .drop-chip-icon--create {
+  display: none;
+}
+.canvas-drop-chip.is-outside .drop-chip-icon--cancel {
+  display: inline-flex;
+}
 
 /* ============ 可拖出按钮（工具栏：新建提示词卡片 / 新建图片组） ============
  * 悬浮时暗示"可以拖到画布"：grab 光标 + 品牌色呼吸光晕 + 右侧拖拽图标淡入上浮。

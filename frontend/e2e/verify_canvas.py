@@ -3,7 +3,7 @@
 覆盖：新建/上传落点在视口中心、视口不突变、右键菜单屏蔽、预览打开/点击空白关闭、
 文件拖拽添加（落点示意跟随光标与数量、落点精确、多图批次排开、非图片过滤）、
 工具栏按钮拖出新建（提示词卡片 / 图片组，示意文案与全局跟随、松开即建）、
-真实鼠标拖拽（原生 HTML5 DnD 管线）、拖到 UI 区域松开落点夹紧画布顶边。
+真实鼠标拖拽（原生 HTML5 DnD 管线）、拖到画布外松开=取消（示意切「松开取消」，拖回画布仍新建）。
 
 前置：本地服务已启动（uv run python -m main ui --port 7860），且已安装：
   pip install playwright && playwright install chromium
@@ -358,23 +358,38 @@ def main():
         check("真实拖拽新建提示词卡片", len(real_prompts) == before_real + 1 and len(hit_r) == 1,
               f"expected=({real_expected['x']:.1f},{real_expected['y']:.1f}) prompts={real_prompts}")
 
-        # 11. 拖到工具栏上方（UI 区域）松开：不出现禁止标志（工作区整体接管），落点夹紧到画布顶边
+        # 11. 拖到工具栏上方（UI 区域 = 画布外）松开：取消（不新建），示意文案实时切换为「松开取消」
         before_top = len(node_positions("group"))
         gb = page.get_by_role("button", name="新建图片组").bounding_box()
         page.mouse.move(gb["x"] + gb["width"] / 2, gb["y"] + gb["height"] / 2)
         page.mouse.down()
         ui_x = rf_box["x"] + rf_box["width"] * 0.5
-        page.mouse.move(ui_x, rf_box["y"] - 30, steps=8)
+        ui_y = rf_box["y"] - 30
+        page.mouse.move(ui_x, ui_y, steps=8)
         page.wait_for_timeout(300)
-        check("拖到UI区域仍显示落点示意", chip_opacity() == "1")
+        check("拖到画布外示意仍显示", chip_opacity() == "1")
+        check("拖到画布外示意文案=松开取消", page.get_by_text("松开取消", exact=True).count() == 1)
+        check("拖到画布外图标切换取消X", page.evaluate(
+            "() => document.querySelector('.canvas-drop-chip')?.classList.contains('is-outside')") is True)
         page.mouse.up()
         page.wait_for_timeout(700)
-        top_expected = screen_to_flow(ui_x, rf_box["y"] + 1)  # 夹紧到画布顶边
-        top_groups = node_positions("group")
-        hit_g = [p for p in top_groups
-                 if abs(p["x"] - top_expected["x"]) < 3 and abs(p["y"] - top_expected["y"]) < 3]
-        check("拖到UI区域松开=落点夹紧画布顶边", len(top_groups) == before_top + 1 and len(hit_g) == 1,
-              f"expected≈({top_expected['x']:.1f},{top_expected['y']:.1f}) groups={top_groups}")
+        check("拖到画布外松开=取消不新建", len(node_positions("group")) == before_top,
+              f"groups={node_positions('group')}")
+
+        # 11b. 再拖回画布松开：仍可新建（取消 ≠ 失效），示意文案恢复「松开新建」
+        page.mouse.move(gb["x"] + gb["width"] / 2, gb["y"] + gb["height"] / 2)
+        page.mouse.down()
+        back_x = rf_box["x"] + rf_box["width"] * 0.5
+        back_y = rf_box["y"] + rf_box["height"] * 0.45
+        page.mouse.move(back_x, back_y, steps=8)
+        page.wait_for_timeout(250)
+        check("拖回画布示意文案恢复", page.get_by_text("松开新建图片组", exact=True).count() == 1)
+        check("拖回画布图标恢复新建", page.evaluate(
+            "() => !document.querySelector('.canvas-drop-chip')?.classList.contains('is-outside')") is True)
+        page.mouse.up()
+        page.wait_for_timeout(700)
+        check("拖回画布松开仍新建", len(node_positions("group")) == before_top + 1,
+              f"groups={node_positions('group')}")
 
         browser.close()
 

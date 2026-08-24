@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Layers, Plus, Type } from "lucide-react";
+import { Layers, Plus, Type, X } from "lucide-react";
 import type { Edge, Node, ReactFlowInstance } from "@xyflow/react";
 import {
   CANVAS_DRAG_MIME,
+  TOOLBAR_DROP_LABEL_CANCEL,
+  TOOLBAR_DROP_LABELS,
   countDraggedFiles,
   dragCarriesFiles,
   dropChipLabel,
   extractImageFiles,
+  isInsideRect,
   resolveDropIntent,
   type CanvasDropIntent,
 } from "./canvasDrop";
@@ -15,7 +18,8 @@ import {
 /* ---------------- 画布拖拽接线 hook（文件多图 / 工具栏按钮拖出共用） ----------------
  * 职责：落点示意（跟随光标小胶囊）的显隐/定位/文案、拖放意图解析、window 级兜底守卫、
  * 工作区四事件（dragenter/over/leave/drop）。纯逻辑在 canvasDrop.ts，落点换算在 dropPointFromEvent。
- * 高频 dragover 移动只写 DOM（transform），不经 React 状态；状态仅在拖拽起止等低频事件变化。 */
+ * 高频 dragover 移动只写 DOM（transform/文案），不经 React 状态；状态仅在拖拽起止等低频事件变化。
+ * 工具栏拖出：落画布容器内松手才新建，画布外（工具栏/帮助栏/空白）松手取消（示意文案相应切换）。 */
 
 /** 落点示意未拖拽时的占位文案（实际文案在拖拽开始/进入时写入，见 showDropChip） */
 const DROP_CHIP_PLACEHOLDER = "松开添加图片";
@@ -78,6 +82,8 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
   const dragDepthRef = useRef(0);
   /** 落点示意外层元素：位置由 positionDropChip 直接写 transform */
   const dropChipRef = useRef<HTMLDivElement>(null);
+  /** 落点示意内层胶囊：画布内/外状态（is-outside 类）由 dragover 直接切换（icon 双态，不经 React 状态） */
+  const dropChipInnerRef = useRef<HTMLDivElement>(null);
   /** 落点示意文案（图片数量 / 新建类型） */
   const dropChipTextRef = useRef<HTMLSpanElement>(null);
 
@@ -89,10 +95,11 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
     if (text && text.textContent !== label) text.textContent = label;
   }, []);
 
-  /** 隐藏落点示意（drop / dragend / 失焦 / 文件拖拽离开工作区） */
+  /** 隐藏落点示意（drop / dragend / 失焦 / 文件拖拽离开工作区）；顺带复位画布内/外状态类 */
   const hideDropChip = useCallback(() => {
     dropIntentRef.current = null;
     setDropIntent(null);
+    dropChipInnerRef.current?.classList.remove("is-outside");
   }, []);
 
   /** 落点示意跟随光标：直接写 fixed 定位元素的 transform（不进 React 状态，只做合成器层位移）；
@@ -123,7 +130,8 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
   /* ---------------- 拖拽兜底：窗口级拦截 + 全局跟随 + 状态复位 ----------------
    * 1) 文件拖拽在 window 层 preventDefault：落到工作区外不会触发浏览器「打开文件」导航；
    *    只拦截携带 Files 的拖拽，文本拖拽进输入框不受影响。
-   * 2) 工具栏拖出时落点示意【全局】跟随光标：任何位置的 dragover 都更新胶囊位置（不 preventDefault）。
+   * 2) 工具栏拖出时落点示意【全局】跟随光标：任何位置的 dragover 都更新胶囊位置（不 preventDefault）；
+   *    同时按位置切换文案——画布内「松开新建」，画布外「松开取消」（先于 drop 给出反馈）。
    * 3) dragend / 窗口失焦复位拖拽状态：文件拖出浏览器窗口或按 Esc 取消时没有 drop 事件，
    *    计数可能残留，统一归零保证下次拖拽状态干净。 */
   useEffect(() => {
@@ -131,9 +139,16 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
       if (dragCarriesFiles(event)) event.preventDefault();
     };
     const positionToolbarDrag = (event: DragEvent) => {
-      if (dropIntentRef.current && dropIntentRef.current !== "images") {
-        positionDropChip(event.clientX, event.clientY);
-      }
+      const intent = dropIntentRef.current;
+      if (!intent || intent === "images") return;
+      positionDropChip(event.clientX, event.clientY);
+      // 画布内 = 松手新建；画布外 = 松手取消（文案与图标实时切换，先于 drop 行为给出反馈）
+      const el = canvasRef.current;
+      const inside = !!el && isInsideRect(event.clientX, event.clientY, el.getBoundingClientRect());
+      const label = inside ? TOOLBAR_DROP_LABELS[intent] : TOOLBAR_DROP_LABEL_CANCEL;
+      const text = dropChipTextRef.current;
+      if (text && text.textContent !== label) text.textContent = label;
+      dropChipInnerRef.current?.classList.toggle("is-outside", !inside);
     };
     const resetDragState = () => {
       dragDepthRef.current = 0;
@@ -151,7 +166,7 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
       window.removeEventListener("dragend", resetDragState);
       window.removeEventListener("blur", resetDragState);
     };
-  }, [hideDropChip, positionDropChip]);
+  }, [canvasRef, hideDropChip, positionDropChip]);
 
   /** 工作区拖放四事件（挂 CanvasPage 根节点）：整块工作区都是拖放区，UI 上不出现浏览器禁止标志；
    *  文本/无关拖拽放行（输入框原生行为不受影响）；弹窗打开时暂停接管。 */
@@ -201,6 +216,12 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
       event.preventDefault();
       dragDepthRef.current = 0;
       hideDropChip();
+      // 工具栏拖出：只有落在画布容器内才新建；画布外（工具栏/帮助栏/空白）松手即取消——
+      // drop 派发到工作区根节点（整体接管 preventDefault）后才走到这里，画布外直接 return 不再夹紧放置。
+      if (kind !== "images") {
+        const el = canvasRef.current;
+        if (!el || !isInsideRect(event.clientX, event.clientY, el.getBoundingClientRect())) return;
+      }
       const dropPoint = dropPointFromEvent(event.clientX, event.clientY);
       if (kind === "images") {
         const files = extractImageFiles(event.dataTransfer);
@@ -220,7 +241,7 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
       onDragLeave: handleDragLeave,
       onDrop: handleDrop,
     };
-  }, [dropPointFromEvent, hideDropChip, modalOpen, onDropFiles, onDropNode, onLog, positionDropChip, showDropChip]);
+  }, [canvasRef, dropPointFromEvent, hideDropChip, modalOpen, onDropFiles, onDropNode, onLog, positionDropChip, showDropChip]);
 
   /** 工具栏按钮拖起：登记拖拽类型 → 显示落点示意（portal 全局跟随，不限于画布内） */
   const startToolbarDrag = useCallback(
@@ -245,15 +266,21 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
           className="pointer-events-none fixed left-0 top-0 z-[9999] w-max will-change-transform"
         >
           <div
+            ref={dropChipInnerRef}
             className={`canvas-drop-chip flex items-center gap-2 rounded-full border border-brand/40 bg-white/95 px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-md ${dropIntent ? "show" : ""}`}
           >
-            {dropIntent === "prompt" ? (
-              <Type size={15} strokeWidth={2.5} className="text-brand" />
-            ) : dropIntent === "group" ? (
-              <Layers size={15} strokeWidth={2.5} className="text-brand" />
-            ) : (
-              <Plus size={15} strokeWidth={3} className="text-brand" />
-            )}
+            <span className="drop-chip-icon drop-chip-icon--create">
+              {dropIntent === "prompt" ? (
+                <Type size={15} strokeWidth={2.5} className="text-brand" />
+              ) : dropIntent === "group" ? (
+                <Layers size={15} strokeWidth={2.5} className="text-brand" />
+              ) : (
+                <Plus size={15} strokeWidth={3} className="text-brand" />
+              )}
+            </span>
+            <span className="drop-chip-icon drop-chip-icon--cancel" aria-hidden>
+              <X size={15} strokeWidth={2.5} className="text-red-500" />
+            </span>
             <span ref={dropChipTextRef} className="whitespace-nowrap">{DROP_CHIP_PLACEHOLDER}</span>
           </div>
         </div>,
