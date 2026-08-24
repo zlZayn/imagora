@@ -1,7 +1,8 @@
 # Imagora 架构说明
 
-> 本文档面向持续开发者：描述系统结构、模块关系、关键决策与**防错规范**。
-> 阅读建议：改后端先读第 4、6 章；改画布先读第 5、9 章；新功能落地前通读第 11 章变更守则。
+> 本文档面向持续开发者，是**宏观索引**：系统结构、模块关系、关键决策与**防错规范**。
+> 文件级细节（每个文件的职责 / 关键导出 / 被谁依赖 / 改后必测）在子 README 模块手册：`core/README.md`、`frontend/README.md`、`tests/README.md`、`scripts/README.md`、`docs/README.md`；跨会话仪表盘（测试数字/待办/坑/变更速查）在 `AGENTS.md`。
+> 阅读建议：改后端先读第 4、6 章 + core/README；改画布先读第 5、9 章；新功能落地前通读第 11 章变更守则。
 
 ## 1. 系统概览
 
@@ -42,41 +43,34 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `server.py` | FastAPI 应用：全部 `/api/*` 路由 + 托管 `frontend/dist` |
 | `启动生图工作台.cmd` | 开发环境双击入口：构建检查 → 起服务 → 开窗 → 进入交互菜单 |
 | `config.json` | 公开配置（git 跟踪）：多 profile（中转站/模型/尺寸/质量/ratios），`default_profile` 指定公共默认 |
-| `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块 |
-| `core/pathtrust.py` | 路径白名单统一实现（`.refs`/`.assets` 双根 + 单根），供 canvas 与 server 复用 |
-| `output/…/submissions/` | 经典提交图快照（复用工作流格式，kind='submission'），提供整图导入画布 |
-| `frontend/` | React SPA（见 2.3） |
-| `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新：注册表+工作流迁移，默认只报告、`--apply` 才落盘备份校验） |
-| `tests/` | 后端 pytest（204 用例，纯函数 + 路由，不调上游） |
-| `docs/` | `prompt-import-format.md`（通用导入格式规范）+ `ecom-prompt-import-format.md`（电商专用模板，固定轮播/详情批次） |
+| `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**文件级索引见 core/README.md** |
+| `frontend/` | React SPA（见 2.3）；**文件级索引见 frontend/README.md** |
+| `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**详见 scripts/README.md** |
+| `tests/` | 后端 pytest（205 用例）+ 前端 vitest（120 用例），全部不调上游；**逐文件覆盖见 tests/README.md** |
+| `docs/` | `prompt-import-format.md`（通用导入格式规范）+ `ecom-prompt-import-format.md`（电商专用模板）；索引见 docs/README.md |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
-| `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流 |
+| `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流、`submissions/` 经典提交图快照 |
 
 ### 2.2 后端 core/ 模块
 
-- `config.py` —— 配置中心：API Key、BASE_URL、尺寸/质量选项、RATIOS、默认参数。**全后端唯一配置源**，其他模块从这里读，不自行读环境变量。计费/尺寸从 `config.json` 的 `size_options[].cost` 取值，结算统一经 `cost_for_size()`；`_DEFAULTS` 仅提供缺配时的代码级默认。
-- `api.py` —— 上游请求封装：`generate_image`（文生图/图生图一次请求）、尺寸解析、错误格式化。依赖 config 与 console。
-- `tasks.py` —— 异步任务管线：`TaskManager` 提交登记、线程池并发执行、快照查询、取消、TTL 清理。
-- `registry.py` —— 资产注册表（`ASSET_DIR`/`register_asset`/`import_assets`/`delete_asset`/`list_assets`/`resolve_asset`/`image_url`，内容去重、原子写、可选来源标签 kind/sourceKey）。命名语义：`asset/资产`=被持久化的图，`canvas`=前端编排视图。
-- `graphstore.py` —— 图/工作流存储（`workflow_*`/`submission_*`/`recovery_*`、`_resolve_image_node_paths`/`_strip_derived_node_paths`、原子写、`next_submission_id`、`persist_submission_assets` 资产旁路公共函数供 server/CLI 共用），图片节点只存 registryId、路径由 `registry.resolve_asset` 重建。
-- `canvas.py` —— 兼容 shim：保留旧模块名（`from core import canvas`）星号 re-export registry+graphstore（含私有 `_REGISTRY_LOCK`），供 server/migrate/旧引用过渡，无业务逻辑。
-- `pathtrust.py` —— 路径白名单单一实现（match_roots），`canvas.safe_ref_path_allowlist` 与 `server.safe_ref_path` 共同委托，消除重复与跨盘误判。
-- `imageinfo.py` —— 图片头解析（PNG/JPEG/GIF/WebP/BMP 宽高/格式），纯标准库零依赖；供注册表 v2 元数据与迁移工具。
-- 迁移逻辑不在 `core/` 单独建模块，注册表迁移随 `registry.migrate`、工作流迁移随 `graphstore.migrate_workflows`，`scripts/migrate.py` 仅做协调与打印（默认只报告、`--apply` 才落盘备份校验、dry-run 时若 `.canvas/registry.json` 仍是 v1 清单会报 `pending-relocate` 待迁后升级，避免误报 missing/noop）。
-- `history.py` —— 生成历史 JSONL 读取 + **账本迁移** `backfill_output_asset_ids`（旧行缺 outputAssetIds 时按 output 文件内容 sha1 反查注册表补齐，报告优先/整文件备份/原子写/幂等，仅补能可靠反查的行）+ `resolve_output_path` 统一路径解析（server 委托此处，消除分叉）。依赖 logging 与 registry，无 HTTP。
-- `logging.py` —— 生成日志统一写入（线程锁串行追加），UI/批量/CLI 三路共用。
-- `console.py` —— rich 终端输出（成功/失败/信息配色、进度条、面板），无业务依赖，可被任意模块引用。
+后端业务全部在 `core/`（无 HTTP 纯逻辑层）。**文件级索引（每文件职责 / 关键导出 / 被谁依赖 / 改后必测 / 变更影响路由）见 [../core/README.md](../core/README.md)**；本章只给宏观图谱：
+
+- 配置 → 上游请求 → 任务：`config.py` → `api.py` → `tasks.py`（提交即返回的异步管线，`TaskManager`）
+- 存储三件套：`registry.py`（资产注册表：内容 sha1 去重、kind 来源标签、原子写、迁移入口 `migrate()`）、`graphstore.py`（工作流/提交/恢复快照 + `persist_submission_assets` 资产旁路公共函数，图片节点只存 registryId）、`history.py`（账本 JSONL 读取 + 回填迁移）
+- 支撑：`logging.py`（`generation.jsonl` 写入）、`console.py`（rich 终端）、`imageinfo.py`（图片头解析）、`pathtrust.py`（路径白名单 `match_roots`）、`batch.py`（CLI 批量编排）
+- `canvas.py` —— 兼容 shim：星号 re-export registry + graphstore（旧引用 `from core import canvas` 过渡），**无业务逻辑，不加新逻辑**
+- 命名语义：`asset/资产` = 被持久化的图（`.assets` 注册表）；`canvas` = 前端编排视图
+- 迁移逻辑随各存储模块（`registry.migrate` / `graphstore.migrate_workflows` / `history.backfill_output_asset_ids`），`scripts/migrate.py` 仅协调与打印（默认只报告、`--apply` 才落盘备份校验）
 
 ### 2.3 前端 src/ 模块
 
-- `main.tsx` / `App.tsx` —— 入口与双模式外壳：经典表单 / 无限画布切换（`?mode=canvas` 直达），多窗口编号与主题色；标题栏品牌区（logo+标题）3D 挤出 + 指针跟随见 8.4。
-- `api.ts` —— `/api/*` 请求封装，全部返回类型化；含 importSubmission（经典提交整图导入）。
-- `types.ts` —— 前后端类型契约（AppConfig / 任务快照 / 节点 / 边）。
-- `useGenerationTask.ts` —— 提交-轮询任务 hook：经典表单与画布共用，`submit/cancel/get/tasks/subscribe` 五个稳定成员。
-- `useCanvasRecovery.ts` —— 画布恢复：挂载时询问是否恢复最近存档，防抖自动保存。
-- `useCanvasDrop.tsx` —— 画布拖拽接线 hook（文件多图 / 工具栏按钮拖出共用）：落点示意显隐/定位/文案、拖放意图解析、window 级兜底守卫、工作区四事件；节点怎么建由回调上抛（onDropFiles/onDropNode），本 hook 不含业务。
-- 纯函数模块（零 UI 依赖，全部有单测）：`workflow.ts`（节点工具/动画类/连线/节点构建器/mergeSubmissionGraph 提交图合并）、`layout.ts`（自动整理布局管道：分层/质心排序/自底向上定位/幂等）、`canvasDrop.ts`（拖拽意图解析/文件识别/落点示意文案/画布内落点判定）、`promptImportFormat.ts`（导入格式解析/尺寸映射/建卡）、`canvasHistory.ts`（撤销栈）、`recovery.ts`（快照归一化）、`previewZoom.ts`（预览缩放数学）、`format.ts`、`accent.ts`、`windowInherit.ts`。
-- `components/`：`CanvasPage.tsx`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes.tsx`（三类节点组件）、`WorkflowModals.tsx`（保存/加载/放大预览弹窗，ZoomModal 画布/经典表单共用）、`PromptImportModal.tsx`、`HistoryGallery.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`Select.tsx`、`FolderPicker.tsx`。
+**文件索引（职责 / 关键导出 / 变更影响路由）见 [../frontend/README.md](../frontend/README.md)**；本章只给宏观图谱：
+
+- 外壳：`main.tsx` / `App.tsx` —— 入口与双模式外壳（经典表单 / 无限画布切换，`?mode=canvas` 直达），多窗口编号与主题色、标题栏品牌区 3D（见 8.4）
+- 契约：`api.ts`（`/api/*` 封装）+ `types.ts`（前后端类型契约，见 7.2）
+- Hooks：`useGenerationTask`（提交-轮询任务）、`useCanvasDrop`（拖放接线）、`useCanvasRecovery`（快照自动恢复）
+- 纯函数模块（零 UI 依赖，全部有单测，用例分布见 tests/README.md）：`workflow` / `layout` / `canvasDrop` / `promptImportFormat` / `canvasHistory` / `recovery` / `previewZoom` / `format` / `accent` / `windowInherit`
+- `components/`：`CanvasPage`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes`（三类节点）、`WorkflowModals`（保存/加载/预览弹窗，ZoomModal 画布/经典表单共用）、`PromptImportModal` / `HistoryGallery` / `UploadZone` / `Gallery` / `Select` / `FolderPicker`
 
 ### 2.4 依赖规则
 
@@ -174,7 +168,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
   - **防护**：dragenter/leave 计数平衡防闪烁（仅文件拖拽）；拖放接管挂在**整个工作区**（含工具栏/帮助栏），UI 上不出现浏览器禁止标志——文件拖入落点在画布外夹紧到画布边缘（`dropPointFromEvent`），**工具栏拖出画布外松手即取消**（drop 前 `isInsideRect` 判定，不再夹紧放置）；意图判定带 `dropIntentRef` 回退（真实浏览器 dragover 阶段 getData 偶发为空）；窗口级只拦截携带 Files 的拖拽（防落画布外触发浏览器打开文件导航）；`dragend`/失焦复位拖拽状态；drop 前先判定意图，文本/其他拖拽**放行**（输入框原生行为不受影响）；弹窗打开时暂停接管。
 - **右键拖拽框选**：右键按下→拖拽→松开，起点/终点用 `screenToFlowPosition` 换算，松开时按「节点完全包含于选框」落定选中；`mouseup` 挂 window（画布外松开也生效）。
 - **右键菜单屏蔽**：window 捕获层**无状态**屏蔽非输入区 contextmenu（文本框/输入框保留原生菜单），不依赖任何时序标志。
-- **选中操作栏**：任意选中 ≥1 个节点后右上角出现——运行所选（只跑提示词卡片）/ 自动整理（局部重排）/ 自动连线（只补选中节点之间的边，未选中节点不受影响）/ 设置输出路径 / 删除所选。样式为**半透明毛玻璃**（bg-white/50 + backdrop-blur，悬停变实），选中操作时基本不遮挡画布内容。
+- **选中操作栏**：任意选中 ≥1 个节点后右上角出现——运行所选（只跑提示词卡片）/ 自动整理（局部重排）/ 自动连线（只补选中节点之间的边，未选中节点不受影响）/ 设置输出路径 / 删除所选。样式为**半透明毛玻璃**（bg-white/20 + backdrop-blur-md），选中操作时基本不遮挡画布内容；按钮透明化细节见 8.4 按钮体系。
 - **快捷键**：Ctrl+A 全选、Ctrl+Z/Y 撤销恢复、Ctrl+S 保存、Delete 删除（带退场动画）；输入框聚焦时不拦截。
 - **撤销/恢复**：`canvasHistory.ts` 50 条上限的 past/future 栈，删除/连线/新建/导入前记录快照。
 - **画布日志**：右下角浮层只露最新 5 条（`log-toast` 淡入上移），低饱和中性色弱化存在感，`pointer-events-none` 不挡画布操作。
@@ -413,39 +407,13 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-后端 `uv run pytest`（205 用例，纯函数 + 路由，不调上游不花钱）；前端 `cd frontend && npm test`（vitest，117 用例）。静态检查：`uv run ruff check .`、`npm run lint`（eslint），均零告警。
-
-| 文件 | 用例 | 覆盖 |
-| --- | --- | --- |
-| `tests/test_core_api.py` | 13 | 尺寸解析 / 默认输出路径（并发唯一）/ 错误格式化 |
-| `tests/test_core_batch.py` | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
-| `tests/test_core_config.py` | 15 | API Key（环境变量 / 跟随 profile / 缺失报错）/ profile 解析（优先级 / 缺失回退 / 白名单校验）/ RATIOS 表结构 |
-| `tests/test_server_helpers.py` | 23 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 / 导入与展示同源（注册表副本可导入 + 未记录路径拒绝） |
-| `tests/test_core_logging.py` | 8 | 日志写入 / 并发串行 / 路径相对化 |
-| `tests/test_core_history.py` | 7 | 历史读取 / 坏行容忍 / 筛选 / backfill（报告不写·补齐备份·幂等·跳过无法反查·坏行保留） |
-| `tests/test_core_canvas.py` | 32 | 注册表（v2 包装 + v1 裸清单兼容）/ 内容去重 / import 边界 / kind 来源标签 / workflow 归一化与自愈 / recovery / submission / **persist_submission_assets 公共函数**（注册/去重/无结果返回 None/部分缺失） |
-| `tests/test_server_canvas.py` | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / 未知版本拒绝 / ref_paths 放行 |
-| `tests/test_core_imageinfo.py` | 10 | PNG/JPEG/GIF/WebP(VP8/VP8L/VP8X)/BMP 头解析 / 垃圾与截断返回 None |
-| `tests/test_core_migrate.py` | 19 | 注册表 detect/升级/重建/回填/迁目录 + pending-relocate dry-run 预检 + 工作流升级 + CLI 端到端 |
-| `tests/test_core_tasks.py` | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
-| `tests/test_server_tasks.py` | 8 | generate 提交即返回 / multipart 临时文件清理 / 路径校验 / 任务路由 |
-| `tests/test_main_process.py` | 4 | 端口探测 / 祖先链回溯 |
-| `tests/test_main_cli.py` | 25 | CLI gen 子命令全链路：`_validate_gen_args` 必填/互斥/取值校验 / `_resolve_output` 文件路径/目录/后缀解析 / `handle_gen_command` 文生图+图生图+多参考图+失败+`--no-asset`+比例档位端到端 / `handle_config_command` 输出 / `build_argument_parser` 子命令挂接 |
-| `tests/test_core_pathtrust.py` | 2 | 路径白名单（match_roots 双根/单根/跨盘不误伤） |
-| `frontend/src/layout.test.ts` | 29 | 分层布局 / 复杂连接分层（结果图复用/多级链路/环容忍/结果块居中）/ 局部整理不漂移 / 只读锚点对齐 / 多对多网状质心摊平 / 群内标题排序 / 直连与组连同层 |
-| `frontend/src/workflow.test.ts` | 31 | 自动连线（全图/仅选中）/ 动画类 / 连线约束 / 入边收集 / 落点阶梯 / 图片文件识别 / 节点构建器 |
-| `frontend/src/canvasDrop.test.ts` | 14 | 拖拽意图解析（文件/工具栏/放行+回退）/ 文件识别 / 数量统计 / 落点示意文案 / 画布内落点判定（isInsideRect） |
-| `frontend/src/promptImportFormat.test.ts` | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
-| `frontend/src/previewZoom.test.ts` | 5 | 缩放范围 / 平移夹紧 |
-| `frontend/src/canvasHistory.test.ts` | 2 | 撤销 / 恢复 / 新分支清空 |
-| `frontend/src/canvasStyles.test.ts` | 4 | 动效 CSS 选择器约束 |
-| `frontend/src/recovery.test.ts` | 4 | 快照剥离动画类 / 运行期字段清除 |
-| `frontend/src/useGenerationTask.test.ts` | 2 | hook 稳定成员引用 |
-| `frontend/src/components/CanvasNodes.test.tsx` | 10 | 节点操作栏 / 双击行为 |
+- 后端 pytest：**205 用例**（Windows 下必带 `--basetemp=C:/t/imagora-pytest` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
+- 前端 vitest：**120 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [../tests/README.md](../tests/README.md) 文件索引**
 
 ### 10.2 端到端（E2E）
 
-`frontend/e2e/verify_canvas.py`（Playwright，自包含测试图，需服务已启动）：新建/上传居中（精确到像素）、视口不突变、右键菜单屏蔽（拖出画布 + 单击）、预览打开与点击空白关闭（含放大态）、文件拖拽添加（落点示意跟随光标与数量 / 落点精确 / 多图批次排开 / 非图片过滤）、工具栏按钮拖出新建（提示词卡片 / 图片组，示意文案与全局跟随、松开即建）、**拖到画布外松开取消（示意切「松开取消」+ 红色 X 图标，拖回画布仍新建）**。改画布交互后必须跑通它再加 E2E 断言。
+`frontend/e2e/verify_canvas.py`（Playwright，36 断言，自包含测试图，需服务已启动）：新建/上传居中（精确到像素）、视口不突变、右键菜单屏蔽、预览打开与点击空白关闭（含放大态）、文件拖拽添加（落点示意跟随光标与数量 / 落点精确 / 多图批次排开 / 非图片过滤）、工具栏按钮拖出新建 + **拖到画布外松开取消（示意切「松开取消」+ 红色 X 图标，拖回画布仍新建）**。改画布交互后必须跑通它再加 E2E 断言。运行前置条件与命令见 frontend/README.md。
 
 ### 10.3 未覆盖
 
@@ -470,4 +438,11 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 11.3 文档同步
 
-功能变更后同步三处：`README.md`（用户视角，只写用途与用法）、`ARCHITECTURE.md`（本文档：结构/决策/防错清单，技术细节唯一归宿）、`AGENTS.md`（项目根目录，跨会话交接：验证状态 / 待办 / 已知问题，轮次记录进 git 不堆文档）。文档滞后即技术债。
+功能变更后同步四处（文档分层，职责不重叠）：
+
+- `README.md` — 用户视角，只写用途与用法
+- `ARCHITECTURE.md`（本文档）— 宏观索引 + 设计决策 + 数据流 + 契约（第 7 章）+ 防错清单（第 9 章）；模块级细节一律在子 README，不在此重复
+- 子目录 README — 模块手册（文件索引 + 变更影响路由 + 上下游依赖）：`core/README.md` / `frontend/README.md` / `tests/README.md` / `scripts/README.md` / `docs/README.md`
+- `AGENTS.md` — 跨会话仪表盘（<80 行）：测试数字 / 待办 / 活跃坑 / 变更速查表；轮次记录进 git 不堆文档
+
+文档滞后即技术债。
