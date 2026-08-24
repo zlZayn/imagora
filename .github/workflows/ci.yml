@@ -85,10 +85,11 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Install Playwright + Chromium
+      - name: Install Chromium browser
+        # playwright Python 包已进 pyproject.toml [dependency-groups] dev，上一步 uv sync 已装入 .venv；
+        # 本步只下载浏览器二进制（--with-deps 仅 Linux 可用，Windows 免系统依赖，故不加）。
         run: |
-          uv run pip install playwright
-          uv run playwright install chromium
+          .\.venv\Scripts\python.exe -m playwright install chromium
       - name: Start server and run E2E
         shell: pwsh
         run: |

@@ -15,6 +15,7 @@ dev = [
     "pyright>=1.1.411",
     "pytest>=8.0",
     "ruff>=0.11.0",
+    "playwright>=1.40",
 ]
 
 [tool.uv]

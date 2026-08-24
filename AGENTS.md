@@ -27,7 +27,7 @@
 - pytest 必须 `--basetemp=C:/t/imagora-pytest`（本地命令；中文目录触发 tmp_path 坑。CI 侧改用 `${{ runner.temp }}/imagora-pytest`，见 ci.yml，两者不再互拷）
 - server.py LSP 报「Argument missing for parameter id」是误报（GenerationTask.id 有 default_factory），勿修
 - `dist/` git 忽略：改前端后 `npm run build` 才在浏览器生效；CI/E2E 须自建 dist
-- E2E 只测画布交互、不触发生成链路；未来覆盖「生成→回流」前必须先 mock `core/api.py` 的 `generate_image`（ci.yml 注释 TODO）
+- E2E（`verify_canvas.py`，Python + playwright.sync_api）：playwright 已入 pyproject dev 组（uv sync 自动安装），本地/CI 只跑 `python -m playwright install chromium`；E2E 只测画布交互、不触发生成链路；未来覆盖「生成→回流」前必须先 mock `core/api.py` 的 `generate_image`（ci.yml 注释 TODO）
 - `.github/workflows/ci.yml`：Backend/E2E 已用 job 级 `env: UV_INDEX_URL: https://pypi.org/simple` 显式覆盖 tuna 镜像（海外 runner 超时风险已消除），本地 pyproject.toml 镜像配置保持不动；Backend 必须 windows-latest（5 个 Windows 专属测试）。未在真实仓库实测过，首次 push 触发后需看一眼结果
 - 迁移脚本/存储格式改动属硬边界——必须维护者确认，不自行决断
 
