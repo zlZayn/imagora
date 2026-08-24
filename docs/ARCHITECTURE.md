@@ -1,7 +1,8 @@
 # Imagora 架构说明
 
 > 本文档面向持续开发者，是**宏观索引**：系统结构、模块关系、关键决策与**防错规范**。
-> 文件级细节（每个文件的职责 / 关键导出 / 被谁依赖 / 改后必测）在子 README 模块手册：`core/README.md`、`frontend/README.md`、`tests/README.md`、`scripts/README.md`、`docs/README.md`；跨会话仪表盘（测试数字/待办/坑/变更速查）在 `AGENTS.md`。
+> 文档分层（双件制）：跨会话仪表盘在根 `AGENTS.md`；每个可维护目录是**规则层 `AGENTS.md`**（自动注入，只写"怎么工作"）+ **文档层 `README.md`**（按需读，文件索引/职责/改后必测）双件；本文档承担设计圣经（"为什么/防什么"）。
+> 导航：根仪表盘 [AGENTS.md](../AGENTS.md) · 用户视图 [README.md](../README.md) · docs 索引 [README.md](README.md)
 > 阅读建议：改后端先读第 4、6 章 + core/README；改画布先读第 5、9 章；新功能落地前通读第 11 章变更守则。
 
 ## 1. 系统概览
@@ -43,11 +44,11 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `server.py` | FastAPI 应用：全部 `/api/*` 路由 + 托管 `frontend/dist` |
 | `启动生图工作台.cmd` | 开发环境双击入口：构建检查 → 起服务 → 开窗 → 进入交互菜单 |
 | `config.json` | 公开配置（git 跟踪）：多 profile（中转站/模型/尺寸/质量/ratios），`default_profile` 指定公共默认 |
-| `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**文件级索引见 core/README.md** |
-| `frontend/` | React SPA（见 2.3）；**文件级索引见 frontend/README.md** |
-| `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**详见 scripts/README.md** |
-| `tests/` | 后端 pytest（205 用例）+ 前端 vitest（120 用例），全部不调上游；**逐文件覆盖见 tests/README.md** |
-| `docs/` | `prompt-import-format.md`（通用导入格式规范）+ `ecom-prompt-import-format.md`（电商专用模板）；索引见 docs/README.md |
+| `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
+| `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
+| `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
+| `tests/` | 后端 pytest（205 用例）+ 前端 vitest（120 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
+| `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流、`submissions/` 经典提交图快照 |
 
@@ -441,10 +442,13 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 功能变更后同步四处（文档分层，职责不重叠）：
 
 - `README.md` — 用户视角，只写用途与用法
-- `ARCHITECTURE.md`（本文档）— 宏观索引 + 设计决策 + 数据流 + 契约（第 7 章）+ 防错清单（第 9 章）；模块级细节一律在子 README，不在此重复
-- 子目录 README — 模块手册（文件索引 + 变更影响路由 + 上下游依赖）：`core/README.md` / `frontend/README.md` / `tests/README.md` / `scripts/README.md` / `docs/README.md`
+- `docs/ARCHITECTURE.md`（本文档）— 宏观索引 + 设计决策 + 数据流 + 契约（第 7 章）+ 防错清单（第 9 章）；模块级细节一律在子 README，不在此重复
+- 子树 AGENTS.md（规则层，自动注入）— 每目录「怎么工作」约束：`core/AGENTS.md` / `frontend/AGENTS.md` / `tests/AGENTS.md` / `scripts/AGENTS.md` / `docs/AGENTS.md`
+- 子目录 README（文档层）— 模块手册（文件索引 + 变更影响路由 + 上下游依赖）：`core/README.md` / `frontend/README.md` / `tests/README.md` / `scripts/README.md` / `docs/README.md`
 - `AGENTS.md` — 跨会话仪表盘（<80 行）：测试数字 / 待办 / 活跃坑 / 变更速查表；轮次记录进 git 不堆文档
 
-文档彼此**双向引用、层层递进**：根索引（本文档 / AGENTS.md）指向子 README，子 README「参考」节回引根，从任意一层都能回到索引；同一事实只在一层书写——用户层"怎么用" / 索引层"去哪查" / 手册层"是什么、改哪" / 圣经层"为什么、防什么"。改任何文档后复查：链接可解析（校验脚本）、本文档与 AGENTS 的数字/坑不过时。
+**双件纪律**：同目录 `AGENTS.md`（规则）与 `README.md`（文档）职责分明——约束只写进 AGENTS，文件属性/变更路由只写进 README，同一事实不跨文件重复（README 中与 AGENTS 重复的纪律条文应删除或改为指向）。
+
+文档彼此**双向引用、层层递进**：根索引（本文档 / AGENTS.md)指向子 README，子 README「参考」节回引根，从任意一层都能回到索引；同一事实只在一层书写——用户层"怎么用" / 索引层"去哪查" / 手册层"是什么、改哪" / 圣经层"为什么、防什么"。改任何文档后复查：链接可解析（校验脚本）、本文档与 AGENTS 的数字/坑不过时。
 
 文档滞后即技术债。

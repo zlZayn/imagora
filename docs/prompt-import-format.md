@@ -20,3 +20,7 @@ ratio: 1:1
 每条提示词内容完整，不可删减省略。
 
 > 电商商品图专用模板（含固定图组顺序与批次命名）见 [ecom-prompt-import-format.md](ecom-prompt-import-format.md)。
+
+--- 
+
+↩ 返回 [docs 索引](README.md) · 格式规范被 [frontend/src/promptImportFormat.ts](../frontend/src/promptImportFormat.ts) 解析（改规范必须同步解析器与单测）。

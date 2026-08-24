@@ -50,5 +50,6 @@
 | 测试文件 ↔ 被测代码映射 / 特殊坑 | [tests/README.md](tests/README.md) |
 | 迁移脚本用法 / 危险级别 | [scripts/README.md](scripts/README.md) |
 | 提示词导入格式规范 | [docs/README.md](docs/README.md) |
+| 各目录工作约束（规则层，自动注入） | [core/AGENTS.md](core/AGENTS.md) · [frontend/AGENTS.md](frontend/AGENTS.md) · [tests/AGENTS.md](tests/AGENTS.md) · [scripts/AGENTS.md](scripts/AGENTS.md) · [docs/AGENTS.md](docs/AGENTS.md) |
 
 历史轮次记 git log，不堆本文档。

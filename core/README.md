@@ -1,6 +1,6 @@
 # core/ — 后端核心模块（无 HTTP 纯逻辑层）
 
-FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不依赖 HTTP / FastAPI**；铁律：任何模块不得 import `server.py` / `main.py`（反向依赖）。
+FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不依赖 HTTP / FastAPI**。工作纪律（反向依赖铁律 / 测试 mock / 硬边界）见同目录 [AGENTS.md](AGENTS.md)。
 
 ## 本地常用命令
 
@@ -12,7 +12,7 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 
 - `canvas.py` 只是兼容 shim（星号 re-export registry + graphstore），**不在这里加新逻辑**
 - pytest 必须加 `--basetemp=<ASCII 临时目录>`（工作目录含中文，默认 tmp 路径会挂）
-- 单测绝不真调上游生图 API（花钱）：`api.py` 走 monkeypatch mock，保持接口可注入
+- 单测不真调上游：`api.py` 走 monkeypatch mock 保持接口可注入（纪律细则见 [AGENTS.md](AGENTS.md)）
 - 展示与导入同源防错条（ARCHITECTURE 9.7）：`resolve_history_asset_path` 在 `server.py`，不在 core
 
 ## 文件索引（每个文件：职责 / 关键导出 / 被谁依赖 / 改后必测）
@@ -99,7 +99,7 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 ### 本目录用到了谁
 - 标准库：`pathlib` / `json` / `hashlib` / `threading` / `tempfile` / `time`
 - 第三方：`requests`（api.py）、`rich`（console.py）
-- 无 `server.py` / `main.py` 反向依赖（铁律，已 grep 验证）
+- 无 `server.py` / `main.py` 反向依赖（约束见 [AGENTS.md](AGENTS.md)，grep 已验证）
 
 ### 谁用到了本目录
 - `server.py`：canvas / config / graphstore / history / api / logging / tasks

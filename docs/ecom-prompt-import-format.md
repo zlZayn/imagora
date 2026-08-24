@@ -17,3 +17,7 @@ ratio: 1:1
 正向提示词：一段完整、自然、可直接复制到图生图模型的中文描述。
 ```
 按顺序输出：轮播图1～轮播图5、详情图1～详情图5，每条提示词内容完整，不可删减省略。
+
+---
+
+↩ 返回 [docs 索引](README.md) · 通用格式见 [prompt-import-format.md](prompt-import-format.md) · 被 [frontend/src/promptImportFormat.ts](../frontend/src/promptImportFormat.ts) 解析（改规范必须同步解析器与单测）。
