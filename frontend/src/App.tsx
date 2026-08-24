@@ -44,10 +44,12 @@ function openNewWindow() {
  *  logo 正面跟随窗口主题色（var(--color-brand)），标题正面沿用 body 文字色，均不硬编码。 */
 const BRAND_LAYERS = 10; // 挤出层数（越小越省 DOM，也越浅）
 const BRAND_DEPTH = 1.5; // 层间距 px，挤出总深 ≈ BRAND_LAYERS × BRAND_DEPTH（≈15px，克制偏浅）
-const LOGO_FACE = "var(--color-brand)"; // logo 正面色（跟随窗口主题色）
+const LOGO_FACE = "var(--color-brand)"; // logo 正面基准色（跟随窗口主题色）
 const LOGO_DEPTH = "var(--color-brand-dark)"; // logo 挤出深色（主题色加深）
-const TEXT_FACE = "#262626"; // 标题正面色（与 body 文字色一致）
+const TEXT_FACE = "#262626"; // 标题正面基准色（与 body 文字色一致）
 const TEXT_DEPTH = "#000000"; // 标题挤出深色
+const LOGO_FACE_LIGHT = "color-mix(in srgb, var(--color-brand) 88%, white)"; // logo 正面浅色（比挤出层起点亮一档，叠加深浅层次；侧面渐变不变）
+const TEXT_FACE_LIGHT = "color-mix(in srgb, #262626 88%, white)"; // 标题正面浅色
 
 /** DepthText 同款分层取色：index 1…BRAND_LAYERS，层越靠前越接近正面色 */
 function brandLayerColor(face: string, depth: string, index: number): string {
@@ -193,12 +195,14 @@ function TitleBar({
               width="30"
               height="30"
               viewBox="0 0 1024 1024"
-              fill="var(--color-brand)"
+              fill={LOGO_FACE_LIGHT}
               aria-hidden="true"
             >
               <path d={BRAND_LOGO_PATH} />
             </svg>
-            <h1 className="text-lg font-semibold tracking-wide">Imagora</h1>
+            <h1 className="text-lg font-semibold tracking-wide" style={{ color: TEXT_FACE_LIGHT }}>
+              Imagora
+            </h1>
           </span>
         </div>
       </a>
