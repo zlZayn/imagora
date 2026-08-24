@@ -1,4 +1,4 @@
-# AGENTS.md — 维护索引（仪表盘 + 变更路由）
+# Imagora — 维护索引（仪表盘 + 变更路由）
 
 > 全局索引：本项目只放仪表盘与变更路由。模块细节查子目录 README 手册，设计/决策/防错查 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，用户用法查 [README.md](README.md)。
 > **放置约定**：固定放项目根目录，主流 AI 编程 agent 启动时自动发现并注入上下文——因此本文档必须保持"仪表盘含量"（几十行），细节一律外置子 README。
