@@ -7,7 +7,8 @@ import { errMessage, generatingLabel } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
 import UploadZone from "./components/UploadZone";
 import FolderPicker from "./components/FolderPicker";
-import Gallery from "./components/Gallery";
+import ResultPanel from "./components/ResultPanel";
+import LogLine from "./components/LogLine";
 import Select from "./components/Select";
 import CanvasPage from "./components/CanvasPage";
 
@@ -286,6 +287,8 @@ useEffect(() => {
   const generationTask = useGenerationTask();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<GenerationTaskStatus | null>(null);
+  /** 最近一次生成失败的原因（结果区失败面板展示；完整错误仍进日志） */
+  const [taskError, setTaskError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const startedAtRef = useRef(0);
   /** 输出路径防抖上报定时器（用户改路径 300ms 后记住到服务端） */
@@ -365,22 +368,23 @@ useEffect(() => {
     [config],
   );
 
-  /** 订阅当前任务状态：queued/running 驱动按钮，终态落结果 / 日志 */
+  /** 订阅当前任务状态：queued/running 驱动按钮，终态落结果 / 日志 / 结果区状态面板。
+   *  过程状态（排队/生成中）由右栏 ResultPanel 呈现，日志区只收终态与操作反馈——不写过程行。 */
   useEffect(() => {
     return generationTask.subscribe((taskId, view) => {
       if (taskId !== activeTaskId) return;
       if (view.status === "queued") {
         setTaskStatus("queued");
         setElapsed(0);
-        setLogs((prev) => (prev[0] === "已提交，排队等待生成…" ? prev : ["已提交，排队等待生成…"]));
+        setTaskError(null);
       } else if (view.status === "running") {
         setTaskStatus("running");
         setElapsed(view.elapsed);
-        setLogs((prev) => (prev[0] === "生成中…" ? prev : ["生成中…"]));
       } else if (view.status === "done") {
         setTaskStatus("done");
         setResults(view.results ?? []);
         setLastSubmissionId(view.submissionId ?? null);
+        setTaskError(null);
         setLogs([
           ...(view.messages ?? []),
           `总用时 ${((Date.now() - startedAtRef.current) / 1000).toFixed(1)} 秒`,
@@ -388,6 +392,7 @@ useEffect(() => {
       } else if (view.status === "failed") {
         setTaskStatus("failed");
         setResults([]);
+        setTaskError(view.error ?? "未知错误");
         setLogs([`生成失败：${view.error ?? "未知错误"}`]);
       } else if (view.status === "cancelled") {
         setTaskStatus("cancelled");
@@ -407,7 +412,7 @@ useEffect(() => {
     setResults([]);
     setElapsed(0);
     setTaskStatus("queued");
-    setLogs(["已提交，排队等待生成…"]);
+    setTaskError(null);
     try {
       // 已上传的走 ref_paths 复用服务端文件；未上传成功的本地兜底走 multipart
       const syncedRefs = refs.filter((r) => r.synced);
@@ -597,9 +602,7 @@ useEffect(() => {
             </div>
             <div ref={logRef} className="log-box text-log max-h-40 overflow-auto">
               {logs.map((line, i) => (
-                <div key={i} className="log-line">
-                  {line}
-                </div>
+                <LogLine key={i} text={line} />
               ))}
             </div>
           </div>
@@ -615,7 +618,13 @@ useEffect(() => {
               </button>
             )}
           </div>
-          <Gallery items={results} />
+          <ResultPanel
+            status={taskStatus}
+            elapsed={elapsed}
+            meta={{ refCount: refs.length, size, quality, outputDir }}
+            error={taskError}
+            results={results}
+          />
         </section>
       </main>
     </div>

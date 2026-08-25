@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """server.py 纯函数单元测试
 
-覆盖: 尺寸费用查询、路径展示（相对工作根 + 正斜杠）、参考图服务端化（路径校验/上传/删除）。
+覆盖: 尺寸费用查询、参考图服务端化（路径校验/上传/删除）。
 不启动服务、不调 API。
 """
 import os
@@ -10,8 +10,7 @@ from io import BytesIO
 from fastapi import UploadFile
 from starlette.datastructures import Headers
 
-from core.config import WORK_ROOT
-from server import display_path, size_cost
+from server import size_cost
 
 
 def test_size_cost_known_sizes():
@@ -23,19 +22,6 @@ def test_size_cost_known_sizes():
 def test_size_cost_unknown_returns_zero():
     """未知尺寸 -> 0.0（计费唯一由 config.json size_options 决定，不硬编码兜底价）"""
     assert size_cost("9999x9999") == 0.0
-
-
-def test_display_path_relative_to_work_root():
-    """工作根内的路径 -> 相对展示 + 正斜杠"""
-    assert display_path(str(WORK_ROOT / "薄荷脑皮肤抑菌乳膏" / "output" / "a.png")) == "薄荷脑皮肤抑菌乳膏/output/a.png"
-
-
-def test_display_path_outside_work_root_uses_relative_up():
-    """工作根外的同盘路径 -> 相对上跳展示 + 正斜杠（不保留原始绝对路径）"""
-    result = display_path(r"D:\other\place\b.png")
-    assert "\\" not in result
-    assert result.startswith("../../")
-    assert result.endswith("other/place/b.png")
 
 
 def test_safe_ref_path_accepts_inside_ref_dir():
@@ -59,14 +45,6 @@ def test_safe_ref_path_rejects_cross_drive_without_raising():
     from server import safe_ref_path
 
     assert safe_ref_path(r"Z:\foreign\image.png") is None
-
-
-def test_display_path_cross_drive_hides_drive_letter():
-    """跨盘展示不泄漏原始绝对路径，并保持可读的正斜杠格式。"""
-    result = display_path(r"Z:\foreign\image.png")
-    assert not result.startswith("Z:")
-    assert result.startswith("../../")
-    assert result.endswith("foreign/image.png")
 
 
 def test_resolve_history_output_path_uses_work_root_for_relative_logs(tmp_path, monkeypatch):

@@ -260,6 +260,23 @@ body {
   50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-brand) 14%, transparent); }
 }
 
+/* 结果区状态面板切换：旧层淡出上移（swap-out），新层淡入上浮（swap-in）；
+ * 两层 absolute 叠放交叉，互不挤压。只动 opacity/transform。 */
+.swap-in {
+  animation: swap-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.swap-out {
+  animation: swap-out 0.18s ease-out both;
+}
+@keyframes swap-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes swap-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-6px); }
+}
+
 /* 系统关闭动画时全部降级为瞬时切换 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

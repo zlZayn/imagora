@@ -54,7 +54,6 @@ from core.config import (
     DEFAULT_SIZE,
     QUALITY_OPTIONS,
     SIZE_OPTIONS,
-    WORK_ROOT,
     get_api_key,
 )
 from core.history import read_generation_history
@@ -116,16 +115,6 @@ def safe_ref_path(path: str) -> str | None:
     """仅接受 REF_DIR 内的绝对路径（防路径穿越）；非法返回 None（委托 pathtrust 统一实现）"""
     from core.pathtrust import match_roots
     return match_roots(path, [REF_DIR])
-
-
-def relative_display_path(path: str, root: str | os.PathLike[str]) -> str:
-    """返回不含盘符的可读相对路径；Windows 跨盘时使用稳定的上跳形式。"""
-    try:
-        rel = os.path.relpath(path, root)
-    except ValueError:
-        _, tail = os.path.splitdrive(os.path.abspath(path))
-        rel = os.path.join("..", "..", tail.lstrip("\\/"))
-    return rel.replace("\\", "/")
 
 
 def cleanup_stale_refs(max_age_seconds: int = REF_MAX_AGE_SECONDS) -> None:
@@ -500,18 +489,14 @@ def size_cost(size: str) -> float:
     return config.cost_for_size(size)
 
 
-def display_path(path: str) -> str:
-    """路径展示：相对工作根 + 统一正斜杠，便于阅读"""
-    return relative_display_path(path, WORK_ROOT)
-
-
 def run_generation(task: GenerationTask) -> None:
     """在全局任务池的线程中执行一次生成，把结果写回任务。
 
     成功写 task.results / task.messages / task.total_cost；
     失败写 task.error（TaskManager 据此置 failed）。临时兜底文件由 TaskManager 统一清理。
+    保存路径统一以绝对路径进消息（前端动态显示本机路径 + 点击复制词条），不再相对化。
     """
-    out_dir = (task.output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/")
+    out_dir = os.path.abspath((task.output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/"))
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     started_at = time.time()
@@ -530,8 +515,8 @@ def run_generation(task: GenerationTask) -> None:
                 prompt=task.prompt, images=task.ref_bases, size=task.size,
                 quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
-            messages.append(f"已保存 · {display_path(dest)}（{task.size}）")
+            results.append({"status": "ok", "message": f"已保存: {dest}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            messages.append(f"已保存 · {dest}（{task.size}）")
         elif task.temp_bases:
             # multipart 兜底：底图已在提交线程落临时文件（UploadFile 不可跨线程）
             seq = next(_SEQ)
@@ -541,8 +526,8 @@ def run_generation(task: GenerationTask) -> None:
                 prompt=task.prompt, images=task.temp_bases, size=task.size,
                 quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
-            messages.append(f"已保存 · {display_path(dest)}（{task.size}）")
+            results.append({"status": "ok", "message": f"已保存: {dest}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            messages.append(f"已保存 · {dest}（{task.size}）")
         else:
             seq = next(_SEQ)
             dest = os.path.join(out_dir, f"txt2img_{stamp}_{seq:03d}.png")
@@ -551,8 +536,8 @@ def run_generation(task: GenerationTask) -> None:
                 prompt=task.prompt, image_path=None, size=task.size,
                 quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {display_path(dest)}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
-            messages.append(f"已保存 · {display_path(dest)}（{task.size}）")
+            results.append({"status": "ok", "message": f"已保存: {dest}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+            messages.append(f"已保存 · {dest}（{task.size}）")
         ok = True
     except Exception as e:
         msg = format_error(e)

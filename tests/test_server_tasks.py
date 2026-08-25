@@ -5,6 +5,7 @@
 非法 ref_paths 400、未知任务 404、取消（排队 / running / 未知）。
 """
 import json
+import os
 import sys
 import threading
 import time
@@ -116,6 +117,12 @@ def test_generate_multipart_temp_cleaned(no_api, monkeypatch):
         snap = wait_terminal(submitted["taskId"])
         assert snap["status"] == "done"
         assert "参考图 1 张" in snap["messages"][0]
+        # 保存消息必须是本机绝对路径（前端动态显示 + 点击复制），不允许相对化/上跳
+        saved = next((m for m in snap["messages"] if m.startswith("已保存 · ")), "")
+        assert saved, "缺少已保存消息"
+        assert ".." not in saved, f"保存路径被相对化了: {saved}"
+        saved_path = saved.split("（")[0].removeprefix("已保存 · ")
+        assert os.path.isabs(Path(saved_path)), saved
         assert recorded, "提交应落盘临时文件"
         for name in recorded:
             wait_gone(Path(name))
