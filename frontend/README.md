@@ -123,7 +123,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - [`CanvasPage.tsx`](src/components/CanvasPage.tsx) — 无限画布主页面（React Flow 集成、选中操作栏、历史面板入口）
 - [`CanvasNodes.tsx`](src/components/CanvasNodes.tsx) — 三类节点（图片/图片组/提示词卡）+ `ActionButton`（nodrag 胶囊按钮）
 - [`WorkflowModals.tsx`](src/components/WorkflowModals.tsx) — 保存/加载/导入弹窗 + **`ZoomModal` 全屏预览**（createPortal 到 body，画布 / 经典表单 / 生产历史共用）
-- [`ResultPanel.tsx`](src/components/ResultPanel.tsx) — 经典表单结果区 5 态容器：主图形层 absolute 居中钉死 + 副信息层底部独立生长（行增减不挤动主图形）；切换交叉淡化（swap-in/swap-out，旧层保留 200ms）；排队/生成中/失败/已取消/透传 Gallery
+- [`ResultPanel.tsx`](src/components/ResultPanel.tsx) — 经典表单结果区 5 态容器：主图形层 absolute 居中钉死 + 副信息层底部独立生长（行增减不挤动主图形）；切换交叉淡化（swap-in/swap-out，旧层保留 200ms）；排队/生成中/失败/已取消/透传 Gallery；生成中图标本体按自身颜色呼吸光（`icon-breathe`）
 - [`Gallery.tsx`](src/components/Gallery.tsx) — 经典表单结果图（双击放大 / 单击新窗口开原图，250ms 区分，走 useImageZoom；被 ResultPanel 透传）
 - [`LogLine.tsx`](src/components/LogLine.tsx) — 日志单行：文本里的本机绝对路径拆成可点击复制词条（CopyChip），其余保持文本；行动画 log-line
 - [`CopyChip.tsx`](src/components/CopyChip.tsx) — 路径词条：点击复制完整路径（`navigator.clipboard`），复制后边框/底色高亮反馈 1.2s（不换文字，避免宽度跳动）
@@ -136,7 +136,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 - [`App.tsx`](src/App.tsx) — 根组件：顶栏（品牌区 3D `brand-swing` 系、窗口徽章）、经典/画布模式切换。品牌区参数（`BRAND_LAYERS`/`BRAND_DEPTH`/`LOGO_FACE*`）与局部样式在 App.tsx 顶部
 - [`main.tsx`](src/main.tsx) — 入口（挂载 + accent 主题注入）
-- [`index.css`](src/index.css) — **唯一样式层**：Tailwind v4 + `@layer components` 组件类（btn 体系/panel-card/动效类）+ 品牌区 3D + 落点示意等；改样式只改这里
+- [`index.css`](src/index.css) — **唯一样式层**：Tailwind v4 + `@layer components` 组件类（btn 体系/panel-card/动效类）+ 品牌区 3D + 落点示意等；改样式只改这里（含 `pulse-glow` 圆环呼吸 / `icon-breathe` 图标本体呼吸光）
 - [`verify_canvas.py`](e2e/verify_canvas.py) — 画布交互 E2E（36 断言，Playwright headless）
 
 ## 上下游依赖
