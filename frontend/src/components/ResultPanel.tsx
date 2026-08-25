@@ -57,7 +57,7 @@ function StatusRing({ tone, children }: { tone: "queued" | "running" | "failed" 
           ? "border-red-400"
           : "border-neutral-300";
   return (
-    <div className={`flex h-16 w-16 items-center justify-center rounded-full border-2 ${cls}`}>{children}</div>
+    <div className={`flex h-32 w-32 items-center justify-center rounded-full border-2 ${cls}`}>{children}</div>
   );
 }
 
@@ -84,7 +84,11 @@ function renderScene(props: ResultPanelProps): ReactNode {
         }
       >
         <StatusRing tone={running ? "running" : "queued"}>
-          <Sparkles aria-hidden="true" size={28} className={running ? "text-brand" : "text-amber-500"} />
+          <Sparkles
+            aria-hidden="true"
+            size={64}
+            className={running ? "icon-breathe text-brand" : "text-amber-500"}
+          />
         </StatusRing>
         <div className={`text-sm font-medium ${running ? "text-brand" : "text-amber-600"}`}>
           {running ? generatingLabel(elapsed) : "排队中…"}
@@ -106,7 +110,7 @@ function renderScene(props: ResultPanelProps): ReactNode {
         }
       >
         <StatusRing tone="failed">
-          <AlertTriangle aria-hidden="true" size={28} className="text-red-500" />
+          <AlertTriangle aria-hidden="true" size={64} className="text-red-500" />
         </StatusRing>
         <div className="text-sm font-medium text-red-600">生成失败</div>
       </StatusScene>
@@ -117,7 +121,7 @@ function renderScene(props: ResultPanelProps): ReactNode {
     return (
       <StatusScene>
         <StatusRing tone="cancelled">
-          <Ban aria-hidden="true" size={28} className="text-neutral-400" />
+          <Ban aria-hidden="true" size={64} className="text-neutral-400" />
         </StatusRing>
         <div className="text-sm font-medium text-neutral-500">生成已取消</div>
       </StatusScene>

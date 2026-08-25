@@ -260,6 +260,21 @@ body {
   50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-brand) 14%, transparent); }
 }
 
+/* 结果区生成中图标：本身颜色的自然呼吸光（drop-shadow 跟随主题色，晕随图标轮廓） */
+.icon-breathe {
+  animation: icon-breathe 2.2s ease-in-out infinite;
+}
+@keyframes icon-breathe {
+  0%, 100% {
+    filter: drop-shadow(0 0 3px color-mix(in srgb, var(--color-brand) 32%, transparent))
+            drop-shadow(0 0 9px color-mix(in srgb, var(--color-brand) 20%, transparent));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--color-brand) 72%, transparent))
+            drop-shadow(0 0 22px color-mix(in srgb, var(--color-brand) 45%, transparent));
+  }
+}
+
 /* 结果区状态面板切换：旧层淡出上移（swap-out），新层淡入上浮（swap-in）；
  * 两层 absolute 叠放交叉，互不挤压。只动 opacity/transform。 */
 .swap-in {
