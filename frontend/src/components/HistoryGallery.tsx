@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { generationHistory, openFolder, type GenerationHistoryItem } from "../api";
 import { errMessage } from "../format";
+import { useImageZoom } from "../useImageZoom";
+import { ZoomModal } from "./WorkflowModals";
 
 function parentDirectory(path: string): string {
   return path.replace(/[\\/][^\\/]+$/, "");
@@ -21,6 +23,8 @@ export default function HistoryGallery({
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  /** 单击开原图 / 双击放大预览（与经典表单结果图同款交互，共用 ZoomModal） */
+  const { zoom, handleClick, handleDoubleClick, closeZoom } = useImageZoom();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,8 +74,20 @@ export default function HistoryGallery({
                 <article key={`${item.time}-${item.output}-${index}`} className="overflow-hidden border border-neutral-200 bg-white">
                   <div className="flex aspect-square items-center justify-center bg-neutral-100">
                     {item.url ? (
-                      <a href={item.url} target="_blank" rel="noreferrer" className="h-full w-full">
-                        <img src={item.url} alt={item.prompt || "生成结果"} loading="lazy" className="h-full w-full object-contain" />
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block h-full w-full"
+                        title="单击新窗口打开原图 · 双击放大预览"
+                      >
+                        <div
+                          className="h-full w-full cursor-zoom-in"
+                          onClick={(e) => handleClick(e, { url: item.url, name: item.prompt || "生成结果" })}
+                          onDoubleClick={() => handleDoubleClick({ url: item.url, name: item.prompt || "生成结果" })}
+                        >
+                          <img src={item.url} alt={item.prompt || "生成结果"} loading="lazy" className="h-full w-full object-contain" />
+                        </div>
                       </a>
                     ) : (
                       <span className="text-xs text-neutral-400">{item.status === "error" ? "生成失败" : "文件已移动"}</span>
@@ -94,6 +110,7 @@ export default function HistoryGallery({
           )}
         </div>
       </section>
+      {zoom && <ZoomModal imageUrl={zoom.url} name={zoom.name} onClose={closeZoom} />}
     </div>
   );
 }

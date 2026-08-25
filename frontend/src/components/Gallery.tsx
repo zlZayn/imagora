@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useState } from "react";
 import { formatBytes } from "../format";
 import type { ResultItem } from "../types";
+import { useImageZoom } from "../useImageZoom";
 import { ZoomModal } from "./WorkflowModals";
 
 interface GalleryProps {
@@ -34,21 +35,12 @@ function AspectImage({ url, alt }: { url: string; alt: string }) {
 
 /**
  * 结果画廊：成功生成的图片网格展示。
- * 单击在新窗口打开原图；双击打开放大预览（ZoomModal 与画布同组件、同注册表 URL）。
- * 单击/双击用 250ms 延时区分：第二击到达即取消单击的「开原图」，再触发双击放大。
+ * 单击在新窗口打开原图；双击打开放大预览（ZoomModal 与画布/生产历史同组件、同注册表 URL）。
+ * 单击/双击用 250ms 延时区分（useImageZoom 公共 hook）：第二击到达即取消单击的「开原图」，再触发双击放大。
  */
 export default function Gallery({ items }: GalleryProps) {
   const images = items.filter((item): item is ResultItem & { url: string } => Boolean(item.url));
-  const [zoom, setZoom] = useState<{ url: string; name: string } | null>(null);
-  /** 单击延时开原图：双击的第二击到达时取消，避免双击连开两个新标签 */
-  const pendingOpenRef = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (pendingOpenRef.current) window.clearTimeout(pendingOpenRef.current);
-    },
-    [],
-  );
+  const { zoom, handleClick, handleDoubleClick, closeZoom } = useImageZoom();
 
   if (images.length === 0) {
     return (
@@ -73,29 +65,6 @@ export default function Gallery({ items }: GalleryProps) {
     );
   }
 
-  /** 单击：延时 250ms 开原图；250ms 内再来一击说明是双击，取消本次打开（交给 onDoubleClick） */
-  const handleCardClick = (e: MouseEvent, item: ResultItem & { url: string }) => {
-    e.preventDefault();
-    if (pendingOpenRef.current) {
-      window.clearTimeout(pendingOpenRef.current);
-      pendingOpenRef.current = null;
-      return;
-    }
-    pendingOpenRef.current = window.setTimeout(() => {
-      pendingOpenRef.current = null;
-      window.open(item.url, "_blank", "noopener");
-    }, 250);
-  };
-
-  /** 双击：取消未决的单击开原图，改为放大预览 */
-  const handleCardDoubleClick = (item: ResultItem & { url: string }) => {
-    if (pendingOpenRef.current) {
-      window.clearTimeout(pendingOpenRef.current);
-      pendingOpenRef.current = null;
-    }
-    setZoom({ url: item.url, name: item.message });
-  };
-
   return (
     <>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] items-start gap-3">
@@ -111,8 +80,8 @@ export default function Gallery({ items }: GalleryProps) {
           >
             <div
               className="transition-transform duration-300 group-hover:-translate-y-0.5"
-              onClick={(e) => handleCardClick(e, item)}
-              onDoubleClick={() => handleCardDoubleClick(item)}
+              onClick={(e) => handleClick(e, { url: item.url, name: item.message })}
+              onDoubleClick={() => handleDoubleClick({ url: item.url, name: item.message })}
             >
               <AspectImage url={item.url} alt={item.message} />
               <p className="text-caption mt-1 text-center">
@@ -125,7 +94,7 @@ export default function Gallery({ items }: GalleryProps) {
           </a>
         ))}
       </div>
-      {zoom && <ZoomModal imageUrl={zoom.url} name={zoom.name} onClose={() => setZoom(null)} />}
+      {zoom && <ZoomModal imageUrl={zoom.url} name={zoom.name} onClose={closeZoom} />}
     </>
   );
 }
