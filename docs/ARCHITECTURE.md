@@ -205,7 +205,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | 画布「历史导入」/「导入目录」 | ✅ | `history/import` / `canvas/import`，同样复制 + 登记 |
 | 生成结果回流 | ✅ | done 快照按 registryId 去重后复制 + 登记（见 6.5） |
 | 图片节点「替换」 | ✅ | 新图登记；旧图文件保留（避免破坏其他引用/已存工作流） |
-| 经典表单上传区参考图 | ⚠️ 按需晋升 | 添加时只落 `output/.refs/`（24h 临时中转，不进 `.assets/`）；**生成成功后**该次用到的 `.refs` 参考图晋升为 `kind='ref'` 复制进 `.assets/`（原 `.refs` 文件不动、24h 清理照旧） |
+| 经典表单上传区参考图 | ✅ 提交时注册 | 添加时只落 `output/.refs/`（24h 临时中转，不进 `.assets/`）；**生成提交时**该次用到的参考图（`ref_bases` 与 multipart 兜底的 `temp_bases` 一并）`register_input_assets` 注册为 `kind='ref'` 复制进 `.assets/`（此刻文件必然存在，防排队期间被删漏记；原 `.refs` 文件不动、24h 清理照旧） |
 | 经典表单生成结果 | ✅ | 生成成功后结果图 `kind='result'` 复制进 `.assets/` 并登记，同时落一份**提交图快照**（`output/submissions/`，kind='submission'，组→提示词→结果连线），账本带 submissionId/资产 id；经典结果区「导入画布」= 整图重建（见 6.5） |
 
 > `.assets/` 与 `.refs/`：前者是画布长期图库（永不清理、工作流按编号引用、损坏可重建）；后者是参考图临时缓存（添加即落盘供继承/生成引用，启动清 24h 孤儿，无引用计数）。统一原则：**只要在系统里「出现且被保留」的图都进 `.assets/` 注册表**（画布拖入、生成结果、晋升的参考图），`.refs` 仅是不确定是否要保留时的 24h 暂存。
@@ -229,7 +229,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 3. `POST /api/generate` 提交即返回 `{taskId, status}`；前端 `useGenerationTask` 每 2s 轮询快照（竞态防护 + elapsed 本地计时，终态停止）。
 4. 服务端线程池执行 `generate_image`（多参考图一次请求）→ 解码 b64 写入输出目录 → 写回 results/messages/total_cost。
 5. 快照 `url=/api/image?path=` 回显（附带 fileSize/ext）；经典表单进画廊，画布按节点映射驱动状态灯并在 done 时**结果回流**（见 6.5）。
-6. **经典结果落盘（旁路，失败不影响生成）**：done 时 `run_generation` 委托 `graphstore.persist_submission_assets`（与 CLI 共用的资产旁路公共函数）把成功结果图 `kind='result'`、本次 `.refs` 参考图 `kind='ref'` 注册进 `.assets/`，并落一份提交图快照（`output/submissions/<submissionId>.json`）；账本该行带 `submissionId/inputAssetIds/outputAssetIds`。经典结果区「导入画布」= 整图重建到画布（图片组→提示词→结果连线）。
+6. **经典结果落盘（旁路，失败不影响生成）**：参考图在**提交阶段**即注册（`/api/generate` 调 `graphstore.register_input_assets`，此刻文件刚校验/刚落盘必然存在，消除排队期间源文件被删导致 persist 静默漏记的窗口——曾实测 refs=5 全漏；id 随任务进账本）。done 时 `run_generation` 委托 `graphstore.persist_submission_assets`（与 CLI 共用的资产旁路公共函数）：参考图**按提交时注册的 id 解析**进提交快照（不重复注册），结果图 `kind='result'` 现场注册进 `.assets/`，并落一份提交图快照（`output/submissions/<submissionId>.json`）；账本该行带 `submissionId/inputAssetIds/outputAssetIds`（`inputAssetIds` 即参考图 id，历史按 `resolve_asset` 解析回显缩略图）。经典结果区「导入画布」= 整图重建到画布（图片组→提示词→结果连线）。
 
 ### 6.2 批量生成（命令行）
 
@@ -254,7 +254,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 画布任务与本表单共用同一 `/api/generate`（server 无条件生成 `submission_id`），所以 done 时后端旁路已把结果注册为 `kind='result'` 并落提交快照（见 6.1 step 6）。前端回流只做**取回 + 建节点**：`importHistoryAsset`（`POST /api/history/import`）按内容 sha1 命中旁路已注册的条目（同内容去重，不重复登记）→ 按 `registryId` 去重（画布已有同图不重建）→ 建图片节点放在提示词**正下方居中横排**（`layoutPromptResults`）→ 自动连线 提示词 → 结果图。回流前检查提示词节点仍存在（删除后完成的结果不回流，避免幽灵节点）。
 
-**经典统一**：经典表单生成在 done 时同样落盘（见 6.1 step 6）——结果/参考图注册 + 提交图快照 + 账本联动；「导入画布」走 `POST /api/canvas/import-submission` 整图重建，前端 `mergeSubmissionGraph` 按 registryId 去重复用现有图片节点并接上提示词与连线（不产生重复节点）。
+**经典统一**：经典表单生成走同一链路（见 6.1 step 6）——参考图提交阶段注册、结果图 done 时注册 + 提交图快照 + 账本联动；「导入画布」走 `POST /api/canvas/import-submission` 整图重建，前端 `mergeSubmissionGraph` 按 registryId 去重复用现有图片节点并接上提示词与连线（不产生重复节点）。
 
 ## 7. 前后端契约
 
@@ -279,7 +279,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | GET | `/api/canvas/images` | 无 | { images[entry+absPath] } |
 | POST | `/api/canvas/image/delete` | { id } | { ok }（注册表移除 + 尽力删文件） |
 | GET | `/api/health/details` | 无 | { ok, checks, issues[] }（启动自检，不泄漏配置） |
-| GET | `/api/history` | ?limit=&query=&status= | { items }（存在性以资产注册表为准：带 outputAssetIds 走 resolve_asset，旧行回退 output 路径） |
+| GET | `/api/history` | ?limit=&query=&status= | { items }（存在性以资产注册表为准：带 outputAssetIds 走 resolve_asset，旧行回退 output 路径；参考图 inputAssetIds 解析成 `inputRefs[{id,path,url}]`，img2img 且 refs>0 但解析为空置 `inputRefMissing`） |
 | POST | `/api/history/import` | { path } | { imported, skipped }（白名单与展示同源：注册表副本路径优先、回退 output，拒绝任意未记录路径；函数 import_history_asset） |
 | POST | `/api/canvas/workflow/save` | { name, nodes, edges } | { ok, path }（图片节点归一化：只存 registryId+元数据） |
 | GET | `/api/canvas/workflow/list` | 无 | { workflows[ name, modified ] }（按修改时间倒序） |
@@ -329,6 +329,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 - **一屏全览**：不用 ReactFlow 初始 `fitView` prop——空画布时它会被 React Flow 延迟到「第一个节点出现」才执行，导致新建/上传后视口突然放大跳动（已实测复现）。统一走 `fitCanvasToContent()`（自动整理/加载工作流/恢复存档后调用），`minZoom` 放宽到 0.05，fitView 显式允许缩到 0.02，节点再多也能全览。
 - **自定义光标**：画布空白区域用高对比十字准星 SVG data-URI 光标（细十字 + 白描边 + 中心白底品牌色加号，与拖拽落点示意同款图形，风格统一），平移切抓手；文件拖拽悬停时切系统 `copy` 光标；可拖出按钮（新建卡片/图片组）悬浮时给 grab 光标 + 品牌色呼吸光晕 + 拖拽图标（`.btn-draggable`）——拖入时可放感明确、可拖出暗示明显。
 - **预览弹窗（ZoomModal，画布/经典表单/生产历史共用）**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。入口一致：画布图片节点双击或操作栏「预览大图」、经典表单参考图缩略图双击（UploadZone，单击缩略图不触发文件选择器）、结果图双击与生产历史图双击（Gallery / HistoryGallery，单击仍新窗口开原图——250ms 延时区分单击/双击，避免双击连开两个标签；时序逻辑抽在 `useImageZoom.ts` 公共 hook）。统一传注册表派生的完整 url，不传存储路径，组件内不再拼 `/api/image?path=`。全屏布局：`createPortal` 到 body（脱离含动画 transform 的祖先——如结果栏 `panel-card enter-up` fill both 后 transform 仍非 none，会把 fixed 后代捕获进自己的包含块），图片区占满窗口（contain 不裁切），控制条/文件名/提示悬浮叠加底部、不占图片空间。
+- **生成历史列表视图（HistoryGallery）**：两栏网格卡片——横排卡片：左侧 160px 结果图占满卡片高度（`self-stretch` + `min-h-36` 兜底卡片高度，object-contain 不裁切）| 右侧提示词随容器宽（2 行截断 `line-clamp-2` 超出省略）+ 元信息（时间·质量·尺寸）| 参考图（56px 小图、超出换行）| 全文字按钮横排、`mt-auto` 永远底部对齐（复制提示词/打开目录/导入当前画布）。提示词仅在 2 行真被截断时悬浮补全（`scrollHeight > clientHeight` 判定，短文案不弹多余浮层），浮层宽固定为屏幕 80%（`width: 80vw`）且**水平居中**（`left: 10vw`，左/右各留 10vw 永不出屏）、高随行数自动长；垂直跟随鼠标 y 并 clamp 进视口（下边防溢出靠挪位而非滚动条）、`pointer-events-none`。参考图按注册表解析（`inputRefs`），找不回时保留琥珀「参考图缺失」提示。
 - **选中操作栏**：选中 ≥1 个节点即出现「运行所选/自动整理/自动连线/设置输出路径/删除所选」，运行与设路径只作用于提示词卡片；自动连线只补选中节点之间的边（`workflow.ts:autoConnectSelection`，候选与新增边两端均限定在选中集合内），未选中节点不受影响；自动整理时未选中的参考图/组作为只读锚点参与对齐。
 
 ### 8.4 视觉与动效
@@ -387,6 +388,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 3. **transform 动画锁死 hover**。现象：hover 效果失效。规范：入场动画只动 opacity 的场景不用 fill both 的 transform；overflow-hidden 会裁剪悬浮操作栏/下拉面板——提示词卡片用 min-w-0 + truncate 防撑宽，不用 overflow-hidden。
 4. **浮层被后续卡片盖住**。规范：含浮层的卡片加 relative + 更高 z-index。
 5. **全屏浮层被动画 transform 祖先捕获**。现象：`fixed inset-0` 的弹窗只覆盖容器大小（如放大预览只出现在结果卡片内，四周不是全屏）。原因：入场动画 `fill both` 结束后 computed transform 仍是非 none 的矩阵，把 fixed 后代的包含块改成该祖先。规范：全屏浮层（如 ZoomModal）用 `createPortal(..., document.body)` 渲染，脱离任何 transform/filter 祖先；不要依赖"恰好没有动画祖先"。测试保障：Playwright 断言预览容器 boundingBox == 视口。
+6. **Portal 点击沿 React 组件树冒泡误关外层宿主**。现象：放大预览里点图片中间（非空白）却连带关掉外层遮罩（历史画廊退到画布）。原因：`createPortal` 内容挂到 body，但合成事件仍沿 **React 组件树**冒泡（非 DOM 树）——宿主遮罩的 `onClick=onClose` 收得到 Portal 内的点击，DOM 上的兄弟关系拦不住。规范：Portal 根（ZoomModal 的 `data-zoom-overlay` 层）必须 `onClick` stopPropagation 截停冒泡；关闭判定仍走 pointerdown（真实按下元素），两者职责分离。测试：WorkflowModals.test.tsx（组件单测锁定）。
 
 ### 9.5 坐标与几何
 
@@ -410,8 +412,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-- 后端 pytest：**207 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
-- 前端 vitest：**137 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 后端 pytest：**210 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
+- 前端 vitest：**145 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 
 ### 10.2 端到端（E2E）

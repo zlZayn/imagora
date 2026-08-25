@@ -56,6 +56,8 @@ class GenerationTask:
     temp_bases: list[str] = field(default_factory=list)
     # 稳定提交 id（提交时生成、进程无关，供落盘提交图快照与账本追溯）
     submission_id: str = ""
+    # 参考图在提交阶段已注册进 .assets 的 id（server 用；persist 按 id 解析，不重复注册）
+    input_asset_ids: list[str] = field(default_factory=list)
     # 结果（由注入的 run_task 写入）
     results: list[dict] = field(default_factory=list)
     messages: list[str] = field(default_factory=list)

@@ -263,17 +263,35 @@ def generation_history(limit: int = 200, query: str = "", status: str = ""):
     图片存在性以**资产注册表为准**：账本行带 outputAssetIds 时，按 registry.resolve_asset
     解析（注册表副本在 .assets，移动原文件不丢），仅作参考的 output 路径不再参与判定；
     无 outputAssetIds 的旧行回退按 output 路径 isfile 判定。
+    参考图同源：inputAssetIds 按 resolve_asset 解析成 inputRefs（{id,path,url}）；
+    img2img 且 refs>0 但解析为空时置 inputRefMissing（参考图记录存在但图片找不回）。
     """
     records = read_generation_history(limit=limit, query=query, status=status)
     items = []
     for record in records:
         abs_path = resolve_history_asset_path(record)
         exists = bool(abs_path and os.path.isfile(abs_path))
+        # 参考图按注册表解析：inputAssetIds -> resolve_asset（.assets 永久副本），
+        # 解析失败 / 文件缺失的 id 跳过；前端据此区分「有参考图但找不回」与「纯文生图」。
+        input_refs: list[dict] = []
+        raw_ids = record.get("inputAssetIds")
+        if isinstance(raw_ids, list):
+            for aid in raw_ids:
+                resolved = canvas.resolve_asset(str(aid))
+                if resolved and os.path.isfile(resolved["absPath"]):
+                    input_refs.append({"id": str(aid), "path": resolved["absPath"], "url": resolved["url"]})
+        input_ref_missing = (
+            record.get("mode") == "img2img"
+            and int(record.get("refs") or 0) > 0
+            and not input_refs
+        )
         items.append({
             **record,
             "exists": exists,
             "path": abs_path if exists else "",
             "url": canvas.image_url(abs_path) if exists else "",
+            "inputRefs": input_refs,
+            "inputRefMissing": input_ref_missing,
         })
     return {"items": items}
 
@@ -556,7 +574,8 @@ def run_generation(task: GenerationTask) -> None:
     task.results = results
     task.messages = messages
     task.total_cost = total_cost
-    # 旁路：生成成功后注册结果图/参考图并落提交图快照（失败不影响生成结果）
+    # 旁路：生成成功后注册结果图并落提交图快照（失败不影响生成结果）；
+    # 参考图已在提交阶段注册进 .assets（task.input_asset_ids），此处只按 id 解析。
     submission_meta: dict | None = None
     if ok_count > 0 and task.submission_id:
         try:
@@ -575,17 +594,19 @@ def run_generation(task: GenerationTask) -> None:
         seconds=time.time() - started_at,
         win=task.win or None,
         submission_id=task.submission_id or "",
-        input_asset_ids=(submission_meta or {}).get("input_asset_ids"),
+        # 参考图提交时已注册，成功/失败都记进账本（不再依赖 persist 结果）
+        input_asset_ids=task.input_asset_ids or None,
         output_asset_ids=(submission_meta or {}).get("output_asset_ids"),
     )
 
 
 def _persist_submission(task: GenerationTask) -> dict | None:
-    """旁路：把本次成功结果 + 参考图注册进 .assets 并落提交图快照。
+    """旁路：把本次成功结果注册进 .assets 并落提交图快照。
 
     委托 graphstore.persist_submission_assets 公共函数（与 CLI 共用同一资产旁路逻辑）：
-      - 参考图只对 ref_bases（已在 .refs/.assets 白名单）晋升为 kind='ref'；
-        multipart 兜底的未同步本地图（temp_bases）不晋升，仅结果注册。
+      - 参考图已在提交阶段注册（task.input_asset_ids，见 /api/generate 的 register_input_assets），
+        本函数按 id 解析进提交快照，不重复注册；
+      - 结果图这里现场注册为 kind='result'；persist_submission_assets 内部对已缺失文件跳过，不报错。
       - 任何失败不抛（由调用方 try/except 兜底），成功与否不影响生成结果。
     返回 {"input_asset_ids": [...], "output_asset_ids": [...]} 供账本联动；无结果返回 None。
     """
@@ -607,7 +628,9 @@ def _persist_submission(task: GenerationTask) -> dict | None:
 
     params = {"size": task.size, "quality": task.quality, "outputDir": task.output_dir}
     return graphstore.persist_submission_assets(
-        task.submission_id, task.prompt, params, task.ref_bases, result_paths, task.win,
+        task.submission_id, task.prompt, params,
+        [*task.ref_bases, *task.temp_bases], result_paths, task.win,
+        input_asset_ids=task.input_asset_ids,
     )
 
 
@@ -649,9 +672,15 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
             tmp.write(image.file.read())
             temp_bases.append(tmp.name)
 
+    submission_id = graphstore.next_submission_id()
+    # 提交时即注册参考图进 .assets（此刻文件刚校验 / 刚落盘，必然存在），消除排队期间
+    # 文件被删导致 persist 时参考图静默漏记的窗口（曾实测 refs=5 全漏）；id 随任务进账本。
+    input_asset_ids = graphstore.register_input_assets(submission_id, [*ref_bases, *temp_bases])
+
     task = GenerationTask(
         prompt=prompt, size=size, quality=quality, output_dir=output_dir, win=win,
-        ref_bases=ref_bases, temp_bases=temp_bases, submission_id=graphstore.next_submission_id(),
+        ref_bases=ref_bases, temp_bases=temp_bases, submission_id=submission_id,
+        input_asset_ids=input_asset_ids,
     )
     task_id = task_manager.submit(task)
     return {"taskId": task_id, "status": task.status}

@@ -36,6 +36,24 @@ def test_read_history_filters_query_status_and_limit(tmp_path, monkeypatch):
 
     assert len(result) == 1
     assert result[0]["prompt"] == "red bag"
+
+
+def test_read_history_search_normalizes_newlines(tmp_path, monkeypatch):
+    """搜索对换行鲁棒：账本 prompt 存 CRLF（表单提交 %0D%0A），用户把完整提示词粘进单行
+    搜索框时浏览器把换行归一为 LF / 移除——两侧空白折叠后仍能命中，不再整串错位搜不到。"""
+    path = _write_history(tmp_path, [
+        {"time": "1", "prompt": "第一行\r\n第二行", "status": "ok"},
+    ])
+    monkeypatch.setattr(history, "HISTORY_FILE", path)
+
+    # 原样 CRLF（复制按钮复制的完整 prompt）
+    assert history.read_generation_history(query="第一行\r\n第二行")
+    # 浏览器粘贴归一为 LF
+    assert history.read_generation_history(query="第一行\n第二行")
+    # 单行 input 粘贴换行被移除（浏览器行为）
+    assert history.read_generation_history(query="第一行 第二行")
+    # 只搜片段、含连续空格也折叠命中
+    assert history.read_generation_history(query="第二行")
 def test_read_history_roundtrips_submission_fields(tmp_path, monkeypatch):
     """账本新字段（submissionId/inputAssetIds/outputAssetIds）随记录透传（读端容错缺字段）"""
     path = _write_history(tmp_path, [

@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -12,6 +13,10 @@ from core.logging import LOGS_DIR
 
 HISTORY_FILE = LOGS_DIR / "generation.jsonl"
 
+# 搜索空白折叠：账本 prompt 存 Windows CRLF（表单提交 %0D%0A），用户粘进单行搜索框时
+# 浏览器把换行归一/移除，与账本换行错位导致整串子串匹配失败——两侧统一折叠为单空格。
+_SPACES = re.compile(r"\s+")
+
 
 def read_generation_history(
     limit: int = 200,
@@ -20,7 +25,8 @@ def read_generation_history(
 ) -> list[dict]:
     """返回最新生成记录；坏行被忽略，单次最多 500 条。"""
     safe_limit = min(500, max(1, int(limit)))
-    needle = query.strip().casefold()
+    # 两侧都做空白折叠（CRLF/LF/连续空格 → 单空格），换行差异不再导致整串匹配失败
+    needle = _SPACES.sub(" ", query.strip()).casefold()
     status_filter = status.strip().casefold()
     try:
         lines = Path(HISTORY_FILE).read_text(encoding="utf-8").splitlines()
@@ -39,7 +45,7 @@ def read_generation_history(
             continue
         if needle:
             haystack = " ".join(
-                str(record.get(key, ""))
+                _SPACES.sub(" ", str(record.get(key, "")))
                 for key in ("time", "prompt", "mode", "quality", "output")
             ).casefold()
             if needle not in haystack:

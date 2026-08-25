@@ -47,17 +47,17 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 
 ### [graphstore.py](graphstore.py)
 - 职责：图/工作流存储——workflow（手动工作流）/ submission（提交快照）/ recovery（恢复快照），原子写
-- 关键导出：`workflow_save()` / `workflow_list()` / `workflow_load()`、`submission_save()` / `submission_load()`、`recovery_save()` / `recovery_latest()`、`persist_submission_assets()`（server/CLI 共用资产旁路）、`migrate_workflows()`、`next_submission_id()`、`sanitize_workflow_name()`
-- 被谁依赖：`server.py`（/api/canvas/workflow/*、/api/canvas/import-submission、recovery）、`main.py`（CLI 旁路）、`scripts/migrate.py`、shim
-- 改后必测：`tests/test_core_canvas.py` + `tests/test_server_canvas.py` + `tests/test_main_cli.py`
-- 注意：`persist_submission_assets` 两端共用，改前查 server 与 main 两处调用；**改存储格式必须先 Handoff 确认**
+- 关键导出：`workflow_save()` / `workflow_list()` / `workflow_load()`、`submission_save()` / `submission_load()`、`recovery_save()` / `recovery_latest()`、`persist_submission_assets()`（server/CLI 共用资产旁路）、`register_input_assets()`（提交阶段注册参考图进 .assets，防排队期间源文件被删漏记）、`migrate_workflows()`、`next_submission_id()`、`sanitize_workflow_name()`
+- 被谁依赖：`server.py`（/api/canvas/workflow/*、/api/canvas/import-submission、recovery、/api/generate 提交时注册）、`main.py`（CLI 旁路）、`scripts/migrate.py`、shim
+- 改后必测：`tests/test_core_canvas.py` + `tests/test_server_canvas.py` + `tests/test_main_cli.py` + `tests/test_server_tasks.py`（提交时注册回归）
+- 注意：`persist_submission_assets` 两端共用，改前查 server 与 main 两处调用；`input_asset_ids` 非空时按 id 解析参考图、不重复注册，为空时按 ref_paths 现场注册兜底；**改存储格式必须先 Handoff 确认**
 
 ### [history.py](history.py)
 - 职责：生成历史 JSONL 读取（容错坏行、筛选）+ 账本迁移（backfill）
 - 关键导出：`read_generation_history()`、`resolve_output_path()`、`backfill_output_asset_ids()`
 - 被谁依赖：`server.py`（/api/history、/api/history/import，白名单同源判定）
 - 改后必测：`tests/test_core_history.py` + `tests/test_server_helpers.py`
-- 注意：展示与导入同源（ARCHITECTURE 9.7）——改路径解析逻辑必须两端一致
+- 注意：展示与导入同源（ARCHITECTURE 9.7）——改路径解析逻辑必须两端一致；**搜索对换行鲁棒**：query 与账本字段两侧都做空白折叠（账本 prompt 存 CRLF，用户粘进单行搜索框换行被浏览器归一/移除，折叠后才不整串错位）
 
 ### [logging.py](logging.py)
 - 职责：`logs/generation.jsonl` 账本写入（线程安全、路径相对化）

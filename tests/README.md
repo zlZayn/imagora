@@ -5,7 +5,7 @@ FastAPI 路由级 + 纯逻辑测试，**不调真实上游 API、不花钱**。�
 ## 本地常用命令（在项目根目录执行）
 
 ```powershell
-# 后端全量（207 用例）
+# 后端全量（212 用例）
 .\.venv\Scripts\python.exe -m pytest --basetemp=<ASCII 临时目录>
 # 按模块筛选
 .\.venv\Scripts\python.exe -m pytest tests/test_core_config.py tests/test_server_helpers.py --basetemp=<ASCII 临时目录>
@@ -20,7 +20,7 @@ cd frontend; npm test
 - 路由测试直接 `from server import ...`（import 即建 FastAPI app，属预期）
 - **测试数字是 AGENTS 仪表盘数据源**：增/删测试用例必须同步 AGENTS「当前仪表盘」；数字意外变化（非新增导致）必须报告维护者
 
-## 文件索引（后端 pytest，共 207）——每个 test_*.py 测什么
+## 文件索引（后端 pytest，共 212）——每个 test_*.py 测什么
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -28,19 +28,19 @@ cd frontend; npm test
 | [`test_core_batch.py`](test_core_batch.py) | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
 | [`test_core_config.py`](test_core_config.py) | 15 | API Key 跟随 profile / profile 解析优先级与缺失回退 / 白名单校验 / RATIOS 表结构 |
 | [`test_core_logging.py`](test_core_logging.py) | 8 | 日志写入 / 并发串行 / 路径相对化 |
-| [`test_core_history.py`](test_core_history.py) | 7 | 历史读取 / 坏行容忍 / 筛选 / backfill（报告·补齐·幂等·跳过无法反查·坏行保留） |
+| [`test_core_history.py`](test_core_history.py) | 8 | 历史读取 / 坏行容忍 / 筛选 / **搜索换行归一（CRLF 粘贴可命中）** / backfill（报告·补齐·幂等·跳过无法反查·坏行保留） |
 | [`test_core_canvas.py`](test_core_canvas.py) | 32 | 注册表（v2+v1 兼容）/ 内容去重 / import 边界 / kind 来源标签 / workflow 归一化与自愈 / recovery / submission / persist_submission_assets |
 | [`test_core_imageinfo.py`](test_core_imageinfo.py) | 10 | PNG/JPEG/GIF/WebP/BMP 头解析 / 垃圾与截断返回 None |
 | [`test_core_migrate.py`](test_core_migrate.py) | 19 | 注册表 detect/升级/重建/回填/迁目录 / 工作流升级 / CLI 端到端 |
 | [`test_core_tasks.py`](test_core_tasks.py) | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
 | [`test_core_pathtrust.py`](test_core_pathtrust.py) | 2 | 路径白名单（match_roots 双根/单根/跨盘） |
-| [`test_server_helpers.py`](test_server_helpers.py) | 20 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 / 导入与展示同源 |
+| [`test_server_helpers.py`](test_server_helpers.py) | 22 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 + inputRefs/inputRefMissing / _persist_submission 含 temp_bases / 导入与展示同源 |
 | [`test_server_canvas.py`](test_server_canvas.py) | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / ref_paths 放行 |
-| [`test_server_tasks.py`](test_server_tasks.py) | 8 | generate 提交即返回 / multipart 临时文件清理 / 保存消息为绝对路径 / 路径校验 / 任务路由 |
+| [`test_server_tasks.py`](test_server_tasks.py) | 10 | generate 提交即返回 / multipart 临时文件清理 + temp 参考图注册账本 / **参考图提交时注册（源文件删后账本仍完整）** / 保存消息为绝对路径 / 路径校验 / 任务路由 |
 | [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
 | [`test_main_cli.py`](test_main_cli.py) | 25 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ config 输出 |
 
-## 文件索引（前端 vitest，共 137，位于 frontend/src/）
+## 文件索引（前端 vitest，共 145，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -56,6 +56,8 @@ cd frontend; npm test
 | [`logPath.test.ts`](../frontend/src/logPath.test.ts) | 6 | 日志路径词条解析（绝对/相对、正反斜杠、多路径、扩展名大小写） |
 | [`CanvasNodes.test.tsx`](../frontend/src/components/CanvasNodes.test.tsx) | 10 | 节点操作栏 / 双击行为 |
 | [`ResultPanel.test.tsx`](../frontend/src/components/ResultPanel.test.tsx) | 7 | 结果区 5 态面板 / 切换交叉淡化（旧层保留至淡出移除） |
+| [`WorkflowModals.test.tsx`](../frontend/src/components/WorkflowModals.test.tsx) | 2 | ZoomModal Portal 点击隔离（点图片/空白不误关外层宿主遮罩） |
+| [`HistoryGallery.test.tsx`](../frontend/src/components/HistoryGallery.test.tsx) | 6 | 列表行渲染 / 参考图缺失琥珀提示 / 失败文案 / 提示词截断浮层（仅截断弹、跟随、离开消失） |
 | [`promptImportFormat.test.ts`](../frontend/src/promptImportFormat.test.ts) | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
 
 ## 变更影响路由（改前必看）

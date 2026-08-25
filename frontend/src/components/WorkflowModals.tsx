@@ -281,11 +281,16 @@ export function ZoomModal({
 
   // Portal 到 body：脱离带动画 transform 的祖先（如经典表单结果栏 panel-card enter-up，
   // fill both 后 transform 仍非 none 会把 fixed 后代捕获进自己的包含块），保证真正全屏。
+  // Portal 的合成事件沿 React 组件树冒泡（非 DOM 树）——若不在此截停 click，
+  // 外层宿主（如 HistoryGallery 的遮罩 onClick=onClose）会被 Portal 内的点击误关，
+  // 表现为「点放大图中间却退出到画布」。关闭判定本身走 pointerdown，此处只管截停冒泡。
   return createPortal(
     <div
       ref={wrapRef}
+      data-zoom-overlay
       className="fixed inset-0 z-50 select-none bg-black/60"
       onPointerDown={onOverlayPointerDown}
+      onClick={(event) => event.stopPropagation()}
     >
       {/* 图片可视区：占满整个窗口（contain 不裁切），四周无容器黑边，真正全屏 */}
       <div

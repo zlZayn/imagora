@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 
 import { generationHistory, openFolder, type GenerationHistoryItem } from "../api";
 import { errMessage } from "../format";
@@ -7,6 +7,73 @@ import { ZoomModal } from "./WorkflowModals";
 
 function parentDirectory(path: string): string {
   return path.replace(/[\\/][^\\/]+$/, "");
+}
+
+/** 提示词行：先显示 2 行、超出省略（line-clamp-2）；仅当文字确实被截断时，悬浮在鼠标旁显示完整多行（短文案不弹无意义浮层）。
+    浮层宽度固定为屏幕 80%（80vw）且水平居中（左/右各留 10vw，永不出屏），高度随行数自动长；
+    垂直跟随鼠标 y 并 clamp 进视口（下边防溢出，靠挪位而非滚动条）。 */
+function PromptCell({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const [tipY, setTipY] = useState<number | null>(null);
+  const [clampTop, setClampTop] = useState(0);
+
+  const onEnter = (event: MouseEvent<HTMLParagraphElement>) => {
+    const el = ref.current;
+    // scrollHeight > clientHeight 即发生了 2 行截断，才需要浮层补全
+    if (el && el.scrollHeight > el.clientHeight) {
+      setTipY(event.clientY);
+    }
+  };
+  const onMove = (event: MouseEvent<HTMLParagraphElement>) => {
+    setTipY((cur) => (cur != null ? event.clientY : cur));
+  };
+  const onLeave = () => {
+    setTipY(null);
+    setClampTop(0);
+  };
+
+  // 浮层水平居中固定（10vw+80vw 恒在屏内）；垂直跟随鼠标 y 并 clamp 进视口（下边溢出靠挪位而非滚动条）
+  useLayoutEffect(() => {
+    if (tipY != null && tipRef.current) {
+      const rect = tipRef.current.getBoundingClientRect();
+      setClampTop(Math.max(8, Math.min(tipY + 16, window.innerHeight - rect.height - 8)));
+    }
+  }, [tipY, text]);
+
+  const tipStyle: CSSProperties | undefined =
+    tipY != null
+      ? {
+          // 宽固定屏幕 80% 且水平居中（左/右各留 10vw，永不出屏），高随行数自动长，无滚动条
+          left: "10vw",
+          top: clampTop,
+          width: "80vw",
+        }
+      : undefined;
+
+  return (
+    <>
+      <p
+        ref={ref}
+        onMouseEnter={onEnter}
+        onMouseMove={onMove}
+        onMouseLeave={onLeave}
+        className="line-clamp-2 text-xs leading-4 text-neutral-700"
+      >
+        {text}
+      </p>
+      {tipY != null && (
+        <div
+          ref={tipRef}
+          data-testid="prompt-tip"
+          className="pointer-events-none fixed z-50 rounded-md bg-neutral-800 px-3 py-2 text-xs leading-5 text-white shadow-lg"
+          style={{ ...tipStyle, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+        >
+          {text}
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function HistoryGallery({
@@ -69,10 +136,12 @@ export default function HistoryGallery({
           {loading ? (
             <div className="py-16 text-center text-sm text-neutral-400">正在读取历史...</div>
           ) : items.length ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
+            /* 列表视图：两栏网格卡片。横排卡片——左侧 160px 结果图占满卡片高度，
+               右侧提示词随容器宽（2 行截断）+ 大参考图 + 全文字按钮（底部对齐）；结果图 min-h-36 兜底卡片高度。 */
+            <ul className="grid grid-cols-2 gap-3">
               {items.map((item, index) => (
-                <article key={`${item.time}-${item.output}-${index}`} className="overflow-hidden border border-neutral-200 bg-white">
-                  <div className="flex aspect-square items-center justify-center bg-neutral-100">
+                <li key={`${item.time}-${item.output}-${index}`} className="flex gap-3 rounded-lg border border-neutral-200 bg-white p-3">
+                  <div className="w-40 min-h-36 flex-none self-stretch overflow-hidden bg-neutral-100">
                     {item.url ? (
                       <a
                         href={item.url}
@@ -90,21 +159,39 @@ export default function HistoryGallery({
                         </div>
                       </a>
                     ) : (
-                      <span className="text-xs text-neutral-400">{item.status === "error" ? "生成失败" : "文件已移动"}</span>
+                      <div className="flex h-full w-full items-center justify-center px-1">
+                        <span className="text-center text-[11px] leading-tight text-neutral-400">{item.status === "error" ? "生成失败" : "文件已移动"}</span>
+                      </div>
                     )}
                   </div>
-                  <div className="space-y-2 p-3">
-                    <p className="line-clamp-3 min-h-12 text-xs leading-4 text-neutral-700" title={item.prompt}>{item.prompt || "无提示词"}</p>
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <PromptCell text={item.prompt || "无提示词"} />
                     <p className="text-[10px] text-neutral-400">{item.time} · {item.quality || "-"} · {item.size || "-"}</p>
-                    <div className="grid grid-cols-2 gap-1">
-                      <button type="button" className="btn-ghost !px-2 !py-1 text-[11px]" onClick={() => void navigator.clipboard.writeText(item.prompt || "")}>复制提示词</button>
-                      <button type="button" disabled={!item.path} className="btn-ghost !px-2 !py-1 text-[11px]" onClick={() => void openFolder(parentDirectory(item.path))}>打开目录</button>
-                      <button type="button" disabled={!item.path} className="btn-ghost col-span-2 !px-2 !py-1 text-[11px]" onClick={() => void onImport(item.path)}>导入当前画布</button>
+                    {item.inputRefs && item.inputRefs.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.inputRefs.map((ref) => (
+                          <div
+                            key={ref.id}
+                            className="h-14 w-14 cursor-zoom-in overflow-hidden border border-neutral-200 bg-neutral-100"
+                            title="单击新窗口打开参考图 · 双击放大预览"
+                            onClick={(e) => handleClick(e, { url: ref.url, name: "参考图" })}
+                            onDoubleClick={() => handleDoubleClick({ url: ref.url, name: "参考图" })}
+                          >
+                            <img src={ref.url} alt="参考图" loading="lazy" className="h-full w-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {item.inputRefMissing && <p className="text-[10px] text-amber-600">参考图缺失</p>}
+                    <div className="mt-auto flex gap-1.5">
+                      <button type="button" className="btn-ghost min-w-0 flex-1 !px-1.5 !py-1 text-[11px]" onClick={() => void navigator.clipboard.writeText(item.prompt || "")}>复制提示词</button>
+                      <button type="button" disabled={!item.path} className="btn-ghost min-w-0 flex-1 !px-1.5 !py-1 text-[11px]" onClick={() => void openFolder(parentDirectory(item.path))}>打开目录</button>
+                      <button type="button" disabled={!item.path} className="btn-primary min-w-0 flex-1 !px-1.5 !py-1 text-[11px]" onClick={() => void onImport(item.path)}>导入当前画布</button>
                     </div>
                   </div>
-                </article>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
             <div className="py-16 text-center text-sm text-neutral-400">没有匹配的生成记录</div>
           )}

@@ -278,3 +278,65 @@ def test_generate_is_sync_not_coroutine():
     from server import generate
 
     assert not inspect.iscoroutinefunction(generate)
+
+
+def test_persist_submission_includes_temp_bases(monkeypatch, tmp_path):
+    """_persist_submission 把 multipart 兜底的 temp_bases 一并传给 persist_submission_assets
+    （temp 参考图也要注册进 .assets / 账本，不能只记 ref_bases）。"""
+    from core.tasks import GenerationTask
+    from server import _persist_submission
+
+    task = GenerationTask(
+        prompt="p", size="1024x1024", quality="low",
+        output_dir=str(tmp_path / "out"),
+        submission_id="sub-temp-bases",
+        ref_bases=[str(tmp_path / "a.png")],
+        temp_bases=[str(tmp_path / "t1.png"), str(tmp_path / "t2.png")],
+    )
+    task.results = [{"status": "ok", "url": f"/api/image?path={tmp_path / 'r.png'}"}]
+
+    captured: dict = {}
+    monkeypatch.setattr(
+        "server.graphstore.persist_submission_assets",
+        lambda _sid, _prompt, _params, ref_paths, _result_paths, _win, input_asset_ids: captured.update(
+            ref_paths=ref_paths, input_asset_ids=input_asset_ids
+        ) or {"input_asset_ids": ["x"], "output_asset_ids": ["y"]},
+    )
+
+    meta = _persist_submission(task)
+    assert meta["input_asset_ids"] == ["x"]
+    assert set(captured["ref_paths"]) == {
+        str(tmp_path / "a.png"),
+        str(tmp_path / "t1.png"),
+        str(tmp_path / "t2.png"),
+    }
+
+
+def test_generation_history_resolves_input_refs_and_missing(monkeypatch, tmp_path):
+    """历史路由把 inputAssetIds 解析成 inputRefs；图生图参考图缺失置 inputRefMissing；
+    纯文生图既无 inputRefs 也无 missing（三态可区分）。"""
+    from server import generation_history
+
+    ref_copy = tmp_path / "ref_copy.png"
+    ref_copy.write_bytes(b"png")
+    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
+        {"prompt": "ref ok", "status": "ok", "mode": "img2img", "refs": 1,
+         "output": str(tmp_path / "r1.png"), "inputAssetIds": ["ref-abc"]},
+        {"prompt": "ref lost", "status": "ok", "mode": "img2img", "refs": 2,
+         "output": str(tmp_path / "r2.png"), "inputAssetIds": ["ghost"]},
+        {"prompt": "txt", "status": "ok", "mode": "txt2img", "refs": 0,
+         "output": str(tmp_path / "r3.png")},
+    ])
+    monkeypatch.setattr("server.canvas.resolve_asset", lambda img_id: (
+        {"absPath": str(ref_copy), "url": "/api/image?path=ref_copy"} if img_id == "ref-abc" else None
+    ))
+    monkeypatch.setattr("server.resolve_history_asset_path", lambda record: record.get("output", ""))
+    monkeypatch.setattr("server.canvas.image_url", lambda p: f"/api/image?path={p}")
+
+    items = generation_history(limit=20, query="", status="")["items"]
+    assert items[0]["inputRefs"] == [{"id": "ref-abc", "path": str(ref_copy), "url": "/api/image?path=ref_copy"}]
+    assert items[0]["inputRefMissing"] is False
+    assert items[1]["inputRefs"] == []
+    assert items[1]["inputRefMissing"] is True
+    assert items[2]["inputRefs"] == []
+    assert items[2]["inputRefMissing"] is False

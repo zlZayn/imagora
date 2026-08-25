@@ -20,6 +20,7 @@ output/
 
 docs/superpowers/
 .superpowers/
+brainstorm-mockups/
 
 # 废弃目录（已停用，勿再使用；AGENTS.md 已声明忽略，此处补齐配置）
 .omo/

@@ -11,7 +11,7 @@ import time
 from itertools import count
 
 from core.config import DEFAULT_OUTPUT_DIR
-from core.registry import resolve_asset
+from core.registry import register_asset, resolve_asset
 
 SUBMISSIONS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "submissions")
 
@@ -277,6 +277,33 @@ def submission_save(
         return {"ok": False, "error": str(e)}
 
 
+def _register_one(path: str, kind: str, source_key: str) -> dict | None:
+    """注册单张图片进 .assets（best-effort：文件缺失 / 异常静默返回 None，不抛）。"""
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        return register_asset(path, os.path.basename(path), kind=kind, source_key=source_key)
+    except Exception:
+        return None
+
+
+def register_input_assets(submission_id: str, ref_paths: list[str]) -> list[str]:
+    """提交时把参考图注册进 .assets（kind='ref'，source_key=submission_id），返回去重 id 列表。
+
+    必须在提交阶段调用——此刻文件刚校验 / 刚落盘，必然存在，可消除「任务排队数分钟后
+    文件被删 → persist 时参考图静默漏记」的窗口（曾实测一例 refs=5 全漏、账本无 inputAssetIds）。
+    同内容由 register_asset 去重；任何单张失败静默跳过，persist 时还会兜底再试一次。
+    """
+    ids: list[str] = []
+    seen: set[str] = set()
+    for ref in ref_paths:
+        entry = _register_one(ref, "ref", submission_id)
+        if entry and entry["id"] not in seen:
+            seen.add(entry["id"])
+            ids.append(entry["id"])
+    return ids
+
+
 def persist_submission_assets(
     submission_id: str,
     prompt: str,
@@ -284,6 +311,7 @@ def persist_submission_assets(
     ref_paths: list[str],
     result_paths: list[str],
     win: int = 0,
+    input_asset_ids: list[str] | None = None,
 ) -> dict | None:
     """旁路：把本次生成的参考图 + 结果图注册进 .assets 并落提交图快照。
 
@@ -292,34 +320,36 @@ def persist_submission_assets(
       - 结果图：register_asset(kind="result", source_key=submission_id)
       - 落 submission_save（output/submissions/<id>.json），可在 web 画布「导入提交」复用
 
-    调用方负责筛选 ref_paths 中的路径是否符合白名单（web 端只把 ref_bases 晋升为 ref 资产，
-    multipart 兜底的 temp_bases 不晋升；CLI 端把所有 -i 传进来的参考图都晋升）。
+    input_asset_ids 非空时（server 提交阶段已用 register_input_assets 注册）按 id 解析条目，
+    不再重复注册；为空 / 缺省时按 ref_paths 现场注册（CLI 路径 / 提交阶段注册失败的兜底）。
 
     返回 {"input_asset_ids": [...], "output_asset_ids": [...]} 供账本联动；
     无结果或全部注册失败返回 None（任何失败不抛，由调用方 try/except 兜底）。
     """
-    from core.registry import register_asset
-
-    def _register_one(path: str, kind: str) -> dict | None:
-        if not path or not os.path.isfile(path):
-            return None
-        try:
-            return register_asset(path, os.path.basename(path), kind=kind, source_key=submission_id)
-        except Exception:
-            return None
+    from core import registry as _registry
 
     input_entries: list[dict] = []
     seen_input: set[str] = set()
-    for ref in ref_paths:
-        entry = _register_one(ref, "ref")
-        if entry and entry["id"] not in seen_input:
-            seen_input.add(entry["id"])
-            input_entries.append(entry)
+    if input_asset_ids:
+        # 提交时已注册：按 id 取全量条目（含 name/size/ext，供提交快照节点），不重复复制
+        entries_by_id = _registry.load_registry()
+        for aid in input_asset_ids:
+            entry = entries_by_id.get(str(aid))
+            if entry and entry["id"] not in seen_input:
+                seen_input.add(entry["id"])
+                input_entries.append(entry)
+    else:
+        # 兜底：提交阶段未注册（CLI / 异常），persist 时再按 ref_paths 尝试一次
+        for ref in ref_paths:
+            entry = _register_one(ref, "ref", submission_id)
+            if entry and entry["id"] not in seen_input:
+                seen_input.add(entry["id"])
+                input_entries.append(entry)
 
     result_entries: list[dict] = []
     seen_result: set[str] = set()
     for res in result_paths:
-        entry = _register_one(res, "result")
+        entry = _register_one(res, "result", submission_id)
         if entry and entry["id"] not in seen_result:
             seen_result.add(entry["id"])
             result_entries.append(entry)

@@ -212,6 +212,13 @@ export async function importSubmission(
   });
 }
 
+/** 历史记录参考图条目（后端按注册表解析 /api/history inputAssetIds） */
+export interface HistoryInputRef {
+  id: string;
+  path: string;
+  url: string;
+}
+
 export interface GenerationHistoryItem {
   time?: string;
   mode?: string;
@@ -226,6 +233,10 @@ export interface GenerationHistoryItem {
   exists: boolean;
   path: string;
   url: string;
+  /** 参考图（按注册表解析；旧记录 / 纯文生图为空数组） */
+  inputRefs?: HistoryInputRef[];
+  /** 图生图记录但参考图找不回（有 refs 计数、inputAssetIds 缺失或解析失败） */
+  inputRefMissing?: boolean;
 }
 
 export async function generationHistory(params: {
