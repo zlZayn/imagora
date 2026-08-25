@@ -26,10 +26,10 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 
 ### [api.py](api.py)
 - 职责：上游生图 API 封装（全项目唯一外部网络调用点）
-- 关键导出：`generate_image()`、`format_error()`、`resolve_size_with_ratio()`、`build_default_output_path()`
+- 关键导出：`generate_image()`、`format_error()`、`resolve_size_with_ratio()`、`build_default_output_path()`、`write_file_with_retry()`
 - 被谁依赖：`server.py`（/api/generate）、`main.py`（gen 子命令）
 - 改后必测：`tests/test_core_api.py` + `tests/test_main_cli.py`
-- 注意：单测已 mock 上游，不花钱；改接口签名要同步 `server.py` 与 `main.py` 两处调用
+- 注意：单测已 mock 上游，不花钱；改接口签名要同步 `server.py` 与 `main.py` 两处调用；落盘统一走 `write_file_with_retry`（Windows 杀软/云同步瞬时锁，只重试 PermissionError，见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 9.6）
 
 ### [tasks.py](tasks.py)
 - 职责：生成任务状态机（纯内存 TaskManager：queued → running → done/failed/cancelled，终态 TTL 清理）

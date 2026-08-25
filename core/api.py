@@ -58,6 +58,31 @@ def build_default_output_path(output_path, output_format):
     return str(Path(DEFAULT_OUTPUT_DIR) / f"ai_{time.strftime('%Y%m%d_%H%M%S')}_{seq:03d}.{output_format}")
 
 
+def write_file_with_retry(output_path: str, data: bytes, attempts: int = 3,
+                          backoff: tuple[float, ...] = (0.3, 0.8, 1.5)) -> None:
+    """写文件带瞬时锁重试（Windows 实况补丁）。
+
+    背景：杀软（Defender/火绒等）或云同步（OneDrive 桌面备份）实时扫描刚落盘的
+    新文件时短暂持有句柄，偶发 PermissionError [Errno 13]——目录本身可写、手动
+    写入正常、随机复现。重试只针对这种瞬时锁：
+    - 只捕获 PermissionError（磁盘满/ACL 拒绝等其余异常立即抛，不掩盖真相）；
+    - 退避递增（默认 0.3s → 0.8s → 1.5s，超出退避表长度用最后一位）；
+    - 重试用尽后最后一次异常原样抛出：若每次都失败则非瞬时问题，
+      应排查目录权限/杀软排除目录，重试框不住。
+    """
+    attempts = max(1, attempts)
+    backoff = backoff or (0.3, 0.8, 1.5)
+    for attempt in range(attempts):
+        try:
+            with open(output_path, "wb") as f:
+                f.write(data)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(backoff[min(attempt, len(backoff) - 1)])
+
+
 def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
                    quality=DEFAULT_QUALITY, model=DEFAULT_MODEL, n=1,
                    output_format="png", output_path=None):
@@ -111,12 +136,10 @@ def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
     item = response.json()["data"][0]
     if "b64_json" in item:
         raw = base64.b64decode(item["b64_json"])
-        with open(output_path, "wb") as f:
-            f.write(raw)
+        write_file_with_retry(output_path, raw)
     elif "url" in item:
         raw = requests.get(item["url"], timeout=300).content
-        with open(output_path, "wb") as f:
-            f.write(raw)
+        write_file_with_retry(output_path, raw)
     else:
         raise RuntimeError("接口响应没有图片数据")
 
