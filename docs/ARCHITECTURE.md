@@ -69,9 +69,9 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 - 外壳：`main.tsx` / `App.tsx` —— 入口与双模式外壳（经典表单 / 无限画布切换，`?mode=canvas` 直达），多窗口编号与主题色、标题栏品牌区 3D（见 8.4）
 - 契约：`api.ts`（`/api/*` 封装）+ `types.ts`（前后端类型契约，见 7.2）
-- Hooks：`useGenerationTask`（提交-轮询任务）、`useCanvasDrop`（拖放接线）、`useCanvasRecovery`（快照自动恢复）
+- Hooks：`useGenerationTask`（提交-轮询任务）、`useCanvasDrop`（拖放接线）、`useCanvasRecovery`（快照自动恢复）、`useImageZoom`（单击开原图/双击放大时序，Gallery 与 HistoryGallery 共用）
 - 纯函数模块（零 UI 依赖，全部有单测，用例分布见 tests/README.md）：`workflow` / `layout` / `canvasDrop` / `promptImportFormat` / `canvasHistory` / `recovery` / `previewZoom` / `format` / `accent` / `windowInherit`
-- `components/`：`CanvasPage`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes`（三类节点）、`WorkflowModals`（保存/加载/预览弹窗，ZoomModal 画布/经典表单共用）、`PromptImportModal` / `HistoryGallery` / `UploadZone` / `Gallery` / `Select` / `FolderPicker`
+- `components/`：`CanvasPage`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes`（三类节点）、`WorkflowModals`（保存/加载/预览弹窗，ZoomModal 画布/经典表单/生产历史共用）、`PromptImportModal` / `HistoryGallery` / `UploadZone` / `Gallery` / `Select` / `FolderPicker`
 
 ### 2.4 依赖规则
 
@@ -328,12 +328,13 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 - **落点示意是纯 DOM 特效**：跟随光标的小胶囊（portal 到 body 的 fixed 元素），位置由 JS 直接写 transform——高频 dragover 移动不触发 React 渲染，只有拖拽起止等低频事件才改状态；文案/图标按意图区分（文件数量 / 新建类型），工具栏拖出画布外时**图标（红色 X）与文案（松开取消）同步切换**（`is-outside` 类直接写 DOM），与画布光标同款品牌色加号图形，风格统一。
 - **一屏全览**：不用 ReactFlow 初始 `fitView` prop——空画布时它会被 React Flow 延迟到「第一个节点出现」才执行，导致新建/上传后视口突然放大跳动（已实测复现）。统一走 `fitCanvasToContent()`（自动整理/加载工作流/恢复存档后调用），`minZoom` 放宽到 0.05，fitView 显式允许缩到 0.02，节点再多也能全览。
 - **自定义光标**：画布空白区域用高对比十字准星 SVG data-URI 光标（细十字 + 白描边 + 中心白底品牌色加号，与拖拽落点示意同款图形，风格统一），平移切抓手；文件拖拽悬停时切系统 `copy` 光标；可拖出按钮（新建卡片/图片组）悬浮时给 grab 光标 + 品牌色呼吸光晕 + 拖拽图标（`.btn-draggable`）——拖入时可放感明确、可拖出暗示明显。
-- **预览弹窗（ZoomModal，画布/经典表单共用）**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。入口两侧一致：画布图片节点双击或操作栏「预览大图」、经典表单参考图缩略图双击（UploadZone，单击缩略图不触发文件选择器）、结果图双击（Gallery，单击仍新窗口开原图——250ms 延时区分单击/双击，避免双击连开两个标签）。统一传注册表派生的完整 url，不传存储路径，组件内不再拼 `/api/image?path=`。全屏布局：`createPortal` 到 body（脱离含动画 transform 的祖先——如结果栏 `panel-card enter-up` fill both 后 transform 仍非 none，会把 fixed 后代捕获进自己的包含块），图片区占满窗口（contain 不裁切），控制条/文件名/提示悬浮叠加底部、不占图片空间。
+- **预览弹窗（ZoomModal，画布/经典表单/生产历史共用）**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。入口一致：画布图片节点双击或操作栏「预览大图」、经典表单参考图缩略图双击（UploadZone，单击缩略图不触发文件选择器）、结果图双击与生产历史图双击（Gallery / HistoryGallery，单击仍新窗口开原图——250ms 延时区分单击/双击，避免双击连开两个标签；时序逻辑抽在 `useImageZoom.ts` 公共 hook）。统一传注册表派生的完整 url，不传存储路径，组件内不再拼 `/api/image?path=`。全屏布局：`createPortal` 到 body（脱离含动画 transform 的祖先——如结果栏 `panel-card enter-up` fill both 后 transform 仍非 none，会把 fixed 后代捕获进自己的包含块），图片区占满窗口（contain 不裁切），控制条/文件名/提示悬浮叠加底部、不占图片空间。
 - **选中操作栏**：选中 ≥1 个节点即出现「运行所选/自动整理/自动连线/设置输出路径/删除所选」，运行与设路径只作用于提示词卡片；自动连线只补选中节点之间的边（`workflow.ts:autoConnectSelection`，候选与新增边两端均限定在选中集合内），未选中节点不受影响；自动整理时未选中的参考图/组作为只读锚点参与对齐。
 
 ### 8.4 视觉与动效
 
 - **动画类统一收敛**在 `index.css`，组件只引用类名不写内联动画；只动 transform/opacity（GPU 合成），缓动统一 easeOutQuint；`prefers-reduced-motion` 时全部降级瞬时。
+- **经典表单结果区 5 态面板（ResultPanel）**：任务空窗期由「死区」转为状态区——排队（琥珀圆环）/ 生成中（品牌色 `pulse-glow` 呼吸圆环 + 参数摘要：模式·尺寸·质量·参考图数）/ 失败（红环 + 错误摘要，完整错误留日志）/ 已取消（灰环）/ 完成与初始透传 Gallery。状态语义与画布 `StatusLight` 同族（琥珀=排队、品牌色呼吸=生成中、红=失败）放大为圆环，不直接搬圆点（密集画布与小面板的呈现尺度不同）；生成秒数只在右栏面板（视线位），左侧按钮只留忙碌语义（disabled + `btn-busy`），避免两处秒数重复跳动；日志区不再写排队/生成中的过程行，只收终态与操作反馈——过程状态与日志记录职责分离。**布局与切换**：主图形层 absolute 居中钉死、副信息层 absolute 底部独立生长——行增减（参数/预计/输出目录）不挤动主图形；状态切换保留旧面板一层交叉淡出（`swap-out` 0.18s / `swap-in` 0.28s，两层 absolute 叠放互不挤压），排队→生成中→失败/完成不再硬切（`prefers-reduced-motion` 全局降级兜底）。**保存消息用本机绝对路径**：server.py 生成消息/结果消息不再相对化（删除 display_path），前端日志区由 `logPath.ts` 解析路径段 → `CopyChip` 词条点击复制（等宽样式、复制后高亮反馈不换文字）。
 - **LOD 抽象渲染（节点多不卡）**：`CanvasPage` 按缩放阈值切换（进入 0.1 / 恢复 0.2，迟滞防抖动）——抽象模式下图片节点保留缩略图与双击预览、去掉操作栏；提示词卡片只渲染大字标题 + 居中状态摘要（`CanvasNodes.tsx:promptStatusSummary`，不可编辑、无运行按钮）；分组节点去掉 hover 操作栏；`defaultEdgeOptions.animated` 关闭（连线动画静止）；React Flow 开启 `onlyRenderVisibleElements` 视口虚拟化。抽象只影响渲染，节点拖拽/选中/连线把手等基础交互不变。阈值常量 `LOD_IN_ZOOM` / `LOD_OUT_ZOOM`，后续可按体感微调。
 - **transition 约束**：只作用于 border-color/box-shadow/opacity，**禁用 `transition-all`**——否则 textarea 拉伸等交互被尺寸插值拖慢（曾误判为性能问题，实为 CSS 插值）。唯一例外：连线路径的 `stroke/stroke-width` 过渡（hover 亮起延迟，见 9.4 第 2 条）。
 - **画布节点动画**：作用在内层 `.node-pop`（外层 `.react-flow__node` 是定位 transform，不可位移）；动画类是运行时标记，保存/加载时剥离，不持久化。
@@ -399,6 +400,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 2. **PID 文件互相覆盖**：多开脚本同时写会误杀/漏杀。规范：端口是唯一真相源，动态探测，不落 PID 文件。
 3. **多 worker 翻倍并发**：uvicorn 必须单 worker。
 4. **配置 typo 静默失效**：config.json 拼错键名/选不存在的 profile → 控制台警告 + 回退默认。规范：profile 键有白名单校验（`unknown_profile_keys`），新增键必须同步加入 config 白名单和测试。
+5. **写文件瞬时锁（Windows 杀软/云同步）**。现象：输出目录存在且可写、手动写入正常，但生成结果偶发 `PermissionError [Errno 13]`——杀软（Defender/火绒等）实时扫描刚落盘的文件、或 OneDrive 云同步托管目录时短暂持有句柄。规范：图片落盘统一走 `core/api.py:write_file_with_retry`（只捕获 PermissionError、退避 0.3s/0.8s/1.5s 重试 3 次、耗尽原样抛出、其余异常不重试）；若每次都失败则非瞬时问题，应排查目录权限/杀软排除目录，不依赖重试框住。测试：test_core_api.py「瞬时锁重试」。
 
 ### 9.7 数据一致性
 
@@ -408,8 +410,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-- 后端 pytest：**205 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
-- 前端 vitest：**120 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 后端 pytest：**207 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
+- 前端 vitest：**137 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 
 ### 10.2 端到端（E2E）
