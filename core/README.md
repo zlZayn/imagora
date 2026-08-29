@@ -40,7 +40,7 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 
 ### [registry.py](registry.py)
 - 职责：资产注册表（`output/.assets`，v2 包装，内容 sha1 去重，kind=canvas/result/ref，永不自动清理）
-- 关键导出：`register_asset()`、`resolve_asset()`、`delete_asset()`、`list_assets()`、`import_assets()`、`image_url()`、`safe_ref_path_allowlist()`、`migrate(apply, rebuild, backfill)`（迁移入口）
+- 关键导出：`register_asset()`、`resolve_asset()`（可选预载 entries：批量解析一次读盘）、`delete_asset()`、`list_assets()`、`import_assets()`、`image_url()`、`safe_ref_path_allowlist()`、`migrate(apply, rebuild, backfill)`（迁移入口）
 - 被谁依赖：`graphstore.py`、`server.py`（/api/canvas/*、/api/history）、`main.py`（CLI 旁路）、`scripts/migrate.py`、`core/canvas.py`（shim）
 - 改后必测：`tests/test_core_canvas.py` + `tests/test_core_migrate.py` + `tests/test_server_helpers.py`（history 注册表解析）
 - 注意：**改存储格式（schema/目录/字段语义）必须先 Handoff 确认**（硬边界）
@@ -53,8 +53,8 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 - 注意：`persist_submission_assets` 两端共用，改前查 server 与 main 两处调用；`input_asset_ids` 非空时按 id 解析参考图、不重复注册，为空时按 ref_paths 现场注册兜底；**改存储格式必须先 Handoff 确认**
 
 ### [history.py](history.py)
-- 职责：生成历史 JSONL 读取（容错坏行、筛选）+ 账本迁移（backfill）
-- 关键导出：`read_generation_history()`、`resolve_output_path()`、`backfill_output_asset_ids()`
+- 职责：生成历史 JSONL 读取（容错坏行、筛选、**同参数聚合**）+ 账本迁移（backfill）
+- 关键导出：`read_generation_history()` / `read_generation_history_paged()`（分页 {items,total}，offset 为聚合后偏移，供滚动加载）、`dedupe_generation_history()`（同参数只留最新一条，时间不算参数，失败不刷屏）、`resolve_output_path()`、`backfill_output_asset_ids()`
 - 被谁依赖：`server.py`（/api/history、/api/history/import，白名单同源判定）
 - 改后必测：`tests/test_core_history.py` + `tests/test_server_helpers.py`
 - 注意：展示与导入同源（ARCHITECTURE 9.7）——改路径解析逻辑必须两端一致；**搜索对换行鲁棒**：query 与账本字段两侧都做空白折叠（账本 prompt 存 CRLF，用户粘进单行搜索框换行被浏览器归一/移除，折叠后才不整串错位）

@@ -18,13 +18,13 @@ HISTORY_FILE = LOGS_DIR / "generation.jsonl"
 _SPACES = re.compile(r"\s+")
 
 
-def read_generation_history(
-    limit: int = 200,
-    query: str = "",
-    status: str = "",
-) -> list[dict]:
-    """返回最新生成记录；坏行被忽略，单次最多 500 条。"""
-    safe_limit = min(500, max(1, int(limit)))
+def _collect_all(query: str = "", status: str = "", raw_limit: int = 500) -> list[dict]:
+    """读取账本并聚合后的完整列表（最新在前，坏行忽略）。
+
+    raw_limit 限制**原始行数**（聚合前），防大账本全盘扫描；聚合由
+    dedupe_generation_history 完成，因此返回条数 ≤ 原始行数。
+    读取/筛选/聚合三步骤在此收敛，供分页与整页共用，语义一致。
+    """
     # 两侧都做空白折叠（CRLF/LF/连续空格 → 单空格），换行差异不再导致整串匹配失败
     needle = _SPACES.sub(" ", query.strip()).casefold()
     status_filter = status.strip().casefold()
@@ -32,7 +32,6 @@ def read_generation_history(
         lines = Path(HISTORY_FILE).read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
-
     items: list[dict] = []
     for line in reversed(lines):
         try:
@@ -51,9 +50,75 @@ def read_generation_history(
             if needle not in haystack:
                 continue
         items.append(record)
-        if len(items) >= safe_limit:
+        if len(items) >= max(1, int(raw_limit)):
             break
-    return items
+    return dedupe_generation_history(items)
+
+
+def read_generation_history(
+    limit: int = 200,
+    query: str = "",
+    status: str = "",
+) -> list[dict]:
+    """返回最新的生成记录（聚合后）；坏行被忽略，最多 500 条。"""
+    safe_limit = min(500, max(1, int(limit)))
+    return _collect_all(query=query, status=status)[:safe_limit]
+
+
+def read_generation_history_paged(
+    offset: int = 0,
+    limit: int = 200,
+    query: str = "",
+    status: str = "",
+) -> dict:
+    """分页读取（聚合后切片）：{items, total}——total 为聚合后总数。
+
+    与 read_generation_history 同一收集/筛选/聚合语义，offset 是**聚合后**记录的
+    偏移（前端按已加载条数推进即可，不受聚合压缩影响）；分页与搜索/状态筛选
+    天然一致——筛选发生在聚合之前。
+    """
+    all_items = _collect_all(query=query, status=status)
+    safe_offset = max(0, int(offset or 0))
+    safe_limit = min(500, max(1, int(limit)))
+    page = all_items[safe_offset:safe_offset + safe_limit]
+    return {"items": page, "total": len(all_items)}
+
+
+def _params_key(record: dict) -> tuple:
+    """同一生成参数的判别键（含缺失字段容错）。
+
+    「时间不算参数」：time / output / cost / seconds / submissionId / outputAssetIds 仅是
+    运行结果与环境，不参与判定；参考图用内容 id（inputAssetIds）参与——同图重新上传按内容
+    sha1 去重为同一 id，两批不同的参考图不会误合并。旧行无 inputAssetIds 以空元组兜底。
+    """
+    raw_ids = record.get("inputAssetIds")
+    ids_part = tuple(str(a) for a in raw_ids) if isinstance(raw_ids, list) else ()
+    return (
+        str(record.get("mode", "")),
+        str(record.get("prompt", "")),
+        str(record.get("size", "")),
+        str(record.get("quality", "")),
+        int(record.get("refs") or 0),
+        ids_part,
+    )
+
+
+def dedupe_generation_history(items: list[dict]) -> list[dict]:
+    """呈现前聚合：同一生成参数（时间不算）的记录只保留最新一条。
+
+    解决「同一提示词卡片失败多次历史刷屏」：多次失败 → 一条（最新那次）；之后同参数成功 →
+    最新一条即成功记录，失败记录自然被取代（"失败记录变成成功"）；任一参数不一致则不合并。
+    输入须为最新在前（read_generation_history 的既有顺序），输出保持同样序。
+    """
+    seen: set[tuple] = set()
+    out: list[dict] = []
+    for record in items:
+        key = _params_key(record)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(record)
+    return out
 
 
 

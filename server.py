@@ -56,7 +56,7 @@ from core.config import (
     SIZE_OPTIONS,
     get_api_key,
 )
-from core.history import read_generation_history
+from core.history import read_generation_history, read_generation_history_paged
 from core.logging import log_generation
 from core.tasks import MAX_CONCURRENCY, GenerationTask, TaskManager
 
@@ -187,15 +187,16 @@ def resolve_history_output_path(output: str) -> str:
     return history.resolve_output_path(output)
 
 
-def resolve_history_asset_path(record: dict) -> str:
+def resolve_history_asset_path(record: dict, entries: dict | None = None) -> str:
     """历史行的真实图片路径（展示与导入共用同一判定，防两端漂移）。
 
     优先资产注册表：账本带 outputAssetIds 时按 resolve_asset 解析（.assets 注册表副本，
     原 output 文件被移动/删除不丢）；无注册表副本才回退 output 路径（须真实存在）。
+    entries 为已预载的注册表（批量解析一次读盘，见 /api/history）。
     """
     asset_ids = record.get("outputAssetIds")
     if isinstance(asset_ids, list) and asset_ids:
-        resolved = canvas.resolve_asset(str(asset_ids[0]))
+        resolved = canvas.resolve_asset(str(asset_ids[0]), entries=entries)
         if resolved:
             return resolved["absPath"]
     out_path = resolve_history_output_path(str(record.get("output", "")))
@@ -257,19 +258,26 @@ def server_status():
 
 
 @app.get("/api/history")
-def generation_history(limit: int = 200, query: str = "", status: str = ""):
-    """读取本地生成历史。
+def generation_history(limit: int = 60, offset: int = 0, query: str = "", status: str = ""):
+    """读取本地生成历史（分页，滚动加载）。
 
+    分页语义：offset 是**聚合后**记录的偏移（同参数只算一条），前端按已加载条数推进
+    offset 即可；hasMore = 当前页没取完聚合结果。搜索/状态筛选在聚合前过滤，分页与
+    筛选天然一致。
     图片存在性以**资产注册表为准**：账本行带 outputAssetIds 时，按 registry.resolve_asset
     解析（注册表副本在 .assets，移动原文件不丢），仅作参考的 output 路径不再参与判定；
     无 outputAssetIds 的旧行回退按 output 路径 isfile 判定。
     参考图同源：inputAssetIds 按 resolve_asset 解析成 inputRefs（{id,path,url}）；
     img2img 且 refs>0 但解析为空时置 inputRefMissing（参考图记录存在但图片找不回）。
+    同参数记录已在读取层聚合（时间不算参数）：同一提示词卡片多次失败只显示最新一条。
     """
-    records = read_generation_history(limit=limit, query=query, status=status)
+    page = read_generation_history_paged(offset=offset, limit=limit, query=query, status=status)
+    records = page["items"]
+    # 注册表一次读入复用：历史逐行 resolve_asset 每条都读盘会是卡顿主要来源
+    entries = canvas.load_registry()
     items = []
     for record in records:
-        abs_path = resolve_history_asset_path(record)
+        abs_path = resolve_history_asset_path(record, entries=entries)
         exists = bool(abs_path and os.path.isfile(abs_path))
         # 参考图按注册表解析：inputAssetIds -> resolve_asset（.assets 永久副本），
         # 解析失败 / 文件缺失的 id 跳过；前端据此区分「有参考图但找不回」与「纯文生图」。
@@ -277,7 +285,7 @@ def generation_history(limit: int = 200, query: str = "", status: str = ""):
         raw_ids = record.get("inputAssetIds")
         if isinstance(raw_ids, list):
             for aid in raw_ids:
-                resolved = canvas.resolve_asset(str(aid))
+                resolved = canvas.resolve_asset(str(aid), entries=entries)
                 if resolved and os.path.isfile(resolved["absPath"]):
                     input_refs.append({"id": str(aid), "path": resolved["absPath"], "url": resolved["url"]})
         input_ref_missing = (
@@ -293,7 +301,7 @@ def generation_history(limit: int = 200, query: str = "", status: str = ""):
             "inputRefs": input_refs,
             "inputRefMissing": input_ref_missing,
         })
-    return {"items": items}
+    return {"items": items, "hasMore": offset + len(page["items"]) < page["total"]}
 
 
 @app.post("/api/history/import")

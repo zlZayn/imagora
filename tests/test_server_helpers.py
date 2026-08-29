@@ -145,10 +145,13 @@ def test_generation_history_route_adds_existing_image_url(monkeypatch, tmp_path)
 
     image = tmp_path / "result.png"
     image.write_bytes(b"png")
-    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
-        {"prompt": "ok", "status": "ok", "output": str(image)},
-        {"prompt": "missing", "status": "ok", "output": str(tmp_path / "missing.png")},
-    ])
+    monkeypatch.setattr("server.read_generation_history_paged", lambda **_kwargs: {
+        "items": [
+            {"prompt": "ok", "status": "ok", "output": str(image)},
+            {"prompt": "missing", "status": "ok", "output": str(tmp_path / "missing.png")},
+        ],
+        "total": 2,
+    })
 
     result = generation_history(limit=20, query="", status="")
 
@@ -156,6 +159,31 @@ def test_generation_history_route_adds_existing_image_url(monkeypatch, tmp_path)
     assert result["items"][0]["exists"] is True
     assert result["items"][1]["url"] == ""
     assert result["items"][1]["exists"] is False
+
+
+def test_generation_history_paginates_with_has_more(monkeypatch, tmp_path):
+    """分页语义：hasMore = 当前页后仍有聚合结果；offset 按已加载条数推进。"""
+    from server import generation_history
+
+    records = [
+        {"prompt": f"p{i}", "status": "ok", "output": str(tmp_path / f"{i}.png")}
+        for i in range(5)
+    ]
+    monkeypatch.setattr(
+        "server.read_generation_history_paged",
+        lambda offset=0, limit=60, **_kwargs: {
+            "items": records[offset:offset + limit],
+            "total": len(records),
+        },
+    )
+
+    first = generation_history(limit=3, offset=0, query="", status="")
+    assert len(first["items"]) == 3
+    assert first["hasMore"] is True
+
+    rest = generation_history(limit=3, offset=3, query="", status="")
+    assert len(rest["items"]) == 2
+    assert rest["hasMore"] is False
 
 
 def test_history_import_only_accepts_recorded_existing_output(monkeypatch, tmp_path):
@@ -191,7 +219,7 @@ def test_history_import_accepts_registry_copy_path(monkeypatch, tmp_path):
     monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
         {"output": str(src), "outputAssetIds": ["abc123"]},
     ])
-    monkeypatch.setattr("server.canvas.resolve_asset", lambda _img_id: {"absPath": str(copy)})
+    monkeypatch.setattr("server.canvas.resolve_asset", lambda *_a, **_k: {"absPath": str(copy)})
     monkeypatch.setattr("server.canvas.register_asset", lambda path, name: {
         "id": "xyz", "absPath": path, "name": name,
     })
@@ -215,10 +243,13 @@ def test_generation_history_resolves_via_registry_when_output_moved(monkeypatch,
     entry = registry.register_asset(str(src), "moved_away.png")
     os.unlink(src)  # 模拟用户把原文件挪走/删掉
 
-    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
-        {"prompt": "registry-backed", "status": "ok", "output": str(src),
-         "outputAssetIds": [entry["id"]]},
-    ])
+    monkeypatch.setattr("server.read_generation_history_paged", lambda **_kwargs: {
+        "items": [
+            {"prompt": "registry-backed", "status": "ok", "output": str(src),
+             "outputAssetIds": [entry["id"]]},
+        ],
+        "total": 1,
+    })
     result = generation_history(limit=20, query="", status="")
     item = result["items"][0]
     assert item["exists"] is True                          # 注册表副本仍在
@@ -319,18 +350,21 @@ def test_generation_history_resolves_input_refs_and_missing(monkeypatch, tmp_pat
 
     ref_copy = tmp_path / "ref_copy.png"
     ref_copy.write_bytes(b"png")
-    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
-        {"prompt": "ref ok", "status": "ok", "mode": "img2img", "refs": 1,
-         "output": str(tmp_path / "r1.png"), "inputAssetIds": ["ref-abc"]},
-        {"prompt": "ref lost", "status": "ok", "mode": "img2img", "refs": 2,
-         "output": str(tmp_path / "r2.png"), "inputAssetIds": ["ghost"]},
-        {"prompt": "txt", "status": "ok", "mode": "txt2img", "refs": 0,
-         "output": str(tmp_path / "r3.png")},
-    ])
-    monkeypatch.setattr("server.canvas.resolve_asset", lambda img_id: (
+    monkeypatch.setattr("server.read_generation_history_paged", lambda **_kwargs: {
+        "items": [
+            {"prompt": "ref ok", "status": "ok", "mode": "img2img", "refs": 1,
+             "output": str(tmp_path / "r1.png"), "inputAssetIds": ["ref-abc"]},
+            {"prompt": "ref lost", "status": "ok", "mode": "img2img", "refs": 2,
+             "output": str(tmp_path / "r2.png"), "inputAssetIds": ["ghost"]},
+            {"prompt": "txt", "status": "ok", "mode": "txt2img", "refs": 0,
+             "output": str(tmp_path / "r3.png")},
+        ],
+        "total": 3,
+    })
+    monkeypatch.setattr("server.canvas.resolve_asset", lambda img_id, **_k: (
         {"absPath": str(ref_copy), "url": "/api/image?path=ref_copy"} if img_id == "ref-abc" else None
     ))
-    monkeypatch.setattr("server.resolve_history_asset_path", lambda record: record.get("output", ""))
+    monkeypatch.setattr("server.resolve_history_asset_path", lambda record, **_k: record.get("output", ""))
     monkeypatch.setattr("server.canvas.image_url", lambda p: f"/api/image?path={p}")
 
     items = generation_history(limit=20, query="", status="")["items"]

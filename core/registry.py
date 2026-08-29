@@ -203,14 +203,16 @@ def list_assets(kind: str | None = None) -> list[dict]:
             images.append(item)
         return images
 
-def resolve_asset(img_id: str) -> dict | None:
+def resolve_asset(img_id: str, entries: dict | None = None) -> dict | None:
     """按 registryId 解析资产的绝对路径与 URL（单一事实来源）。
 
     注册表缺失或文件不存在返回 None（对应工作流加载的 missing 语义）；
     路径由 registry 相对路径实时推导，项目目录改名后仍有效。
+    批量场景（如历史列表逐行解析）可传已预载的 entries（load_registry 一次），
+    避免每条都读盘；不传则内部加载，行为不变（向后兼容）。
     """
-    entries = load_registry()
-    entry = entries.get(str(img_id))
+    loaded = entries if entries is not None else load_registry()
+    entry = loaded.get(str(img_id))
     if not entry:
         return None
     abs_path = os.path.normpath(os.path.join(DEFAULT_OUTPUT_DIR, entry["relPath"]))

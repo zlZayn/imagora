@@ -71,6 +71,119 @@ def test_read_history_roundtrips_submission_fields(tmp_path, monkeypatch):
     assert "submissionId" not in old  # 旧行无字段，读端不炸
 
 
+# ================= 同参数记录聚合（时间不算参数：失败不刷屏） =================
+
+def test_dedupe_collapses_same_params_to_newest(tmp_path, monkeypatch):
+    """同一提示词卡片多次失败 → 只显示最新一条。"""
+    path = _write_history(tmp_path, [
+        {"time": "1", "prompt": "p", "size": "1024x1024", "quality": "high", "mode": "txt2img", "refs": 0, "status": "error"},
+        {"time": "2", "prompt": "p", "size": "1024x1024", "quality": "high", "mode": "txt2img", "refs": 0, "status": "error"},
+        {"time": "3", "prompt": "p", "size": "1024x1024", "quality": "high", "mode": "txt2img", "refs": 0, "status": "error"},
+    ])
+    monkeypatch.setattr(history, "HISTORY_FILE", path)
+    result = history.read_generation_history()
+    assert len(result) == 1
+    assert result[0]["time"] == "3"
+
+
+def test_dedupe_success_absorbs_older_failures():
+    """同参数失败后又成功 → 最新一条即成功记录（失败记录被取代）。"""
+    items = [
+        {"time": "4", "prompt": "p", "status": "ok"},
+        {"time": "3", "prompt": "p", "status": "error"},
+        {"time": "2", "prompt": "p", "status": "error"},
+    ]
+    out = history.dedupe_generation_history(items)
+    assert len(out) == 1 and out[0]["status"] == "ok"
+
+
+def test_dedupe_time_is_not_a_param():
+    """时间不算参数：其余参数一致即认为同一条。"""
+    items = [
+        {"time": "2026-08-25 11:11:11", "prompt": "p", "status": "error"},
+        {"time": "2026-08-25 10:00:00", "prompt": "p", "status": "error"},
+    ]
+    assert len(history.dedupe_generation_history(items)) == 1
+
+
+def test_dedupe_any_param_difference_keeps_separate():
+    """任一参数（mode/prompt/size/quality/refs）不一致 → 不合并。"""
+    items = [
+        {"prompt": "p", "size": "1024x1024", "quality": "high", "status": "ok"},
+        {"prompt": "p", "size": "1024x1024", "quality": "low", "status": "error"},
+        {"prompt": "q", "size": "1024x1024", "quality": "high", "status": "error"},
+        {"prompt": "p", "size": "512x512", "quality": "high", "status": "error"},
+        {"prompt": "p", "size": "1024x1024", "quality": "high", "mode": "img2img", "refs": 1, "status": "error"},
+        {"prompt": "p", "size": "1024x1024", "quality": "high", "mode": "img2img", "refs": 2, "status": "error"},
+    ]
+    assert len(history.dedupe_generation_history(items)) == 6
+
+
+def test_dedupe_input_asset_ids_participate():
+    """参考图（inputAssetIds）是参数：不同参考图不合并，相同参考图成功吸收失败。"""
+    items = [
+        {"prompt": "p", "mode": "img2img", "refs": 1, "inputAssetIds": ["a"], "status": "ok"},
+        {"prompt": "p", "mode": "img2img", "refs": 1, "inputAssetIds": ["a"], "status": "error"},
+        {"prompt": "p", "mode": "img2img", "refs": 1, "inputAssetIds": ["b"], "status": "error"},
+    ]
+    out = history.dedupe_generation_history(items)
+    assert len(out) == 2
+    ok_one = next(i for i in out if i["status"] == "ok")
+    assert ok_one["inputAssetIds"] == ["a"]
+
+
+def test_dedupe_missing_fields_tolerated():
+    """旧行缺字段不炸：缺失字段按空值参与判定，同参聚合、异参保留。"""
+    items = [
+        {"time": "2", "prompt": "p", "status": "error"},   # 无 size/quality/mode/refs/inputAssetIds
+        {"time": "1", "prompt": "p", "status": "error"},
+        {"time": "0", "prompt": "q", "status": "ok"},
+    ]
+    out = history.dedupe_generation_history(items)
+    assert [i["prompt"] for i in out] == ["p", "q"]
+
+
+def test_read_history_paged_slices_after_dedupe(tmp_path, monkeypatch):
+    """分页在聚合后切片：同参数多次失败先合并，offset 推进展示不同参数记录。"""
+    path = _write_history(tmp_path, [
+        {"time": "1", "prompt": "a", "status": "error"},
+        {"time": "2", "prompt": "a", "status": "error"},   # 与上一条参数相同 → 合并
+        {"time": "3", "prompt": "b", "status": "ok"},
+        {"time": "4", "prompt": "c", "status": "ok"},
+        {"time": "5", "prompt": "d", "status": "ok"},
+        {"time": "6", "prompt": "e", "status": "ok"},
+    ])
+    monkeypatch.setattr(history, "HISTORY_FILE", path)
+
+    page1 = history.read_generation_history_paged(offset=0, limit=2)
+    assert page1["total"] == 5                # 6 原始行聚合 → 5（a 只算最新一条）
+    assert [p["prompt"] for p in page1["items"]] == ["e", "d"]
+
+    page2 = history.read_generation_history_paged(offset=2, limit=2)
+    assert [p["prompt"] for p in page2["items"]] == ["c", "b"]
+
+    tail = history.read_generation_history_paged(offset=4, limit=2)
+    assert [p["prompt"] for p in tail["items"]] == ["a"]
+    assert tail["total"] == 5
+
+
+def test_read_history_paged_respects_query_status_and_offset_overflow(tmp_path, monkeypatch):
+    """分页与搜索/状态筛选一致（筛选在聚合前）；offset 越界返回空页且 total 不变。"""
+    path = _write_history(tmp_path, [
+        {"time": "1", "prompt": "red shoes", "quality": "high", "status": "ok"},
+        {"time": "2", "prompt": "blue bag", "quality": "low", "status": "error"},
+        {"time": "3", "prompt": "red bag", "quality": "high", "status": "ok"},
+    ])
+    monkeypatch.setattr(history, "HISTORY_FILE", path)
+
+    page = history.read_generation_history_paged(offset=0, limit=10, query="red", status="ok")
+    assert page["total"] == 2
+    assert [p["prompt"] for p in page["items"]] == ["red bag", "red shoes"]
+
+    empty = history.read_generation_history_paged(offset=99, limit=10)
+    assert empty["items"] == [] and empty["total"] == 3
+
+
 def _write_hist(tmp_path, records):
     p = tmp_path / "generation.jsonl"
     p.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n", encoding="utf-8")
