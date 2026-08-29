@@ -107,6 +107,20 @@ if not defined WIN (
     exit /b 1
 )
 start "" "%URL%/?win=!WIN!"
+
+REM ---- 首窗提示用该窗口主题色（与 frontend/src/accent.ts、main.py accent_for_window 同算法，
+REM       统一实现见 scripts\window_accent.ps1，勿复制算法进本脚本）----
+set "AIG_WIN=!WIN!"
+set "ACCENT_PS=%~dp0scripts\window_accent.ps1"
+for /f "tokens=1-3" %%a in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%ACCENT_PS%" -WindowId %AIG_WIN%') do (
+    set "AR=%%a"
+    set "AG=%%b"
+    set "AB=%%c"
+)
+if not defined AR set "AR=166"
+if not defined AG set "AG=48"
+if not defined AB set "AB=48"
+echo %C_OK%[OK]%C_RST% %ESC%[38;2;!AR!;!AG!;!AB!m已打开窗口 #!WIN!%ESC%[0m
 exit /b 0
 
 :fail

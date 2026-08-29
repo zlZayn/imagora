@@ -468,7 +468,9 @@ def handle_menu_command(args):
                 resp = requests.get(f"{url}/api/window/next", timeout=5)
                 win = resp.json()["windowId"]
                 webbrowser.open(f"{url}/?win={win}")
-                print_success(f"已打开窗口 #{win}")
+                # "已打开窗口 #N" 用该窗口主题色（与 accent.ts / cmd 首窗同算法），[OK] 标签保持绿色
+                win_accent = accent_for_window(win)
+                console.print(f"[bold green][OK][/bold green] [bold {win_accent}]已打开窗口 #{win}[/bold {win_accent}]")
             except Exception as e:
                 print_error(f"开新窗口失败: {e}")
                 time.sleep(2)

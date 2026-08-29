@@ -4,6 +4,13 @@
 
 ## 文件索引
 
+### [window_accent.ps1](window_accent.ps1)
+- 职责：窗口主题色 RGB 计算（黄金角 137.508 / HSL 55%,42% → 输出 "R G B"）——**与 `frontend/src/accent.ts`、`main.py:accent_for_window` 同一算法的 PowerShell 实现**，供启动脚本首窗提示按该窗口主题色着色（终端 24-bit ANSI）
+- 被谁依赖：根目录 `启动生图工作台.cmd`（`powershell -File scripts\window_accent.ps1 -WindowId N`）
+- 危险级别：低（只读计算，不写文件）
+- 注意：**算法三处同源**（accent.ts / main.py / 本脚本），改色相/饱和/明度必须三处同步，勿单独改动；命令串含括号不便嵌入 cmd 的 for /f，故抽成独立脚本
+- 改后验证：`powershell -File scripts\window_accent.ps1 -WindowId 1` 对照 `python -c "import main; print(main.accent_for_window(1))"` 的 #rrggbb
+
 ### [migrate.py](migrate.py)
 - 职责：存储迁移统一入口——注册表升级/重建/回填/迁目录（委托 `registry.migrate(apply, rebuild, backfill)`）、工作流升级（委托 `graphstore.migrate_workflows`）、历史账本回填（委托 `history.backfill_output_asset_ids`）
 - 危险级别：**高**（写文件）
