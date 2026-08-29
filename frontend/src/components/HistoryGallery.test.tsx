@@ -29,8 +29,8 @@ function item(overrides: Partial<GenerationHistoryItem> = {}): GenerationHistory
   };
 }
 
-function renderList(list: GenerationHistoryItem[]) {
-  vi.mocked(generationHistory).mockResolvedValue({ items: list });
+function renderList(list: GenerationHistoryItem[], hasMore = false) {
+  vi.mocked(generationHistory).mockResolvedValue({ items: list, hasMore });
   return render(<HistoryGallery open onClose={vi.fn()} onImport={vi.fn()} />);
 }
 
@@ -126,5 +126,104 @@ describe("HistoryGallery 列表视图", () => {
     const line = screen.getByText("短提示词");
     fireEvent.mouseEnter(line, { clientX: 100, clientY: 100 });
     expect(screen.queryByTestId("prompt-tip")).toBeNull();
+  });
+});
+
+describe("HistoryGallery 分页（滚动加载）", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("首屏加载第 0 页；点「加载更多」按已加载条数追加下一页", async () => {
+    const page1 = Array.from({ length: 60 }, (_, i) => item({ prompt: `第一页卡片 ${i}` }));
+    const page2 = Array.from({ length: 6 }, (_, i) => item({ prompt: `第二页卡片 ${i}` }));
+    vi.mocked(generationHistory)
+      .mockResolvedValueOnce({ items: page1, hasMore: true })
+      .mockResolvedValueOnce({ items: page2, hasMore: false });
+
+    render(<HistoryGallery open onClose={vi.fn()} onImport={vi.fn()} />);
+
+    expect(await screen.findByText("第一页卡片 0")).toBeTruthy();
+    expect(screen.queryByText("第二页卡片 0")).toBeNull(); // 未加载时不渲染
+    expect(generationHistory).toHaveBeenNthCalledWith(1, expect.objectContaining({ offset: 0, limit: 60 }));
+
+    fireEvent.click(screen.getByText("加载更多"));
+    expect(await screen.findByText("第二页卡片 0")).toBeTruthy();
+    expect(generationHistory).toHaveBeenNthCalledWith(2, expect.objectContaining({ offset: 60, limit: 60 }));
+    expect(screen.getByText("已显示全部记录")).toBeTruthy(); // hasMore=false
+  });
+
+  it("搜索重置分页：重新从第 0 页拉取，不保留旧页数据", async () => {
+    vi.mocked(generationHistory)
+      .mockResolvedValueOnce({ items: [item({ prompt: "旧结果" })], hasMore: false })
+      .mockResolvedValueOnce({ items: [item({ prompt: "匹配喵" })], hasMore: false });
+
+    render(<HistoryGallery open onClose={vi.fn()} onImport={vi.fn()} />);
+    await screen.findByText("旧结果");
+
+    const input = screen.getByPlaceholderText("搜索提示词、质量或文件名");
+    fireEvent.change(input, { target: { value: "喵" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(await screen.findByText("匹配喵")).toBeTruthy();
+    expect(screen.queryByText("旧结果")).toBeNull();
+    expect(generationHistory).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0, query: "喵" }));
+  });
+
+  it("状态筛选立即重载并从第 0 页开始", async () => {
+    vi.mocked(generationHistory)
+      .mockResolvedValueOnce({ items: [item({ prompt: "全量记录" })], hasMore: false })
+      .mockResolvedValueOnce({ items: [item({ prompt: "仅失败记录", status: "error" })], hasMore: false });
+
+    render(<HistoryGallery open onClose={vi.fn()} onImport={vi.fn()} />);
+    await screen.findByText("全量记录");
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "error" } });
+
+    expect(await screen.findByText("仅失败记录")).toBeTruthy();
+    expect(screen.queryByText("全量记录")).toBeNull();
+    expect(generationHistory).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0, status: "error" }));
+  });
+
+  it("滚动接近底部自动追加下一页（无需点按钮）", async () => {
+    const page1 = Array.from({ length: 60 }, (_, i) => item({ prompt: `滚动页 1 卡片 ${i}` }));
+    const page2 = Array.from({ length: 6 }, (_, i) => item({ prompt: `滚动页 2 卡片 ${i}` }));
+    vi.mocked(generationHistory)
+      .mockResolvedValueOnce({ items: page1, hasMore: true })
+      .mockResolvedValueOnce({ items: page2, hasMore: false });
+
+    render(<HistoryGallery open onClose={vi.fn()} onImport={vi.fn()} />);
+    await screen.findByText("滚动页 1 卡片 0");
+
+    const list = screen.getByTestId("history-list");
+    // jsdom 无滚动布局，手动构造"接近底部 600px 内"的几何数据再触发 scroll
+    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(list, "scrollTop", { configurable: true, value: 1500 });
+    Object.defineProperty(list, "clientHeight", { configurable: true, value: 300 });
+    fireEvent.scroll(list);
+
+    expect(await screen.findByText("滚动页 2 卡片 0")).toBeTruthy();
+    expect(screen.queryByText("加载更多")).toBeNull(); // 已加载完，按钮态消失
+    expect(generationHistory).toHaveBeenNthCalledWith(2, expect.objectContaining({ offset: 60 }));
+  });
+
+  it("远离底部滚动不触发翻页", async () => {
+    vi.mocked(generationHistory).mockResolvedValue({ items: [item({ prompt: "仅一页" })], hasMore: true });
+    render(<HistoryGallery open onClose={vi.fn()} onImport={vi.fn()} />);
+    await screen.findByText("仅一页");
+
+    const list = screen.getByTestId("history-list");
+    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 5000 });
+    Object.defineProperty(list, "scrollTop", { configurable: true, value: 100 }); // 距底 4600px
+    Object.defineProperty(list, "clientHeight", { configurable: true, value: 300 });
+    fireEvent.scroll(list);
+
+    // scroll 触发不请求；仅 mock 首屏调用
+    expect(generationHistory).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("加载更多")).toBeTruthy(); // 按钮仍在
   });
 });

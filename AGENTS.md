@@ -23,8 +23,8 @@
 
 ## 仪表盘（最近验证快照）
 
-- 后端 pytest：**212 passed**（命令与逐文件覆盖见 [tests/README.md](tests/README.md)）
-- 前端 vitest：**145 passed**；tsc + vite build 成功；lint / ruff 零告警（命令见 [frontend/README.md](frontend/README.md)、[tests/README.md](tests/README.md)）
+- 后端 pytest：**221 passed**（命令与逐文件覆盖见 [tests/README.md](tests/README.md)）
+- 前端 vitest：**150 passed**；tsc + vite build 成功；lint / ruff 零告警（命令见 [frontend/README.md](frontend/README.md)、[tests/README.md](tests/README.md)）
 - E2E [verify_canvas.py](frontend/e2e/verify_canvas.py)：**36/36 PASS**（前置：起 7860 服务，见 [frontend/README.md](frontend/README.md)）
 - 迁移（v1→v2 / .canvas→.assets / 账本回填）已完成，日常无需执行（见 [scripts/README.md](scripts/README.md)）
 
@@ -35,6 +35,7 @@
 ## 活跃坑 / 注意
 
 - pytest 必须带 `--basetemp` 指向 ASCII 临时目录（工作目录含中文触发 tmp_path 坑；CI 用 `${{ runner.temp }}`，见 [.github/workflows/ci.yml](.github/workflows/ci.yml)）
+- 本机 `.venv` 的 python.exe 启动报 0xC0000135（DLL 缺失，pyvenv.cfg home 指向 C:\Windows）——速改为 `C:\Users\speak\AppData\Local\Programs\Python\Python312\python.exe` + `$env:PYTHONPATH=<项目>\.venv\Lib\site-packages` 跑 pytest/ruff（依赖已装在 site-packages，无需重装）
 - [server.py](server.py) LSP 报「Argument missing for parameter id」是误报（GenerationTask.id 有 default_factory），勿修
 - `dist/` git 忽略：改前端后 `npm run build` 才在浏览器生效；CI/E2E 须自建（见 [frontend/README.md](frontend/README.md)）
 - E2E 只测画布交互、不触发生成链路；未来覆盖「生成→回流」前必须先 mock [core/api.py](core/api.py) 的 `generate_image`（ci.yml 注释 TODO）

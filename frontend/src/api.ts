@@ -241,11 +241,13 @@ export interface GenerationHistoryItem {
 
 export async function generationHistory(params: {
   limit?: number;
+  offset?: number;
   query?: string;
   status?: string;
-} = {}): Promise<{ items: GenerationHistoryItem[] }> {
+} = {}): Promise<{ items: GenerationHistoryItem[]; hasMore: boolean }> {
   const query = new URLSearchParams();
-  query.set("limit", String(params.limit ?? 200));
+  query.set("limit", String(params.limit ?? 60));
+  if (params.offset) query.set("offset", String(params.offset));
   if (params.query) query.set("query", params.query);
   if (params.status) query.set("status", params.status);
   return requestJson(`/api/history?${query.toString()}`);

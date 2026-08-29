@@ -128,7 +128,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - [`LogLine.tsx`](src/components/LogLine.tsx) — 日志单行：文本里的本机绝对路径拆成可点击复制词条（CopyChip），其余保持文本；行动画 log-line
 - [`CopyChip.tsx`](src/components/CopyChip.tsx) — 路径词条：点击复制完整路径（`navigator.clipboard`），复制后边框/底色高亮反馈 1.2s（不换文字，避免宽度跳动）
 - [`UploadZone.tsx`](src/components/UploadZone.tsx) — 参考图上传区（缩略图单击不触发文件选择器、双击放大）
-- [`HistoryGallery.tsx`](src/components/HistoryGallery.tsx) — 生成历史面板：两栏网格卡片（160px 结果图 | 提示词 2 行截断随容器宽 | 56px 参考图换行 | 按钮底部对齐横排）；提示词超 2 行时悬浮浮层补全（仅截断弹、宽固定 80vw 水平居中左/右各留 10vw、高随行数自动长、垂直跟随鼠标、无滚动条）；双击放大预览 / 单击新窗口开原图 / 导入当前画布
+- [`HistoryGallery.tsx`](src/components/HistoryGallery.tsx) — 生成历史面板：**分页滚动加载**（首屏 60 条，滚动接近底部 600px 内自动追加、未占满视口自动续拉，按钮仅兜底，DOM 恒在单页数量级）两栏网格卡片（160px 结果图 | 提示词 2 行截断随容器宽 | 56px 参考图换行 | 按钮底部对齐横排）；提示词超 2 行时悬浮浮层补全（仅截断弹、宽固定 80vw 水平居中左/右各留 10vw、高随行数自动长、垂直跟随鼠标、无滚动条）；搜索/状态筛选重置到第 0 页；双击放大预览 / 单击新窗口开原图 / 导入当前画布
 - [`PromptImportModal.tsx`](src/components/PromptImportModal.tsx) — 粘贴导入弹窗（实时解析 + 问题标红）
 - [`FolderPicker.tsx`](src/components/FolderPicker.tsx) / [`Select.tsx`](src/components/Select.tsx) — 目录选择 / 尺寸质量下拉
 

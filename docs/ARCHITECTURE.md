@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
 | `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
-| `tests/` | 后端 pytest（205 用例）+ 前端 vitest（120 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
+| `tests/` | 后端 pytest（221 用例）+ 前端 vitest（150 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流、`submissions/` 经典提交图快照 |
@@ -279,7 +279,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | GET | `/api/canvas/images` | 无 | { images[entry+absPath] } |
 | POST | `/api/canvas/image/delete` | { id } | { ok }（注册表移除 + 尽力删文件） |
 | GET | `/api/health/details` | 无 | { ok, checks, issues[] }（启动自检，不泄漏配置） |
-| GET | `/api/history` | ?limit=&query=&status= | { items }（存在性以资产注册表为准：带 outputAssetIds 走 resolve_asset，旧行回退 output 路径；参考图 inputAssetIds 解析成 `inputRefs[{id,path,url}]`，img2img 且 refs>0 但解析为空置 `inputRefMissing`） |
+| GET | `/api/history` | ?limit=&offset=&query=&status= | { items, hasMore }（**分页**：default limit 60，offset 为聚合后偏移、按已加载条数推进，hasMore=false 表示取完；存在性以资产注册表为准：带 outputAssetIds 走 resolve_asset，旧行回退 output 路径；参考图 inputAssetIds 解析成 inputRefs[{id,path,url}]，img2img 且 refs>0 但解析为空置 inputRefMissing；同参数记录已聚合——mode/prompt/size/quality/refs/inputAssetIds 一致（时间不算）只留最新一条，失败多次不刷屏、成功后失败记录被取代） |
 | POST | `/api/history/import` | { path } | { imported, skipped }（白名单与展示同源：注册表副本路径优先、回退 output，拒绝任意未记录路径；函数 import_history_asset） |
 | POST | `/api/canvas/workflow/save` | { name, nodes, edges } | { ok, path }（图片节点归一化：只存 registryId+元数据） |
 | GET | `/api/canvas/workflow/list` | 无 | { workflows[ name, modified ] }（按修改时间倒序） |
@@ -329,7 +329,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 - **一屏全览**：不用 ReactFlow 初始 `fitView` prop——空画布时它会被 React Flow 延迟到「第一个节点出现」才执行，导致新建/上传后视口突然放大跳动（已实测复现）。统一走 `fitCanvasToContent()`（自动整理/加载工作流/恢复存档后调用），`minZoom` 放宽到 0.05，fitView 显式允许缩到 0.02，节点再多也能全览。
 - **自定义光标**：画布空白区域用高对比十字准星 SVG data-URI 光标（细十字 + 白描边 + 中心白底品牌色加号，与拖拽落点示意同款图形，风格统一），平移切抓手；文件拖拽悬停时切系统 `copy` 光标；可拖出按钮（新建卡片/图片组）悬浮时给 grab 光标 + 品牌色呼吸光晕 + 拖拽图标（`.btn-draggable`）——拖入时可放感明确、可拖出暗示明显。
 - **预览弹窗（ZoomModal，画布/经典表单/生产历史共用）**：状态收敛为单一 `view{zoom,pan}`，缩放/夹紧数学在 `previewZoom.ts` 纯函数；滚轮以指针为锚缩放，放大后拖拽平移（位移阈值区分点击与拖拽），双击复位，Esc/点击空白关闭。入口一致：画布图片节点双击或操作栏「预览大图」、经典表单参考图缩略图双击（UploadZone，单击缩略图不触发文件选择器）、结果图双击与生产历史图双击（Gallery / HistoryGallery，单击仍新窗口开原图——250ms 延时区分单击/双击，避免双击连开两个标签；时序逻辑抽在 `useImageZoom.ts` 公共 hook）。统一传注册表派生的完整 url，不传存储路径，组件内不再拼 `/api/image?path=`。全屏布局：`createPortal` 到 body（脱离含动画 transform 的祖先——如结果栏 `panel-card enter-up` fill both 后 transform 仍非 none，会把 fixed 后代捕获进自己的包含块），图片区占满窗口（contain 不裁切），控制条/文件名/提示悬浮叠加底部、不占图片空间。
-- **生成历史列表视图（HistoryGallery）**：两栏网格卡片——横排卡片：左侧 160px 结果图占满卡片高度（`self-stretch` + `min-h-36` 兜底卡片高度，object-contain 不裁切）| 右侧提示词随容器宽（2 行截断 `line-clamp-2` 超出省略）+ 元信息（时间·质量·尺寸）| 参考图（56px 小图、超出换行）| 全文字按钮横排、`mt-auto` 永远底部对齐（复制提示词/打开目录/导入当前画布）。提示词仅在 2 行真被截断时悬浮补全（`scrollHeight > clientHeight` 判定，短文案不弹多余浮层），浮层宽固定为屏幕 80%（`width: 80vw`）且**水平居中**（`left: 10vw`，左/右各留 10vw 永不出屏）、高随行数自动长；垂直跟随鼠标 y 并 clamp 进视口（下边防溢出靠挪位而非滚动条）、`pointer-events-none`。参考图按注册表解析（`inputRefs`），找不回时保留琥珀「参考图缺失」提示。
+- **生成历史列表视图（HistoryGallery）**：两栏网格卡片——横排卡片：左侧 160px 结果图占满卡片高度（`self-stretch` + `min-h-36` 兜底卡片高度，object-contain 不裁切）| 右侧提示词随容器宽（2 行截断 `line-clamp-2` 超出省略）+ 元信息（时间·质量·尺寸）| 参考图（56px 小图、超出换行）| 全文字按钮横排、`mt-auto` 永远底部对齐（复制提示词/打开目录/导入当前画布）。提示词仅在 2 行真被截断时悬浮补全（`scrollHeight > clientHeight` 判定，短文案不弹多余浮层），浮层宽固定为屏幕 80%（`width: 80vw`）且**水平居中**（`left: 10vw`，左/右各留 10vw 永不出屏）、高随行数自动长；垂直跟随鼠标 y 并 clamp 进视口（下边防溢出靠挪位而非滚动条）、`pointer-events-none`。参考图按注册表解析（`inputRefs`），找不回时保留琥珀「参考图缺失」提示。**性能与聚合**：同参数记录由后端读取层聚合（7.1 /api/history，时间不算参数）——失败刷屏不进入渲染；**分页滚动加载**——首屏 60 条、滚动接近底部 600px 内自动追加（`onScroll` 判定）+ 追加后未占满视口自动续拉，按钮仅兜底，DOM 恒在单页数量级，图片加 `decoding="async"`；注册表在路由内一次加载（`resolve_asset` 预载 entries）供全列表解析，避免逐行读盘。分页 offset 是聚合后偏移，与搜索/状态筛选天然一致（筛选在聚合前）。
 - **选中操作栏**：选中 ≥1 个节点即出现「运行所选/自动整理/自动连线/设置输出路径/删除所选」，运行与设路径只作用于提示词卡片；自动连线只补选中节点之间的边（`workflow.ts:autoConnectSelection`，候选与新增边两端均限定在选中集合内），未选中节点不受影响；自动整理时未选中的参考图/组作为只读锚点参与对齐。
 
 ### 8.4 视觉与动效
@@ -412,8 +412,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-- 后端 pytest：**210 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
-- 前端 vitest：**145 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 后端 pytest：**221 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
+- 前端 vitest：**150 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 
 ### 10.2 端到端（E2E）
