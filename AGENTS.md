@@ -2,7 +2,7 @@
 
 > 全局索引：本项目只放仪表盘与变更路由。模块细节查子目录 README 手册，设计/决策/防错查 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，用户用法查 [README.md](README.md)。
 > **放置约定**：固定放项目根目录，主流 AI 编程 agent 启动时自动发现并注入上下文——因此本文档必须保持"仪表盘含量"（几十行），细节一律外置子 README。
-> **互改联动**：改任何子 README / ARCHITECTURE 后，复查本文档引用是否仍有效、数字/坑是否过时；本文档是其他文档的入口，双向引用缺一即断链。
+> **互改联动**：改任何子 README / ARCHITECTURE 后，复查本文档引用是否仍有效、数字/坑是否过时；本文档是其他文档的入口，双向引用缺一即断链。改文档后跑 `python scripts/check_docs.py`（链接可解析 + 仪表盘计数与源码一致，见 [scripts/README.md](scripts/README.md)）。
 
 ## 文档体系（双向引用，层层递进）
 
@@ -23,8 +23,8 @@
 
 ## 仪表盘（最近验证快照）
 
-- 后端 pytest：**221 passed**（命令与逐文件覆盖见 [tests/README.md](tests/README.md)）
-- 前端 vitest：**150 passed**；tsc + vite build 成功；lint / ruff 零告警（命令见 [frontend/README.md](frontend/README.md)、[tests/README.md](tests/README.md)）
+- 后端 pytest：**222 passed**（命令与逐文件覆盖见 [tests/README.md](tests/README.md)）
+- 前端 vitest：**153 passed**；tsc + vite build 成功；lint / ruff 零告警（命令见 [frontend/README.md](frontend/README.md)、[tests/README.md](tests/README.md)）
 - E2E [verify_canvas.py](frontend/e2e/verify_canvas.py)：**36/36 PASS**（前置：起 7860 服务，见 [frontend/README.md](frontend/README.md)）
 - 迁移（v1→v2 / .canvas→.assets / 账本回填）已完成，日常无需执行（见 [scripts/README.md](scripts/README.md)）
 

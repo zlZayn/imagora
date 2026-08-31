@@ -55,7 +55,7 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 ### [history.py](history.py)
 - 职责：生成历史 JSONL 读取（容错坏行、筛选、**同参数聚合**）+ 账本迁移（backfill）
 - 关键导出：`read_generation_history()` / `read_generation_history_paged()`（分页 {items,total}，offset 为聚合后偏移，供滚动加载）、`dedupe_generation_history()`（同参数只留最新一条，时间不算参数，失败不刷屏）、`resolve_output_path()`、`backfill_output_asset_ids()`
-- 被谁依赖：`server.py`（/api/history、/api/history/import，白名单同源判定）
+- 被谁依赖：`server.py`（/api/history、/api/history/import，白名单同源判定——注册表副本 + 账本 output 原路径双收，见 ARCHITECTURE 9.7）
 - 改后必测：`tests/test_core_history.py` + `tests/test_server_helpers.py`
 - 注意：展示与导入同源（ARCHITECTURE 9.7）——改路径解析逻辑必须两端一致；**搜索对换行鲁棒**：query 与账本字段两侧都做空白折叠（账本 prompt 存 CRLF，用户粘进单行搜索框换行被浏览器归一/移除，折叠后才不整串错位）
 

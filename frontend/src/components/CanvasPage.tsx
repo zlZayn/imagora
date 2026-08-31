@@ -930,7 +930,7 @@ export default function CanvasPage({
       const snapshot = refImages
         .map((n) => (n.type === "image" ? n.data.absPath : undefined))
         .filter((p): p is string => Boolean(p));
-      setNodes((nds) => updatePromptNode(nds, nodeId, { status: "queued", elapsed: 0, message: undefined }));
+      setNodes((nds) => updatePromptNode(nds, nodeId, { status: "queued", startedAtMs: undefined, message: undefined }));
       pushLog(`节点 ${nodeId} 已提交，参考图：[${snapshot.length} 张]`);
       try {
         const taskId = await submitGenerationTask({
@@ -970,9 +970,11 @@ export default function CanvasPage({
       const nodeId = taskNodeRef.current.get(taskId);
       if (!nodeId) return;
       if (view.status === "queued") {
-        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "queued", elapsed: 0, message: undefined }));
+        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "queued", startedAtMs: undefined, message: undefined }));
       } else if (view.status === "running") {
-        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "running", elapsed: view.elapsed }));
+        // 只写一次开始锚点；后续轮询/计时推送的 running 快照幂等跳过（updatePromptNode 无变化不产生新引用），
+        // 卡片与状态灯不再逐秒重渲染，秒数文字由组件以 startedAtMs 自计时刷新。
+        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "running", startedAtMs: view.startedAt ?? undefined }));
       } else if (view.status === "done") {
         // 终态：解除映射（只处理一次），状态先落 done，回流完成后补张数
         nodeTaskRef.current.delete(nodeId);
@@ -985,13 +987,13 @@ export default function CanvasPage({
         nodeTaskRef.current.delete(nodeId);
         taskNodeRef.current.delete(taskId);
         setNodes((nds) =>
-          updatePromptNode(nds, nodeId, { status: "failed", elapsed: undefined, message: view.error ?? "生成失败" }),
+          updatePromptNode(nds, nodeId, { status: "failed", startedAtMs: undefined, message: view.error ?? "生成失败" }),
         );
         pushLog(`节点 ${nodeId} 失败：${view.error ?? "未知错误"}`);
       } else if (view.status === "cancelled") {
         nodeTaskRef.current.delete(nodeId);
         taskNodeRef.current.delete(taskId);
-        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "idle", elapsed: undefined, message: undefined }));
+        setNodes((nds) => updatePromptNode(nds, nodeId, { status: "idle", startedAtMs: undefined, message: undefined }));
         pushLog(`节点 ${nodeId}：任务已取消`);
       }
     });

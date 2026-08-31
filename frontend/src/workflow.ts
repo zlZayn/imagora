@@ -168,7 +168,7 @@ export function workflowToCanvas(
           ...base.data,
           quality: base.data.quality ?? "high",
           status: "idle" as const,
-          elapsed: undefined,
+          startedAtMs: undefined,
           resultCount: undefined,
           message: undefined,
         },
@@ -179,15 +179,22 @@ export function workflowToCanvas(
   return { nodes: marked, edges };
 }
 
-/** 更新单个提示词节点的 data（纯函数：不匹配/非提示词节点原样返回，避免无谓新引用） */
+/** 更新单个提示词节点的 data（纯函数：不匹配/非提示词节点原样返回，避免无谓新引用）。
+ *  幂等：patch 各键与现状一致时不产生新数组（任务轮询重复推送 running 快照时零重渲染）。 */
 export function updatePromptNode(
   nodes: WorkflowNode[],
   nodeId: string,
   patch: Partial<CanvasPromptNodeData>,
 ): WorkflowNode[] {
-  return nodes.map((n) =>
-    n.id === nodeId && n.type === "prompt" ? { ...n, data: { ...n.data, ...patch } } : n,
-  );
+  let changed = false;
+  const next = nodes.map((n) => {
+    if (n.id !== nodeId || n.type !== "prompt") return n;
+    const same = Object.keys(patch).every((key) => n.data[key] === patch[key]);
+    if (same) return n;
+    changed = true;
+    return { ...n, data: { ...n.data, ...patch } };
+  });
+  return changed ? next : nodes;
 }
 
 /** 批量更新选区内提示词节点的输出目录；其他节点类型与未选中节点保持原引用。 */

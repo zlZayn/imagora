@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import type { CanvasGroupNodeData, CanvasImageNodeData, CanvasPromptNodeData } from "../types";
@@ -257,8 +257,25 @@ interface PromptNodeExtraProps {
 
 type PromptNodeProps = NodeProps<PromptFlowNode> & PromptNodeExtraProps;
 
-/* 状态指示灯：圆点颜色映射状态，悬停 title 看详情（秒数 / 张数 / 失败原因）。
- * 就绪灰、排队琥珀、生成中品牌色呼吸、完成绿、失败红。 */
+/* 秒数文字：以 startedAtMs 锚定、组件内部每秒自计时刷新——只重渲染自身文字，
+ * 不触碰状态灯 / 卡片其余部分（原逐秒写节点 data 导致悬停闪烁）。 */
+function ElapsedText({ startedAtMs }: { startedAtMs?: number }) {
+  const [seconds, setSeconds] = useState(() =>
+    startedAtMs ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)) : 0,
+  );
+  useEffect(() => {
+    if (!startedAtMs) return;
+    const timer = window.setInterval(() => {
+      setSeconds(Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAtMs]);
+  return <>{generatingLabel(seconds)}</>;
+}
+
+/* 状态指示灯：圆点颜色映射状态，悬停 title 看详情（张数 / 失败原因），
+ * 就绪灰、排队琥珀、生成中品牌色呼吸、完成绿、失败红。
+ * 生成中的秒数刻意不进 title（挂 tooltip 每秒跳字 → 悬停闪烁），秒数只在运行按钮文字上走。 */
 function StatusLight({ data }: { data: CanvasPromptNodeData }) {
   let color = "bg-neutral-300";
   let pulse = "";
@@ -271,7 +288,7 @@ function StatusLight({ data }: { data: CanvasPromptNodeData }) {
     case "running":
       color = "bg-brand";
       pulse = "animate-pulse";
-      title = generatingLabel(data.elapsed ?? 0);
+      title = "生成中";
       break;
     case "done":
       color = "bg-green-500";
@@ -296,8 +313,8 @@ function promptStatusSummary(data: CanvasPromptNodeData): { text: string; detail
       return { text: "排队中", detail: "排队中", className: "text-amber-500" };
     case "running":
       return {
-        text: generatingLabel(data.elapsed ?? 0),
-        detail: generatingLabel(data.elapsed ?? 0),
+        text: "生成中",
+        detail: "生成中",
         className: "animate-pulse text-brand",
       };
     case "done":
@@ -351,7 +368,7 @@ export const PromptNode = memo(function PromptNode({
           {data.title ?? "提示词生成"}
         </div>
         <div className={`max-w-full truncate text-center text-xl font-medium ${summary.className}`} title={summary.detail}>
-          {summary.text}
+          {running ? <ElapsedText startedAtMs={data.startedAtMs} /> : summary.text}
         </div>
       </div>
     );
@@ -422,7 +439,7 @@ export const PromptNode = memo(function PromptNode({
           disabled={busy || !data.prompt.trim()}
           className={`btn-primary flex-1 !py-1 text-xs ${busy ? "btn-busy" : ""}`}
         >
-          {running ? generatingLabel(data.elapsed ?? 0) : queued ? "排队中..." : "运行"}
+          {running ? <ElapsedText startedAtMs={data.startedAtMs} /> : queued ? "排队中..." : "运行"}
         </button>
       </div>
     </div>

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "./types";
 import { buildRecoverySnapshot } from "./recovery";
 
-function runningPrompt(elapsed: number): WorkflowNode {
+function runningPrompt(startedAtMs: number): WorkflowNode {
   return {
     id: "p1",
     type: "prompt",
@@ -14,7 +14,7 @@ function runningPrompt(elapsed: number): WorkflowNode {
       quality: "high",
       outputDir: "output",
       status: "running",
-      elapsed,
+      startedAtMs,
       resultCount: 2,
       message: "temporary",
     },
@@ -23,20 +23,20 @@ function runningPrompt(elapsed: number): WorkflowNode {
 
 describe("recovery snapshots", () => {
   it("removes runtime-only prompt state without mutating canvas nodes", () => {
-    const source = runningPrompt(5);
+    const source = runningPrompt(1_700_000_000_000);
     const snapshot = buildRecoverySnapshot([source], []);
     const saved = snapshot.nodes[0];
 
     expect(saved.type === "prompt" && saved.data).toMatchObject({ status: "idle", quality: "high" });
-    expect(saved.type === "prompt" && saved.data.elapsed).toBeUndefined();
+    expect(saved.type === "prompt" && saved.data.startedAtMs).toBeUndefined();
     expect(saved.type === "prompt" && saved.data.resultCount).toBeUndefined();
     expect(saved.type === "prompt" && saved.data.message).toBeUndefined();
     expect(source.type === "prompt" && source.data.status).toBe("running");
   });
 
-  it("produces the same snapshot while only elapsed time changes", () => {
-    const first = buildRecoverySnapshot([runningPrompt(1)], []);
-    const second = buildRecoverySnapshot([runningPrompt(9)], []);
+  it("produces the same snapshot while only the ticking anchor changes", () => {
+    const first = buildRecoverySnapshot([runningPrompt(1_700_000_000_000)], []);
+    const second = buildRecoverySnapshot([runningPrompt(1_700_000_000_009)], []);
 
     expect(second).toEqual(first);
   });

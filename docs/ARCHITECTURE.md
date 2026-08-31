@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
 | `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
-| `tests/` | 后端 pytest（221 用例）+ 前端 vitest（150 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
+| `tests/` | 后端 pytest（222 用例）+ 前端 vitest（153 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流、`submissions/` 经典提交图快照 |
@@ -162,6 +162,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 防重复生成：双层守卫——节点 `data.status` + `nodeTaskRef` 映射，提交前同步登记占位（防快速连点竞态），终态解除映射，删节点/加载工作流时同步清理。
 
+运行态刷新策略：running 转换时节点只写一次 `startedAtMs` 锚点（epoch 毫秒），后续轮询 / 计时推送的 running 快照经 `updatePromptNode` **幂等跳过**（patch 与现状一致时不产生新引用）；秒数文字由组件内 `ElapsedText` 以锚点自计时刷新（1s interval，只重渲染自身文字）。曾逐秒把 `elapsed` 写进节点 data：状态灯 title 每秒跳字 + 整卡每秒重渲染 → 鼠标悬停一闪一闪；现状态灯 running 时 title 恒定「生成中」，秒数只在运行按钮文字上走（与经典表单「秒数只在视线位」同原则，见 8.6）。
+
 ### 5.4 画布交互层
 
 - **拖拽添加（文件 / 工具栏按钮，共用同一落点示意）**：拖本地图片（可多张）到画布任意位置松开即添加，或把「新建提示词卡片 / 新建图片组」按钮拖出到画布松开即建（**拖到画布外松手则取消**；点击仍自动居中）。接线统一收敛在 `useCanvasDrop` hook（意图解析/落点换算/示意/守卫），纯逻辑在 `canvasDrop.ts`，节点构建在 `workflow.ts:buildPromptNode/buildGroupNode`（与点击新建同一构建）。落点 = **鼠标松开处**（`screenToFlowPosition` 换算），批次内沿用 `canvasEntriesToNodes` 横向排开；文件走 `isImageFile` 过滤 + `POST /api/canvas/upload`，工具栏拖走自定义 dataTransfer 类型（`application/x-imagora-canvas`，值 prompt/group）。
@@ -252,7 +254,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 6.5 结果回流
 
-画布任务与本表单共用同一 `/api/generate`（server 无条件生成 `submission_id`），所以 done 时后端旁路已把结果注册为 `kind='result'` 并落提交快照（见 6.1 step 6）。前端回流只做**取回 + 建节点**：`importHistoryAsset`（`POST /api/history/import`）按内容 sha1 命中旁路已注册的条目（同内容去重，不重复登记）→ 按 `registryId` 去重（画布已有同图不重建）→ 建图片节点放在提示词**正下方居中横排**（`layoutPromptResults`）→ 自动连线 提示词 → 结果图。回流前检查提示词节点仍存在（删除后完成的结果不回流，避免幽灵节点）。
+画布任务与本表单共用同一 `/api/generate`（server 无条件生成 `submission_id`），所以 done 时后端旁路已把结果注册为 `kind='result'` 并落提交快照（见 6.1 step 6）。前端回流只做**取回 + 建节点**：`importHistoryAsset`（`POST /api/history/import`）按内容 sha1 命中旁路已注册的条目（同内容去重，不重复登记）→ 按 `registryId` 去重（画布已有同图不重建）→ 建图片节点放在提示词**正下方居中横排**（`layoutPromptResults`）→ 自动连线 提示词 → 结果图。导入白名单同时接受任务结果 URL 反解的账本 output 原路径与注册表副本路径（见 9.7），回流不会因路径漂移失配。回流前检查提示词节点仍存在（删除后完成的结果不回流，避免幽灵节点）。
 
 **经典统一**：经典表单生成走同一链路（见 6.1 step 6）——参考图提交阶段注册、结果图 done 时注册 + 提交图快照 + 账本联动；「导入画布」走 `POST /api/canvas/import-submission` 整图重建，前端 `mergeSubmissionGraph` 按 registryId 去重复用现有图片节点并接上提示词与连线（不产生重复节点）。
 
@@ -280,7 +282,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | POST | `/api/canvas/image/delete` | { id } | { ok }（注册表移除 + 尽力删文件） |
 | GET | `/api/health/details` | 无 | { ok, checks, issues[] }（启动自检，不泄漏配置） |
 | GET | `/api/history` | ?limit=&offset=&query=&status= | { items, hasMore }（**分页**：default limit 60，offset 为聚合后偏移、按已加载条数推进，hasMore=false 表示取完；存在性以资产注册表为准：带 outputAssetIds 走 resolve_asset，旧行回退 output 路径；参考图 inputAssetIds 解析成 inputRefs[{id,path,url}]，img2img 且 refs>0 但解析为空置 inputRefMissing；同参数记录已聚合——mode/prompt/size/quality/refs/inputAssetIds 一致（时间不算）只留最新一条，失败多次不刷屏、成功后失败记录被取代） |
-| POST | `/api/history/import` | { path } | { imported, skipped }（白名单与展示同源：注册表副本路径优先、回退 output，拒绝任意未记录路径；函数 import_history_asset） |
+| POST | `/api/history/import` | { path } | { imported, skipped }（白名单与展示同源且双收账本行两个合法派生路径：注册表副本路径（`resolve_history_asset_path` 优先，历史面板导入传它）+ 账本 output 原路径（画布回流传任务结果 URL 反解，须文件仍存在）；拒绝任意未记录路径；函数 import_history_asset） |
 | POST | `/api/canvas/workflow/save` | { name, nodes, edges } | { ok, path }（图片节点归一化：只存 registryId+元数据） |
 | GET | `/api/canvas/workflow/list` | 无 | { workflows[ name, modified ] }（按修改时间倒序） |
 | GET | `/api/canvas/workflow/load` | ?name= | { name, nodes, edges, missing }（按 registry 实时解析，缺失进 missing） |
@@ -406,14 +408,15 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 9.7 数据一致性
 
-1. **历史展示与导入判定漂移**。现象：生成历史列表显示图片（`exists=true`）但「导入当前画布」报「不是可用的历史输出」。根因：展示按资产注册表解析（账本带 outputAssetIds → `resolve_asset`，`.assets` 副本在、原 output 文件被移动/删除仍显示），导入白名单却只认账本 `output` 原路径——输出目录设在项目外、原文件被清理后必然出现「列表有图、导入失败」。规范：展示与导入共用 `resolve_history_asset_path`（注册表副本优先、回退 output 路径）——历史里看得到的图片必然能导入；白名单仍只来自账本记录，任意未记录路径拒绝（不能退化成任意路径读取接口）。测试：test_server_helpers.py「只接受记录路径」+「注册表副本路径可导入」。
+1. **历史展示与导入判定漂移**。现象一：生成历史列表显示图片（`exists=true`）但导入报「不是可用的历史输出」；现象二（画布回流）：每张结果都弹软提示「节点 prompt-xxx：生成成功，但结果导入画布失败」，历史里却能看见图。根因（同一条坑的两个方向，任一侧漂移都会复现）：展示按资产注册表解析（账本带 outputAssetIds → `resolve_asset`，`.assets` 副本在、原 output 文件被移动/删除仍显示），导入白名单必须同时接受账本行的**两个合法派生路径**——注册表副本路径（历史面板「导入画布」传它）与账本 `output` 原路径（画布回流传任务结果 URL 反解的 run_generation 落盘路径）——只收其一必然另一侧失配：曾先只认原路径（原文件被清理后「列表有图、导入失败」，f4126fe 修至注册表副本优先），继而只认注册表副本（画布回流固定失败，本条修复）。规范：导入白名单 = 每个账本行的注册表副本路径 ∪ output 原路径（原路径须文件仍存在）；判定仍只来自账本记录，任意未记录路径拒绝（不能退化成任意路径读取接口）；展示与导入共用 `resolve_history_asset_path`。测试：test_server_helpers.py「只接受记录路径」+「注册表副本路径可导入」+「带 outputAssetIds 时原路径可导入（画布回流回归）」。
 
 ## 10. 测试与验证
 
 ### 10.1 单元测试
 
-- 后端 pytest：**221 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
-- 前端 vitest：**150 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 后端 pytest：**222 用例**（Windows 下必带 `--basetemp=<ASCII 临时目录>` 规避中文路径坑；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
+- 前端 vitest：**153 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 文档完整性：`python scripts/check_docs.py`（相对链接可解析 + AGENTS/tests-README/ARCHITECTURE/frontend-README 的测试计数与源码一致；改任何文档后必跑，见 [scripts/README.md](../scripts/README.md)）
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 
 ### 10.2 端到端（E2E）

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoConnectSelection, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoConnect, autoConnectSelection, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updatePromptNode, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -57,6 +57,34 @@ describe("workflow defaults", () => {
     const prompt = result.nodes[0];
 
     expect(prompt.type === "prompt" && prompt.data.quality).toBe("high");
+  });
+});
+
+describe("prompt node updates", () => {
+  it("returns the original array when the patch matches current data (idempotent)", () => {
+    const node = promptNode("p1");
+    const nodes = [node];
+
+    const same = updatePromptNode(nodes, "p1", { status: "idle", startedAtMs: undefined });
+    expect(same).toBe(nodes);
+  });
+
+  it("updates the prompt node on real changes and leaves other nodes untouched", () => {
+    const prompt = promptNode("p1");
+    const image = imageNode("img1");
+    const nodes = [prompt, image];
+
+    const changed = updatePromptNode(nodes, "p1", { status: "running", startedAtMs: 1000 });
+    expect(changed).not.toBe(nodes);
+    expect(changed[0]).not.toBe(prompt);
+    expect(changed[0].data.status).toBe("running");
+    expect(changed[0].data.startedAtMs).toBe(1000);
+    expect(changed[1]).toBe(image);
+  });
+
+  it("keeps the original array for unknown ids (no update)", () => {
+    const nodes = [promptNode("p1")];
+    expect(updatePromptNode(nodes, "missing", { status: "running" })).toBe(nodes);
   });
 });
 

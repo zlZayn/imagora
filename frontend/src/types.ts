@@ -123,8 +123,8 @@ export interface CanvasPromptNodeData {
   status: "idle" | "queued" | "running" | "done" | "failed";
   /** 粘贴导入生成的提示词卡片标题（手动建卡时缺省） */
   title?: string;
-  /** 运行已等待秒数（running 时实时刷新） */
-  elapsed?: number;
+  /** 生成开始锚点（epoch 毫秒）：running 转换时写入一次；秒数文字由组件自计时刷新，不逐秒写节点 */
+  startedAtMs?: number;
   /** 成功生成的张数（done 时显示） */
   resultCount?: number;
   /** 失败原因（failed 时显示） */

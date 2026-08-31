@@ -15,7 +15,7 @@ export function buildRecoverySnapshot(
     nodes: nodes.map((node) => {
       const base = { ...node, className: stripAnimClasses(node.className) };
       if (base.type !== "prompt") return base;
-      const { elapsed: _elapsed, resultCount: _resultCount, message: _message, ...data } = base.data;
+      const { startedAtMs: _startedAtMs, resultCount: _resultCount, message: _message, ...data } = base.data;
       return {
         ...base,
         data: { ...data, quality: data.quality ?? "high", status: "idle" },
