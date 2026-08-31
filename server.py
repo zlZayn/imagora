@@ -308,15 +308,22 @@ def generation_history(limit: int = 60, offset: int = 0, query: str = "", status
 def import_history_asset(body: dict):
     """把日志中真实存在的历史结果导入画布，拒绝任意未记录路径。
 
-    可导入白名单与 /api/history 展示同源（注册表副本路径优先）：
-    历史列表里看得到的图片必然能导入，两端判定永不漂移。
+    可导入白名单与 /api/history 展示同源，并覆盖账本行的两个合法派生路径：
+      - 注册表副本路径：`resolve_history_asset_path` 优先（原 output 文件被移动/删除仍可导入，
+        历史面板「导入画布」传的就是它）；
+      - 账本 output 原路径：画布结果回流传的是任务结果 URL 的 path（run_generation 落盘路径，
+        见 6.5），仅当文件仍存在才放行。
+    白名单仍只来自账本记录，任意未记录路径拒绝（不能退化成任意路径读取接口）。
     """
     requested = os.path.normcase(resolve_history_output_path(str(body.get("path", ""))))
-    recorded_paths = {
-        os.path.normcase(p)
-        for p in map(resolve_history_asset_path, read_generation_history(limit=500))
-        if p
-    }
+    recorded_paths: set[str] = set()
+    for record in read_generation_history(limit=500):
+        resolved = resolve_history_asset_path(record)
+        if resolved:
+            recorded_paths.add(os.path.normcase(resolved))
+        raw = resolve_history_output_path(str(record.get("output", "")))
+        if raw and os.path.isfile(raw):
+            recorded_paths.add(os.path.normcase(raw))
     if requested not in recorded_paths or not os.path.isfile(requested):
         return {"imported": [], "skipped": [{"path": requested, "reason": "不是可用的历史输出"}]}
     entry = canvas.register_asset(requested, os.path.basename(requested))
