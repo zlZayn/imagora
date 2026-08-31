@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowEdge, WorkflowNode } from "./types";
-import { autoConnect, autoConnectSelection, buildGroupNode, buildPromptNode, collectIncomingImages, extractAnimClasses, isImageFile, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updatePromptNode, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
+import { autoConnect, autoConnectSelection, buildGroupNode, buildPromptNode, canConnect, collectIncomingImages, computeCounts, extractAnimClasses, isImageFile, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updatePromptNode, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
 
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
@@ -37,6 +37,15 @@ function imageNode(id: string, y = 0): WorkflowNode {
 
 function edge(source: string, target: string): WorkflowEdge {
   return { id: `${source}->${target}`, source, target };
+}
+
+function groupNode(id: string): WorkflowNode {
+  return {
+    id,
+    type: "group",
+    position: { x: 0, y: 0 },
+    data: { name: id, imageCount: 0, totalSize: 0 },
+  } as WorkflowNode;
 }
 
 describe("workflow defaults", () => {
@@ -328,6 +337,110 @@ describe("incoming reference images", () => {
     );
 
     expect(paths).toEqual([`C:\\output\\ok.png`]);
+  });
+
+  it("expands nested group chains (group → group → images) for a prompt", () => {
+    const groupA = groupNode("gA");
+    const groupB = groupNode("gB");
+    const groupC = groupNode("gC");
+    const nodes = [
+      imageNode("img1"), imageNode("img2"), groupA,
+      imageNode("img3"), groupB, imageNode("img4"), imageNode("img5"), groupC,
+      promptNode("p1"),
+    ];
+    const edges = [
+      edge("img1", "gA"), edge("img2", "gA"),
+      edge("gA", "gB"), edge("img3", "gB"),
+      edge("gB", "gC"), edge("img4", "gC"), edge("img5", "gC"),
+      edge("gC", "p1"),
+    ];
+
+    const images = collectIncomingImages(nodes, edges, "p1");
+
+    expect(images.map((n) => n.id).sort()).toEqual(["img1", "img2", "img3", "img4", "img5"]);
+  });
+});
+
+describe("connection rules", () => {
+  it("allows image → prompt / group and prompt → image (output edge)", () => {
+    const nodes = [imageNode("img"), groupNode("g"), promptNode("p")];
+    expect(canConnect(nodes, [], { source: "img", target: "p" })).toBe(true);
+    expect(canConnect(nodes, [], { source: "img", target: "g" })).toBe(true);
+    expect(canConnect(nodes, [], { source: "p", target: "img" })).toBe(true);
+  });
+
+  it("allows group → prompt and group → group (middle aggregation), multiple in-edges for groups", () => {
+    const nodes = [groupNode("g1"), groupNode("g2"), groupNode("g3"), promptNode("p")];
+    expect(canConnect(nodes, [], { source: "g1", target: "p" })).toBe(true);
+    expect(canConnect(nodes, [], { source: "g1", target: "g2" })).toBe(true);
+    // 组可多方聚合：已有入边不阻止新组连入（2张图组 + 3张图组 → 同一组 = 5张）
+    const existing = [edge("g1", "g3")];
+    expect(canConnect(nodes, existing, { source: "g2", target: "g3" })).toBe(true);
+  });
+
+  it("keeps the single-in-edge cap on prompt targets (both image and group sources)", () => {
+    const nodes = [imageNode("img"), groupNode("g"), promptNode("p")];
+    expect(canConnect(nodes, [edge("img", "p")], { source: "g", target: "p" })).toBe(false);
+    expect(canConnect(nodes, [edge("g", "p")], { source: "img", target: "p" })).toBe(false);
+  });
+
+  it("rejects wrong-type pairs and self-loops", () => {
+    const nodes = [imageNode("img1"), imageNode("img2"), groupNode("g"), promptNode("p")];
+    expect(canConnect(nodes, [], { source: "img1", target: "img2" })).toBe(false);
+    expect(canConnect(nodes, [], { source: "g", target: "img1" })).toBe(false);
+    expect(canConnect(nodes, [], { source: "p", target: "p" })).toBe(false);
+    expect(canConnect(nodes, [], { source: "g", target: "g" })).toBe(false);
+    expect(canConnect(nodes, [], { source: "img1", target: "img1" })).toBe(false);
+  });
+});
+
+describe("group chain counts", () => {
+  it("merges nested groups transitively (two groups into one = sum of images and sizes)", () => {
+    const imgA1 = imageNode("a1");
+    const imgA2 = imageNode("a2");
+    const imgB1 = imageNode("b1");
+    const imgB2 = imageNode("b2");
+    const imgB3 = imageNode("b3");
+    const groupA = groupNode("gA");
+    const groupB = groupNode("gB");
+    const groupC = groupNode("gC");
+    const nodes = [imgA1, imgA2, groupA, imgB1, imgB2, imgB3, groupB, groupC];
+    const edges = [
+      edge("a1", "gA"), edge("a2", "gA"),
+      edge("b1", "gB"), edge("b2", "gB"), edge("b3", "gB"),
+      edge("gA", "gC"), edge("gB", "gC"),
+    ];
+
+    const { groupCounts, groupSizes } = computeCounts(nodes, edges);
+
+    expect(groupCounts.get("gA")).toBe(2);
+    expect(groupCounts.get("gB")).toBe(3);
+    expect(groupCounts.get("gC")).toBe(5);
+    expect(groupSizes.get("gC")).toBe(50); // 每张图 size=10
+  });
+
+  it("counts direct images plus nested group images in a mixed group", () => {
+    const nodes = [imageNode("in1"), imageNode("in2"), groupNode("gSub"), imageNode("direct"), groupNode("gTop")];
+    const edges = [edge("in1", "gSub"), edge("in2", "gSub"), edge("gSub", "gTop"), edge("direct", "gTop")];
+
+    const { groupCounts } = computeCounts(nodes, edges);
+
+    expect(groupCounts.get("gTop")).toBe(3);
+  });
+
+  it("cuts group cycles without double counting and without hanging", () => {
+    const nodes = [imageNode("x1"), imageNode("x2"), groupNode("gA"), groupNode("gB"), groupNode("gC")];
+    const edges = [
+      edge("x1", "gA"), edge("x2", "gA"),
+      edge("gA", "gB"), edge("gB", "gA"), // A ↔ B 成环
+      edge("gB", "gC"),
+    ];
+
+    const { groupCounts } = computeCounts(nodes, edges);
+
+    expect(groupCounts.get("gA")).toBe(2);
+    expect(groupCounts.get("gB")).toBe(2);
+    expect(groupCounts.get("gC")).toBe(2);
   });
 });
 

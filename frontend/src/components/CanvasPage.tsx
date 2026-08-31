@@ -49,6 +49,7 @@ import {
   buildGroupNode,
   buildImageNode,
   buildPromptNode,
+  canConnect,
   canvasEntriesToNodes,
   collectIncomingImages,
   computeCounts,
@@ -350,29 +351,13 @@ export default function CanvasPage({
     return () => canvas.removeEventListener("animationend", onAnimationEnd);
   }, [setNodes]);
 
-  /* ---------------- 连线：类型硬约束（图片 -> 提示词 | 图片组；图片组 -> 提示词；提示词 -> 图片[产出]） ----------------
+  /* ---------------- 连线：类型硬约束（规则见 workflow.canConnect 注释） ----------------
+   * 图片 -> 提示词 | 图片组；图片组 -> 提示词 | 图片组（中转聚合）；提示词 -> 图片（产出）。
    * 提示词节点顶部 target 仅允许一条入边：多图请经「图片组」聚合后连入。 */
-  const isValidConnection: IsValidConnection = useCallback((connection) => {
-    const source = nodesRef.current.find((n) => n.id === connection.source);
-    const target = nodesRef.current.find((n) => n.id === connection.target);
-    if (source?.type === "image") {
-      if (target?.type !== "prompt" && target?.type !== "group") return false;
-      if (target?.type === "prompt" && edgesRef.current.some((e) => e.target === connection.target)) {
-        return false;
-      }
-      return true;
-    }
-    if (source?.type === "group") {
-      if (target?.type !== "prompt") return false;
-      if (edgesRef.current.some((e) => e.target === connection.target)) return false;
-      return true;
-    }
-    // 产出边：提示词节点连到结果图片（生成结果自动连线，也可手动拖）
-    if (source?.type === "prompt") {
-      return target?.type === "image";
-    }
-    return false;
-  }, []);
+  const isValidConnection: IsValidConnection = useCallback(
+    (connection) => canConnect(nodesRef.current, edgesRef.current, connection),
+    [],
+  );
 
   const onConnect = useCallback(
     (connection: Connection) => {

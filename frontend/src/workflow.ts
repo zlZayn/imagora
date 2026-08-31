@@ -214,8 +214,42 @@ export function updateSelectedPromptOutputDirs(
   return { nodes: changedCount ? next : nodes, changedCount };
 }
 
+/** 连线类型硬约束（纯函数，CanvasPage 的 isValidConnection 委托实现）：
+ *  - 图片 → 提示词 / 图片组（提示词顶部仅一条入边，多图经图片组聚合）
+ *  - 图片组 → 提示词 / 图片组（组可作中转：连到组即把上游图片递归传递聚合进来）
+ *  - 提示词 → 图片（产出边：生成结果自动连线，也可手动拖）
+ *  组链可成环（自由画布不阻止，聚合计数由 computeCounts 的 visited 防环兜底）；
+ *  自环（source === target）一律拒绝。 */
+export function canConnect(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  connection: { source: string; target: string },
+): boolean {
+  if (!connection.source || !connection.target || connection.source === connection.target) return false;
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const source = byId.get(connection.source);
+  const target = byId.get(connection.target);
+  if (source?.type === "image") {
+    if (target?.type !== "prompt" && target?.type !== "group") return false;
+    if (target?.type === "prompt" && edges.some((e) => e.target === connection.target)) return false;
+    return true;
+  }
+  if (source?.type === "group") {
+    if (target?.type !== "prompt" && target?.type !== "group") return false;
+    if (target?.type === "prompt" && edges.some((e) => e.target === connection.target)) return false;
+    return true;
+  }
+  // 产出边：提示词节点连到结果图片（生成结果自动连线，也可手动拖）
+  if (source?.type === "prompt") {
+    return target?.type === "image";
+  }
+  return false;
+}
+
 /** 计算各图片节点的引用计数与分组节点成员数/总大小，
- *  返回 registryId -> refCount、groupId -> 成员数、groupId -> 总字节 */
+ *  返回 registryId -> refCount、groupId -> 成员数、groupId -> 总字节。
+ *  分组计数**递归聚合**：直接入边图片计入，嵌套图片组（组连组）透传其展开结果；
+ *  组链成环以 visited 剪枝（环上不重复计入、不死循环），自环同样被剪。 */
 export function computeCounts(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
@@ -236,17 +270,48 @@ export function computeCounts(
       groupSizes.set(node.id, 0);
     }
   }
+  // 入边索引：target -> [source...]（分组递归展开用，避免每层全量过滤）
+  const incoming = new Map<string, string[]>();
+  for (const edge of edges) {
+    const list = incoming.get(edge.target);
+    if (list) list.push(edge.source);
+    else incoming.set(edge.target, [edge.source]);
+  }
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  // 引用计数：图片每一条出边 +1（连提示词或分组都算引用）
   for (const edge of edges) {
     const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
     if (source?.type !== "image") continue;
-    // 图片被引用（连提示词或分组都算引用）
     refCounts.set(source.data.registryId, (refCounts.get(source.data.registryId) ?? 0) + 1);
-    if (target?.type === "group") {
-      groupCounts.set(edge.target, (groupCounts.get(edge.target) ?? 0) + 1);
-      groupSizes.set(edge.target, (groupSizes.get(edge.target) ?? 0) + (source.data.size ?? 0));
+  }
+  // 分组聚合：每个组各自以空栈展开（不记忆化——成环时缓存会污染环后节点的值）
+  const expand = (groupId: string, stack: Set<string>): { count: number; size: number } => {
+    if (stack.has(groupId)) return { count: 0, size: 0 };
+    const node = byId.get(groupId);
+    if (node?.type !== "group") return { count: 0, size: 0 };
+    stack.add(groupId);
+    let count = 0;
+    let size = 0;
+    for (const srcId of incoming.get(groupId) ?? []) {
+      const src = byId.get(srcId);
+      if (!src) continue;
+      if (src.type === "image") {
+        count += 1;
+        size += src.data.size ?? 0;
+      } else if (src.type === "group") {
+        const sub = expand(srcId, stack);
+        count += sub.count;
+        size += sub.size;
+      }
     }
+    stack.delete(groupId);
+    return { count, size };
+  };
+  for (const node of nodes) {
+    if (node.type !== "group") continue;
+    const { count, size } = expand(node.id, new Set());
+    groupCounts.set(node.id, count);
+    groupSizes.set(node.id, size);
   }
   return { refCounts, groupCounts, groupSizes };
 }
