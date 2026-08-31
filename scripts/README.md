@@ -11,6 +11,13 @@
 - 注意：**算法三处同源**（accent.ts / main.py / 本脚本），改色相/饱和/明度必须三处同步，勿单独改动；命令串含括号不便嵌入 cmd 的 for /f，故抽成独立脚本
 - 改后验证：`powershell -File scripts\window_accent.ps1 -WindowId 1` 对照 `python -c "import main; print(main.accent_for_window(1))"` 的 #rrggbb
 
+### [check_docs.py](check_docs.py)
+- 职责：文档完整性校验——相对 markdown 链接可解析 + 仪表盘测试计数与源码一致（后端数 `def test_`、前端数 `it()`，逐处比对 AGENTS / tests/README / ARCHITECTURE / frontend/README 的声明数字）
+- 危险级别：**低**（只读，不写任何文件）
+- 命令：`python scripts/check_docs.py`（`--quiet` 只出问题）；退出码 0=通过 / 1=有断链或计数漂移
+- 改后必测：`python scripts/check_docs.py` 自检（改文档后跑一次即可，无需单测——脚本本身即校验器）
+- 背景：计数分散多处人工同步易漏（曾出现 221→222 漏改、frontend 145 过时数字），脚本把「数字与源码一致」从纪律变成可执行检查
+
 ### [migrate.py](migrate.py)
 - 职责：存储迁移统一入口——注册表升级/重建/回填/迁目录（委托 `registry.migrate(apply, rebuild, backfill)`）、工作流升级（委托 `graphstore.migrate_workflows`）、历史账本回填（委托 `history.backfill_output_asset_ids`）
 - 危险级别：**高**（写文件）
@@ -23,6 +30,7 @@
 ```powershell
 .\.venv\Scripts\python.exe scripts/migrate.py           # 先看报告（dry-run）
 .\.venv\Scripts\python.exe scripts/migrate.py --apply   # 确认后再落地
+python scripts/check_docs.py                            # 改文档后校验链接 + 仪表盘计数
 ```
 
 ## 该目录特有坑

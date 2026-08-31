@@ -539,38 +539,25 @@ def run_generation(task: GenerationTask) -> None:
     dest = ""
     ok = False
     try:
-        if task.ref_bases:
-            # 复用已上传参考图（画布 / 参考图缓存），路径在提交时已校验
-            seq = next(_SEQ)
-            dest = os.path.join(out_dir, f"img2img_{stamp}_{seq:03d}.png")
-            messages.append(f"图生图 · 参考图 {len(task.ref_bases)} 张")
+        # 参考图二选一：ref_bases 为提交阶段已校验/落盘的路径（优先）；
+        # temp_bases 为 multipart 兜底（UploadFile 不可跨线程，提交线程先落临时文件）。
+        bases = task.ref_bases or task.temp_bases
+        img2img = bool(bases)
+        prefix = "img2img" if img2img else "txt2img"
+        dest = os.path.join(out_dir, f"{prefix}_{stamp}_{next(_SEQ):03d}.png")
+        messages.append(f"图生图 · 参考图 {len(bases)} 张" if img2img else "文生图")
+        if img2img:
             generate_image(
-                prompt=task.prompt, images=task.ref_bases, size=task.size,
+                prompt=task.prompt, images=bases, size=task.size,
                 quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {dest}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
-            messages.append(f"已保存 · {dest}（{task.size}）")
-        elif task.temp_bases:
-            # multipart 兜底：底图已在提交线程落临时文件（UploadFile 不可跨线程）
-            seq = next(_SEQ)
-            dest = os.path.join(out_dir, f"img2img_{stamp}_{seq:03d}.png")
-            messages.append(f"图生图 · 参考图 {len(task.temp_bases)} 张")
-            generate_image(
-                prompt=task.prompt, images=task.temp_bases, size=task.size,
-                quality=task.quality, output_format="png", output_path=dest,
-            )
-            results.append({"status": "ok", "message": f"已保存: {dest}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
-            messages.append(f"已保存 · {dest}（{task.size}）")
         else:
-            seq = next(_SEQ)
-            dest = os.path.join(out_dir, f"txt2img_{stamp}_{seq:03d}.png")
-            messages.append("文生图")
             generate_image(
                 prompt=task.prompt, image_path=None, size=task.size,
                 quality=task.quality, output_format="png", output_path=dest,
             )
-            results.append({"status": "ok", "message": f"已保存: {dest}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
-            messages.append(f"已保存 · {dest}（{task.size}）")
+        results.append({"status": "ok", "message": f"已保存: {dest}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+        messages.append(f"已保存 · {dest}（{task.size}）")
         ok = True
     except Exception as e:
         msg = format_error(e)
