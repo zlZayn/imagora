@@ -411,12 +411,51 @@ describe("group chain counts", () => {
       edge("gA", "gC"), edge("gB", "gC"),
     ];
 
-    const { groupCounts, groupSizes } = computeCounts(nodes, edges);
+    const { groupCounts, groupSizes, groupDups } = computeCounts(nodes, edges);
 
     expect(groupCounts.get("gA")).toBe(2);
     expect(groupCounts.get("gB")).toBe(3);
     expect(groupCounts.get("gC")).toBe(5);
     expect(groupSizes.get("gC")).toBe(50); // 每张图 size=10
+    expect(groupDups.get("gA")).toBe(0);
+    expect(groupDups.get("gB")).toBe(0);
+    expect(groupDups.get("gC")).toBe(0);
+  });
+
+  it("reports duplicates when the same image reaches a group via multiple paths", () => {
+    const shared = imageNode("shared");
+    const onlyA = imageNode("onlyA");
+    const onlyB = imageNode("onlyB");
+    const groupA = groupNode("gA");
+    const groupB = groupNode("gB");
+    const groupC = groupNode("gC");
+    const nodes = [shared, onlyA, onlyB, groupA, groupB, groupC];
+    // shared 同时进 gA 与 gB，两组合并进 gC：条目 4、唯一 3、重复 1
+    const edges = [
+      edge("shared", "gA"), edge("onlyA", "gA"),
+      edge("shared", "gB"), edge("onlyB", "gB"),
+      edge("gA", "gC"), edge("gB", "gC"),
+    ];
+
+    const { groupCounts, groupDups } = computeCounts(nodes, edges);
+
+    expect(groupCounts.get("gC")).toBe(4);
+    expect(groupDups.get("gC")).toBe(1);
+    // 上游组各自内部无重复（shared 的重复只在合并后的 gC 暴露）
+    expect(groupDups.get("gA")).toBe(0);
+    expect(groupDups.get("gB")).toBe(0);
+  });
+
+  it("detects direct plus transitively duplicated images in one group", () => {
+    const shared = imageNode("shared");
+    const nodes = [shared, groupNode("gSub"), groupNode("gTop")];
+    // shared 既直接进 gTop，又经 gSub 进 gTop：条目 2、唯一 1
+    const edges = [edge("shared", "gTop"), edge("shared", "gSub"), edge("gSub", "gTop")];
+
+    const { groupCounts, groupDups } = computeCounts(nodes, edges);
+
+    expect(groupCounts.get("gTop")).toBe(2);
+    expect(groupDups.get("gTop")).toBe(1);
   });
 
   it("counts direct images plus nested group images in a mixed group", () => {
@@ -436,11 +475,15 @@ describe("group chain counts", () => {
       edge("gB", "gC"),
     ];
 
-    const { groupCounts } = computeCounts(nodes, edges);
+    const { groupCounts, groupDups } = computeCounts(nodes, edges);
 
     expect(groupCounts.get("gA")).toBe(2);
     expect(groupCounts.get("gB")).toBe(2);
     expect(groupCounts.get("gC")).toBe(2);
+    // 环剪枝不引入重复口径（x1/x2 每个组只计一次）
+    expect(groupDups.get("gA")).toBe(0);
+    expect(groupDups.get("gB")).toBe(0);
+    expect(groupDups.get("gC")).toBe(0);
   });
 });
 

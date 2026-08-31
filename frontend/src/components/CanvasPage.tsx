@@ -387,7 +387,7 @@ export default function CanvasPage({
 
   /* ---------------- 引用计数 / 分组计数：由连线推导，随 edges 变化刷新 ---------------- */
   useEffect(() => {
-    const { refCounts, groupCounts, groupSizes } = computeCounts(nodes, edges);
+    const { refCounts, groupCounts, groupSizes, groupDups } = computeCounts(nodes, edges);
     setNodes((nds) => {
       let changed = false;
       const next = nds.map((n) => {
@@ -401,9 +401,15 @@ export default function CanvasPage({
         if (n.type === "group") {
           const count = groupCounts.get(n.id) ?? 0;
           const size = groupSizes.get(n.id) ?? 0;
-          if (n.data.imageCount !== count || n.data.totalSize !== size) {
+          const duplicate = groupDups.get(n.id) ?? 0;
+          const duplicateCount = duplicate > 0 ? duplicate : undefined;
+          if (
+            n.data.imageCount !== count ||
+            n.data.totalSize !== size ||
+            n.data.duplicateCount !== duplicateCount
+          ) {
             changed = true;
-            return { ...n, data: { ...n.data, imageCount: count, totalSize: size } };
+            return { ...n, data: { ...n.data, imageCount: count, totalSize: size, duplicateCount } };
           }
         }
         return n;

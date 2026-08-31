@@ -135,10 +135,12 @@ export interface CanvasPromptNodeData {
 /** 画布图片组节点数据（聚合多张图片后统一连到提示词节点管理） */
 export interface CanvasGroupNodeData {
   name: string;
-  /** 组内图片数（由入边图片数推导） */
+  /** 组内图片条目数（含经组链多路径重复的条目；去重口径见 duplicateCount） */
   imageCount: number;
-  /** 组内图片总大小（字节，由入边图片 size 合计） */
+  /** 组内图片总大小（字节，与 imageCount 同口径） */
   totalSize: number;
+  /** 重复条目数（>0 时组卡显示「去重实际 N 张」；运行时派生，不持久化） */
+  duplicateCount?: number;
   [key: string]: unknown;
 }
 

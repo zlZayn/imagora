@@ -178,6 +178,36 @@ describe("LOD abstract mode", () => {
     expect(screen.queryByRole("button", { name: "删除图片组" })).toBeNull();
   });
 
+  it("shows a dedupe hint on the group card when the chain contains duplicates", () => {
+    const props = {
+      id: "group-1",
+      type: "group",
+      data: { name: "图片组", imageCount: 5, totalSize: 5 * 1024 * 1024, duplicateCount: 2 },
+      selected: false,
+      onDelete: vi.fn(),
+    } as unknown as ComponentProps<typeof GroupNode>;
+
+    render(<ReactFlowProvider><GroupNode {...props} /></ReactFlowProvider>);
+
+    expect(screen.getByText("5 张图")).toBeTruthy();
+    expect(screen.getByText("去重实际 3 张")).toBeTruthy();
+  });
+
+  it("omits the dedupe hint when the group has no duplicates", () => {
+    const props = {
+      id: "group-1",
+      type: "group",
+      data: { name: "图片组", imageCount: 5, totalSize: 5 * 1024 * 1024 },
+      selected: false,
+      onDelete: vi.fn(),
+    } as unknown as ComponentProps<typeof GroupNode>;
+
+    render(<ReactFlowProvider><GroupNode {...props} /></ReactFlowProvider>);
+
+    expect(screen.getByText("5 张图")).toBeTruthy();
+    expect(screen.queryByText(/去重实际/)).toBeNull();
+  });
+
   it("renders a failed prompt status without leaking the failure message into the card", () => {
     const props = {
       id: "prompt-1",
