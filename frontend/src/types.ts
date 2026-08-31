@@ -106,7 +106,7 @@ export interface CanvasImageNodeData {
   url?: string;
   size: number;
   ext: string;
-  /** 被多少个提示词节点引用（由入边数推导） */
+  /** 被多少个提示词节点引用（引用溯源：图片数据沿组链最终到达的提示词数，非直接边数） */
   refCount: number;
   /** 工作流加载时文件缺失（红框提示） */
   missing?: boolean;

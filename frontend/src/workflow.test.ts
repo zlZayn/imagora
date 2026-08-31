@@ -490,6 +490,70 @@ describe("group chain counts", () => {
   });
 });
 
+describe("image reference tracing", () => {
+  it("counts only prompts the image data ultimately flows to (group chains included)", () => {
+    const a1 = imageNode("a1");
+    const b1 = imageNode("b1");
+    const c1 = imageNode("c1");
+    const d1 = imageNode("d1");
+    const gA = groupNode("gA");
+    const gB = groupNode("gB");
+    const gC = groupNode("gC");
+    const gD = groupNode("gD");
+    const nodes = [a1, b1, c1, d1, gA, gB, gC, gD, promptNode("p1"), promptNode("p2")];
+    const edges = [
+      edge("a1", "gA"), edge("gA", "p1"),                  // a1 经组到达 p1 → 引用
+      edge("b1", "gB"),                                     // b1 只进组、组未接提示词 → 不引用
+      edge("c1", "p1"),                                     // c1 直接引用 p1
+      edge("d1", "gC"), edge("gC", "gD"), edge("gD", "p2"), // d1 经两级组链到达 p2 → 引用
+    ];
+
+    const { refCounts } = computeCounts(nodes, edges);
+
+    expect(refCounts.get("a1")).toBe(1);
+    expect(refCounts.get("b1")).toBe(0);
+    expect(refCounts.get("c1")).toBe(1);
+    expect(refCounts.get("d1")).toBe(1);
+  });
+
+  it("dedupes one prompt reached via multiple paths and ignores output edges", () => {
+    const base = imageNode("base");
+    const out = imageNode("out");
+    const g = groupNode("g");
+    const nodes = [base, out, g, promptNode("p1")];
+    // base → p1 直接 + base → g → p1：同一提示词只算一次；p1 → out 是产出边，不影响引用
+    const edges = [edge("base", "p1"), edge("base", "g"), edge("g", "p1"), edge("p1", "out")];
+
+    const { refCounts } = computeCounts(nodes, edges);
+
+    expect(refCounts.get("base")).toBe(1);
+    expect(refCounts.get("out")).toBe(0);
+  });
+
+  it("counts two references when an image feeds two prompts", () => {
+    const shared = imageNode("shared");
+    const nodes = [shared, promptNode("p1"), promptNode("p2")];
+    const edges = [edge("shared", "p1"), edge("shared", "p2")];
+
+    const { refCounts } = computeCounts(nodes, edges);
+
+    expect(refCounts.get("shared")).toBe(2);
+  });
+
+  it("traces through group cycles without hanging and without cross-flow", () => {
+    const w1 = imageNode("w1");
+    const gA = groupNode("gA");
+    const gB = groupNode("gB");
+    const nodes = [w1, gA, gB, promptNode("p1")];
+    // w1 → gA；gA ↔ gB 成环；gB → p1：环路剪掉后仍能正确定位 p1
+    const edges = [edge("w1", "gA"), edge("gA", "gB"), edge("gB", "gA"), edge("gB", "p1")];
+
+    const { refCounts } = computeCounts(nodes, edges);
+
+    expect(refCounts.get("w1")).toBe(1);
+  });
+});
+
 describe("animation class helpers", () => {
   it("strips runtime animation classes from node className on load", () => {
     const node = { ...imageNode("a"), className: "node-enter enter-delay-2 node-related" } as WorkflowNode;

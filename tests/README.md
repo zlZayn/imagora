@@ -40,12 +40,12 @@ cd frontend; npm test
 | [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
 | [`test_main_cli.py`](test_main_cli.py) | 25 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ config 输出 |
 
-## 文件索引（前端 vitest，共 165，位于 frontend/src/）
+## 文件索引（前端 vitest，共 169，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
 | [`layout.test.ts`](../frontend/src/layout.test.ts) | 29 | 分层布局 / 复杂连接 / 局部整理不漂移 / 多对多摊平 |
-| [`workflow.test.ts`](../frontend/src/workflow.test.ts) | 44 | 自动连线 / 动画类 / 连线约束 / 落点阶梯 / 节点构建器 / **updatePromptNode 幂等（无变化不产生新引用，防 running 逐秒重渲染）** / **canConnect 连线规则（组连组中转）** / **computeCounts 组链递归聚合 + 去重口径（重复条目数）+ 防环** / **collectIncomingImages 嵌套组链展开** |
+| [`workflow.test.ts`](../frontend/src/workflow.test.ts) | 48 | 自动连线 / 动画类 / 连线约束 / 落点阶梯 / 节点构建器 / **updatePromptNode 幂等（无变化不产生新引用，防 running 逐秒重渲染）** / **canConnect 连线规则（组连组中转）** / **computeCounts 组链递归聚合 + 去重口径（重复条目数）+ 防环** / **引用溯源（数据最终流到的提示词数）** / **collectIncomingImages 嵌套组链展开** |
 | [`canvasDrop.test.ts`](../frontend/src/canvasDrop.test.ts) | 14 | 拖拽意图解析 / 文件识别 / 数量统计 / 示意文案 / isInsideRect |
 | [`previewZoom.test.ts`](../frontend/src/previewZoom.test.ts) | 5 | 缩放范围 / 平移夹紧 |
 | [`canvasHistory.test.ts`](../frontend/src/canvasHistory.test.ts) | 2 | 撤销 / 恢复 / 新分支清空 |

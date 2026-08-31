@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（165 用例）
+npm test           # vitest run（169 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -54,7 +54,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 ### 纯函数模块（零 UI 依赖，全部有单测；改后跑 `npm test`，无需同步文档）
 
 ### [workflow.ts](src/workflow.ts)
-- 职责：节点构建（`buildImageNode`/`buildPromptNode`/`buildGroupNode`）、动画类（`withEnterAnim`/`stripAnimClasses`）、连线约束（`canConnect` 纯函数：图片→提示词/图片组、图片组→提示词/**图片组**中转聚合、提示词→产出）、`computeCounts`（分组计数**递归**展开组链，**去重后唯一口径** + 重复条目数，防环）、落点阶梯（`staggerCreatePosition`）、`isImageFile`、`canvasEntriesToNodes`
+- 职责：节点构建（`buildImageNode`/`buildPromptNode`/`buildGroupNode`）、动画类（`withEnterAnim`/`stripAnimClasses`）、连线约束（`canConnect` 纯函数：图片→提示词/图片组、图片组→提示词/**图片组**中转聚合、提示词→产出）、`computeCounts`（分组计数**递归**展开组链，**去重后唯一口径** + 重复条目数，防环；**引用计数溯源**——图片数据最终流到的提示词数）、落点阶梯（`staggerCreatePosition`）、`isImageFile`、`canvasEntriesToNodes`
 - 被谁依赖：CanvasPage、CanvasNodes、PromptImportModal
 - 注意：`CREATE_STAGGER_STEP`/`CREATE_STAGGER_RADIUS` 是落点阶梯常量
 

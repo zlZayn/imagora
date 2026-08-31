@@ -248,6 +248,11 @@ export function canConnect(
 
 /** 计算各图片节点的引用计数与分组节点成员数/总大小，
  *  返回 registryId -> refCount、groupId -> 成员数、groupId -> 总字节、groupId -> 重复条目数。
+ *  引用计数 = **引用溯源**：图片数据最终流到的提示词数（N 处 = N 个提示词引用该图）。
+ *  沿参考数据流方向（图片/组 → … → 提示词）从图片正向遍历，经图片组链中转到达也算，
+ *  同一提示词多路径去重、组环 visited 剪（环上不重复计入、不死循环）；
+ *  只连到图片组、组链尚未接提示词的图片引用为 0；到达提示词即收集并停止扩展
+ *  （提示词→结果图片是产出方向，不属于参考流，不反向追溯）。
  *  分组计数**递归聚合**：直接入边图片计入，嵌套图片组（组连组）透传其展开结果；
  *  组链成环以 visited 剪枝（环上不重复计入、不死循环），自环同样被剪。
  *  **去重口径**：groupCounts / groupSizes 是**去重后**的唯一口径（同一张图按 registryId
@@ -278,17 +283,37 @@ export function computeCounts(
   }
   // 入边索引：target -> [source...]（分组递归展开用，避免每层全量过滤）
   const incoming = new Map<string, string[]>();
+  // 出边索引：source -> [target...]（引用溯源用）
+  const outEdges = new Map<string, string[]>();
   for (const edge of edges) {
-    const list = incoming.get(edge.target);
-    if (list) list.push(edge.source);
+    const inList = incoming.get(edge.target);
+    if (inList) inList.push(edge.source);
     else incoming.set(edge.target, [edge.source]);
+    const outList = outEdges.get(edge.source);
+    if (outList) outList.push(edge.target);
+    else outEdges.set(edge.source, [edge.target]);
   }
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  // 引用计数：图片每一条出边 +1（连提示词或分组都算引用）
-  for (const edge of edges) {
-    const source = byId.get(edge.source);
-    if (source?.type !== "image") continue;
-    refCounts.set(source.data.registryId, (refCounts.get(source.data.registryId) ?? 0) + 1);
+  // 引用溯源：从每张图片沿参考数据流方向 BFS，收集可达提示词集合（visited 防组环，
+  // 提示词/图片节点不扩展出边——那属于产出方向，反向追溯会串流到无关卡片）。
+  for (const node of nodes) {
+    if (node.type !== "image") continue;
+    const seen = new Set<string>([node.id]);
+    const prompts = new Set<string>();
+    const stack = [...(outEdges.get(node.id) ?? [])];
+    while (stack.length) {
+      const nextId = stack.pop()!;
+      if (seen.has(nextId)) continue;
+      seen.add(nextId);
+      const next = byId.get(nextId);
+      if (!next) continue;
+      if (next.type === "prompt") {
+        prompts.add(nextId);
+      } else if (next.type === "group") {
+        stack.push(...(outEdges.get(nextId) ?? []));
+      }
+    }
+    refCounts.set(node.data.registryId, prompts.size);
   }
   // registryId -> 单节点大小（画布同一文件只有一个节点，无冲突）
   const sizeById = new Map<string, number>();
