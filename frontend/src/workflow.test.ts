@@ -439,22 +439,25 @@ describe("group chain counts", () => {
 
     const { groupCounts, groupDups } = computeCounts(nodes, edges);
 
-    expect(groupCounts.get("gC")).toBe(4);
+    // 去重口径：gC 计数为唯一张数（3），重复 1 张由 groupDups 报告
+    expect(groupCounts.get("gC")).toBe(3);
     expect(groupDups.get("gC")).toBe(1);
     // 上游组各自内部无重复（shared 的重复只在合并后的 gC 暴露）
+    expect(groupCounts.get("gA")).toBe(2);
     expect(groupDups.get("gA")).toBe(0);
+    expect(groupCounts.get("gB")).toBe(2);
     expect(groupDups.get("gB")).toBe(0);
   });
 
   it("detects direct plus transitively duplicated images in one group", () => {
     const shared = imageNode("shared");
     const nodes = [shared, groupNode("gSub"), groupNode("gTop")];
-    // shared 既直接进 gTop，又经 gSub 进 gTop：条目 2、唯一 1
+    // shared 既直接进 gTop，又经 gSub 进 gTop：原始条目 2、去重后 1、重复 1
     const edges = [edge("shared", "gTop"), edge("shared", "gSub"), edge("gSub", "gTop")];
 
     const { groupCounts, groupDups } = computeCounts(nodes, edges);
 
-    expect(groupCounts.get("gTop")).toBe(2);
+    expect(groupCounts.get("gTop")).toBe(1);
     expect(groupDups.get("gTop")).toBe(1);
   });
 

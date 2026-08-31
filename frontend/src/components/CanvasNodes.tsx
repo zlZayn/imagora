@@ -185,16 +185,15 @@ export function GroupNode({
   onDelete,
 }: NodeProps<GroupFlowNode> & GroupNodeExtraProps & { lod?: boolean }) {
   const mb = data.totalSize > 0 ? (data.totalSize / (1024 * 1024)).toFixed(1) : "0.0";
-  // 组链聚合去重提示：条目数含重复时（同一张图经多条路径到达），显示实际唯一张数
+  // 去重标签：组链聚合含重复图片时（同一张图经多条路径到达），数字已是去重后实际张数，仅打标提示
   const dup = data.duplicateCount ?? 0;
-  const actual = data.imageCount - dup;
-  const dupHint = dup > 0 ? (
-    <div
-      className="mt-0.5 text-[10px] font-medium text-amber-600"
-      title={`原 ${data.imageCount} 张（含 ${dup} 张重复），去重后实际 ${actual} 张`}
+  const dupBadge = dup > 0 ? (
+    <span
+      className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium leading-none text-amber-700"
+      title={`已去重 ${dup} 张重复图片`}
     >
-      去重实际 {actual} 张
-    </div>
+      去重
+    </span>
   ) : null;
   // LOD 抽象模式：去掉 hover 删除栏，只保留组本体（组节点本身已足够轻量）
   if (lod) {
@@ -217,7 +216,7 @@ export function GroupNode({
             {data.imageCount} 张图
           </div>
           <div className="mt-1 text-base text-neutral-500">{mb} MB</div>
-          {dupHint}
+          {dupBadge}
         </div>
       </div>
     );
@@ -247,7 +246,7 @@ export function GroupNode({
           {data.imageCount} 张图
         </div>
         <div className="mt-1 text-base text-neutral-500">{mb} MB</div>
-        {dupHint}
+        {dupBadge}
       </div>
     </div>
   );

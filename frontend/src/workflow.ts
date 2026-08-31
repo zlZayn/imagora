@@ -250,9 +250,9 @@ export function canConnect(
  *  返回 registryId -> refCount、groupId -> 成员数、groupId -> 总字节、groupId -> 重复条目数。
  *  分组计数**递归聚合**：直接入边图片计入，嵌套图片组（组连组）透传其展开结果；
  *  组链成环以 visited 剪枝（环上不重复计入、不死循环），自环同样被剪。
- *  **去重提示**：同一张图（registryId）经多条路径到达同一组时（如图同时连 G1/G2 再并入 G3），
- *  条目数重复计入（groupCounts 原始口径），groupDups = 原始 - 唯一张数——与
- *  collectIncomingImages 交给提示词的实际唯一图片数对齐，UI 据此显示「去重实际 N 张」。 */
+ *  **去重口径**：groupCounts / groupSizes 是**去重后**的唯一口径（同一张图按 registryId
+ *  经多条路径到达只算一次——与 collectIncomingImages 交给提示词的实际图片一致）；
+ *  groupDups = 原始条目 - 唯一张数，>0 时 UI 在组卡标「去重」提示。 */
 export function computeCounts(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
@@ -290,43 +290,42 @@ export function computeCounts(
     if (source?.type !== "image") continue;
     refCounts.set(source.data.registryId, (refCounts.get(source.data.registryId) ?? 0) + 1);
   }
+  // registryId -> 单节点大小（画布同一文件只有一个节点，无冲突）
+  const sizeById = new Map<string, number>();
+  for (const node of nodes) {
+    if (node.type === "image") sizeById.set(node.data.registryId, node.data.size ?? 0);
+  }
   // 分组聚合：每个组各自以空栈展开（不记忆化——成环时缓存会污染环后节点的值）；
   // 同趟收集 registryId 列表供去重口径使用。
-  const expand = (groupId: string, stack: Set<string>): {
-    count: number;
-    size: number;
-    ids: string[];
-  } => {
-    if (stack.has(groupId)) return { count: 0, size: 0, ids: [] };
+  const expand = (groupId: string, stack: Set<string>): { count: number; ids: string[] } => {
+    if (stack.has(groupId)) return { count: 0, ids: [] };
     const node = byId.get(groupId);
-    if (node?.type !== "group") return { count: 0, size: 0, ids: [] };
+    if (node?.type !== "group") return { count: 0, ids: [] };
     stack.add(groupId);
     let count = 0;
-    let size = 0;
     const ids: string[] = [];
     for (const srcId of incoming.get(groupId) ?? []) {
       const src = byId.get(srcId);
       if (!src) continue;
       if (src.type === "image") {
         count += 1;
-        size += src.data.size ?? 0;
         ids.push(src.data.registryId);
       } else if (src.type === "group") {
         const sub = expand(srcId, stack);
         count += sub.count;
-        size += sub.size;
         ids.push(...sub.ids);
       }
     }
     stack.delete(groupId);
-    return { count, size, ids };
+    return { count, ids };
   };
   for (const node of nodes) {
     if (node.type !== "group") continue;
-    const { count, size, ids } = expand(node.id, new Set());
-    groupCounts.set(node.id, count);
-    groupSizes.set(node.id, size);
-    groupDups.set(node.id, count - new Set(ids).size);
+    const { count, ids } = expand(node.id, new Set());
+    const unique = new Set(ids);
+    groupCounts.set(node.id, unique.size);
+    groupSizes.set(node.id, Array.from(unique).reduce((sum, rid) => sum + (sizeById.get(rid) ?? 0), 0));
+    groupDups.set(node.id, count - unique.size);
   }
   return { refCounts, groupCounts, groupSizes, groupDups };
 }
