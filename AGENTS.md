@@ -45,6 +45,7 @@
 | 想了解 | 去读 |
 | --- | --- |
 | 设计决策 / 数据流 / 契约 / 防错清单 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 决策记录（为什么/替代方案） | [.agents/notes/](.agents/notes/) |
 | core/ 每文件职责 / 导出 / 依赖 / 改后必测 | [core/README.md](core/README.md) |
 | frontend/ 纯函数 / hooks / 组件 / E2E 前置 | [frontend/README.md](frontend/README.md) |
 | 测试文件 ↔ 被测代码映射 / 特殊坑 | [tests/README.md](tests/README.md) |
