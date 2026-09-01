@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 const COPIED_HOLD_MS = 1200;
 
 /**
- * 路径词条：点击即复制完整路径（仿 D:\Mine\My API.html 的可点复制样式）。
+ * 路径词条：点击即复制完整路径（仿文件管理器路径栏的可点复制样式）。
  * 点击后不替换文字（避免按钮宽度跳动），改用边框/底色短暂高亮反馈 1.2s。
  */
 export default function CopyChip({ path }: { path: string }) {

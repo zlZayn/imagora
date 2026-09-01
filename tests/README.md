@@ -15,7 +15,7 @@ cd frontend; npm test
 
 ## 该目录特有坑
 
-- **必须 `--basetemp=<ASCII 临时目录>`**：工作目录含中文，不指定会触发 tmp_path 挂死（已知问题，勿忘）
+- **必须 `--basetemp=<ASCII 可写目录>`**：默认 `%TEMP%\pytest-of-speak` 权限异常（WinError 5），不指定 setup 即报错（已知问题，勿忘）
 - **5 个 Windows 专属测试**：netstat 端口探测 / powershell 父进程链 / C: 绝对路径 / 跨盘相对化——只在 Windows 通过；CI 相关 Job 必须 `windows-latest`
 - 路由测试直接 `from server import ...`（import 即建 FastAPI app，属预期）
 - **测试数字是 AGENTS 仪表盘数据源**：增/删测试用例必须同步 AGENTS「当前仪表盘」；数字意外变化（非新增导致）必须报告维护者

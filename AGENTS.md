@@ -34,8 +34,7 @@
 
 ## 活跃坑 / 注意
 
-- pytest 必须带 `--basetemp` 指向 ASCII 临时目录（工作目录含中文触发 tmp_path 坑；CI 用 `${{ runner.temp }}`，见 [.github/workflows/ci.yml](.github/workflows/ci.yml)）
-- 本机 `.venv` 的 python.exe 启动报 0xC0000135（DLL 缺失，pyvenv.cfg home 指向 C:\Windows）——速改为 `C:\Users\speak\AppData\Local\Programs\Python\Python312\python.exe` + `$env:PYTHONPATH=<项目>\.venv\Lib\site-packages` 跑 pytest/ruff（依赖已装在 site-packages，无需重装）
+- pytest 必须带 `--basetemp` 指向 ASCII 可写目录（默认 `%TEMP%\pytest-of-speak` 权限异常报 WinError 5；CI 用 `${{ runner.temp }}`，见 [.github/workflows/ci.yml](.github/workflows/ci.yml)）
 - [server.py](server.py) LSP 报「Argument missing for parameter id」是误报（GenerationTask.id 有 default_factory），勿修
 - `dist/` git 忽略：改前端后 `npm run build` 才在浏览器生效；CI/E2E 须自建（见 [frontend/README.md](frontend/README.md)）
 - E2E 只测画布交互、不触发生成链路；未来覆盖「生成→回流」前必须先 mock [core/api.py](core/api.py) 的 `generate_image`（ci.yml 注释 TODO）

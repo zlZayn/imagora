@@ -11,7 +11,7 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 ## 该目录特有坑
 
 - `canvas.py` 只是兼容 shim（星号 re-export registry + graphstore），**不在这里加新逻辑**
-- pytest 必须加 `--basetemp=<ASCII 临时目录>`（工作目录含中文，默认 tmp 路径会挂）
+- pytest 必须加 `--basetemp=<ASCII 可写目录>`（默认 `%TEMP%\pytest-of-speak` 权限异常报 WinError 5）
 - 单测不真调上游：`api.py` 走 monkeypatch mock 保持接口可注入（纪律细则见 [AGENTS.md](AGENTS.md)）
 - 展示与导入同源防错条（ARCHITECTURE 9.7）：`resolve_history_asset_path` 在 `server.py`，不在 core
 
