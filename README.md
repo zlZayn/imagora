@@ -2,6 +2,16 @@
 
 AI 生图工作台：OpenAI 兼容接口，文生图 / 图生图一体。面向网店商品图、详情页图批量生成，支持无限画布工作流编排。
 
+## 预览 / Preview
+
+![无限画布工作流](screenshots/canvas-overview.png)
+
+无限画布：图片 / 提示词节点、连线、结果回流。
+
+| 经典表单 | 多窗口并行 |
+| --- | --- |
+| ![经典表单页](screenshots/form-view.png) | ![多窗口并行菜单](screenshots/terminal-window.png) |
+
 ## 它能做什么
 
 | 场景 | 说明 |
