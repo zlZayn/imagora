@@ -38,7 +38,7 @@ function AspectImage({ url, alt }: { url: string; alt: string }) {
  * 单击在新窗口打开原图；双击打开放大预览（ZoomModal 与画布/生产历史同组件、同注册表 URL）。
  * 单击/双击用 250ms 延时区分（useImageZoom 公共 hook）：第二击到达即取消单击的「开原图」，再触发双击放大。
  */
-export default function Gallery({ items }: GalleryProps) {
+export function Gallery({ items }: GalleryProps) {
   const images = items.filter((item): item is ResultItem & { url: string } => Boolean(item.url));
   const { zoom, handleClick, handleDoubleClick, closeZoom } = useImageZoom();
 

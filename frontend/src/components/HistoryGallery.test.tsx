@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import HistoryGallery from "./HistoryGallery";
+import { HistoryGallery } from "./HistoryGallery";
 import { generationHistory, type GenerationHistoryItem } from "../api";
 
 // 历史记录走后端 API，jsdom 无真实后端，mock 掉网络层

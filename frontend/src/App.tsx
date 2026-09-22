@@ -5,12 +5,12 @@ import { accentForWindow } from "./accent";
 import type { AppConfig, GenerationTaskStatus, RefItem, ResultItem } from "./types";
 import { errMessage, generatingLabel } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
-import UploadZone from "./components/UploadZone";
-import FolderPicker from "./components/FolderPicker";
-import ResultPanel from "./components/ResultPanel";
-import LogLine from "./components/LogLine";
-import Select from "./components/Select";
-import CanvasPage from "./components/CanvasPage";
+import { UploadZone } from "./components/UploadZone";
+import { FolderPicker } from "./components/FolderPicker";
+import { ResultPanel } from "./components/ResultPanel";
+import { LogLine } from "./components/LogLine";
+import { Select } from "./components/Select";
+import { CanvasPage } from "./components/CanvasPage";
 
 const WIN_KEY = "aig-win";
 
@@ -252,7 +252,7 @@ function TitleBar({
   );
 }
 
-export default function App() {
+export function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [windowId, setWindowId] = useState<number | null>(null);
 

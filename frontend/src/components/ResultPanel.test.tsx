@@ -3,7 +3,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import ResultPanel from "./ResultPanel";
+import { ResultPanel } from "./ResultPanel";
 import type { ResultItem } from "../types";
 
 const META = { refCount: 0, size: "1024x1024", quality: "high", outputDir: "C:/out" };

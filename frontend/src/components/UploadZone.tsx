@@ -15,7 +15,7 @@ interface UploadZoneProps {
  * 添加即上传服务端（大图不走 sessionStorage，继承/生成只引用路径），
  * 每张显示文件名与大小；已选图片显示缩略图列表，可单独移除（移除同步删服务端文件）。
  */
-export default function UploadZone({ refs, onChange }: UploadZoneProps) {
+export function UploadZone({ refs, onChange }: UploadZoneProps) {
   const [dragging, setDragging] = useState(false);
   /** 正在移除的文件标识：先播 fade-out，动画结束才真正移除 */
   const [removing, setRemoving] = useState<string | null>(null);
