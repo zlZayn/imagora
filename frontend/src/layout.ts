@@ -203,9 +203,9 @@ interface LayoutRun {
   edges: WorkflowEdge[];
   /** 需要输出位置的节点 id（其余为只读锚点） */
   moves: ReadonlySet<string>;
-  origin?: { x: number; y: number };
+  origin?: { x: number; y: number } | undefined;
   /** 选中包围盒宽度：仅"无锚点的局部整理"传入——布局后整体中心对齐到该宽度中心（重复整理幂等不漂移） */
-  boundsWidth?: number;
+  boundsWidth?: number | undefined;
 }
 
 /** 布局一次：分层 → 两趟逐层放置（pass A 浅→深定群顺序，pass B 深→浅按后继锚定）→ 无锚点时整体中心对齐。
