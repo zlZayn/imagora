@@ -83,7 +83,7 @@ export function ImageNode({
   onReplace,
   onDelete,
   onZoom,
-}: NodeProps<ImageFlowNode> & ImageNodeExtraProps & { lod?: boolean }) {
+}: NodeProps<ImageFlowNode> & ImageNodeExtraProps & { lod?: boolean | undefined }) {
   // lod / normal 两分支共用的三段片段（原为两份逐字相同的内联 JSX）
   const missingBadge = data.missing ? (
     <span className="absolute right-1 top-1 z-20 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
@@ -173,7 +173,7 @@ export function GroupNode({
   selected,
   lod,
   onDelete,
-}: NodeProps<GroupFlowNode> & GroupNodeExtraProps & { lod?: boolean }) {
+}: NodeProps<GroupFlowNode> & GroupNodeExtraProps & { lod?: boolean | undefined }) {
   const mb = data.totalSize > 0 ? (data.totalSize / (1024 * 1024)).toFixed(1) : "0.0";
   // 去重标签：组链聚合含重复图片时（同一张图经多条路径到达），数字已是去重后实际张数，仅打标提示；
   // 配色跟随动态主题色（bg-brand/10 + text-brand，与组卡 bg-brand/5 同族，不引入孤立色相）
@@ -241,7 +241,7 @@ type PromptNodeProps = NodeProps<PromptFlowNode> & PromptNodeExtraProps;
 
 /* 秒数文字：以 startedAtMs 锚定、组件内部每秒自计时刷新——只重渲染自身文字，
  * 不触碰状态灯 / 卡片其余部分（原逐秒写节点 data 导致悬停闪烁）。 */
-function ElapsedText({ startedAtMs }: { startedAtMs?: number }) {
+function ElapsedText({ startedAtMs }: { startedAtMs?: number | undefined }) {
   const [seconds, setSeconds] = useState(() =>
     startedAtMs ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)) : 0,
   );
@@ -322,7 +322,7 @@ export const PromptNode = memo(function PromptNode({
   onDelete,
   sizeOptions,
   qualityOptions,
-}: PromptNodeProps & { lod?: boolean }) {
+}: PromptNodeProps & { lod?: boolean | undefined }) {
   const running = data.status === "running";
   const queued = data.status === "queued";
   const busy = running || queued;

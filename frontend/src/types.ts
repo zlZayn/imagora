@@ -124,13 +124,13 @@ export interface CanvasPromptNodeData {
   outputDir: string;
   status: "idle" | "queued" | "running" | "done" | "failed";
   /** 粘贴导入生成的提示词卡片标题（手动建卡时缺省） */
-  title?: string;
+  title?: string | undefined;
   /** 生成开始锚点（epoch 毫秒）：running 转换时写入一次；秒数文字由组件自计时刷新，不逐秒写节点 */
-  startedAtMs?: number;
+  startedAtMs?: number | undefined;
   /** 成功生成的张数（done 时显示） */
-  resultCount?: number;
+  resultCount?: number | undefined;
   /** 失败原因（failed 时显示） */
-  message?: string;
+  message?: string | undefined;
   [key: string]: unknown;
 }
 
@@ -142,7 +142,7 @@ export interface CanvasGroupNodeData {
   /** 组内图片总大小（字节，与 imageCount 同去重口径） */
   totalSize: number;
   /** 重复条目数（>0 时组卡显示「去重」标签；运行时派生，不持久化） */
-  duplicateCount?: number;
+  duplicateCount?: number | undefined;
   [key: string]: unknown;
 }
 

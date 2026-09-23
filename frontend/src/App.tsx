@@ -80,9 +80,9 @@ function TitleBar({
   mode: "classic" | "canvas";
   onModeChange: (m: "classic" | "canvas") => void;
   /** 当前生效的 config.json profile 名（config.json 多 profile，换中转站后可在此确认） */
-  activeProfile?: string;
+  activeProfile?: string | undefined;
   /** 当前 profile 的默认模型 */
-  defaultModel?: string;
+  defaultModel?: string | undefined;
 }) {
   /** 品牌区（logo + 标题整体）3D 指针跟随：借 React Bits DepthText 手法——
    *  10 层挤出堆叠（见 BRAND_LAYERS / BRAND_DEPTH + .brand-swing__layer 样式）常驻 DOM，
