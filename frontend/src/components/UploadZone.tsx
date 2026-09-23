@@ -71,7 +71,10 @@ export function UploadZone({ refs, onChange }: UploadZoneProps) {
     try {
       const uploaded = await uploadRefs(incoming);
       // 同一请求内返回顺序与上传顺序一致，按位置挂回本地 File 引用
-      const synced = uploaded.map((r, i) => ({ ...r, file: incoming[i], synced: true }));
+      const synced: RefItem[] = uploaded.map((r, i) => {
+        const file = incoming[i];
+        return { ...r, ...(file === undefined ? {} : { file }), synced: true };
+      });
       onChange([...refsRef.current.slice(0, refsRef.current.length - incoming.length), ...synced]);
     } catch {
       // 上传失败：保留占位（synced=false），生成时走 multipart 兜底；可见提示告知新窗口无法继承
