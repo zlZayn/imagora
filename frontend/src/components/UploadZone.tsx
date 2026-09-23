@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { deleteRef, uploadRefs } from "../api";
 import { formatBytes } from "../format";
 import { isImageFile } from "../workflow";
@@ -26,7 +26,10 @@ export function UploadZone({ refs, onChange }: UploadZoneProps) {
   const [zoom, setZoom] = useState<RefItem | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const refsRef = useRef(refs);
-  refsRef.current = refs;
+  /** 同上（CanvasPage）：镜像写入放 layout effect；下面的粘贴 effect 只绑定一次、经 ref 读最新值。 */
+  useLayoutEffect(() => {
+    refsRef.current = refs;
+  }, [refs]);
 
   // 全局粘贴：剪贴板图片追加到参考图列表（只绑定一次，用 ref 读最新值）
   useEffect(() => {

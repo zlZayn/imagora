@@ -123,8 +123,11 @@ export function HistoryGallery({
   /** query/status 镜像：回调保持稳定引用（open 打开 effect 只依赖 open），又能读到最新筛选值 */
   const queryRef = useRef(query);
   const statusRef = useRef(status);
-  queryRef.current = query;
-  statusRef.current = status;
+  /** 同上（CanvasPage）：镜像写入放 layout effect；读取点全在 load/loadMore 回调内。 */
+  useLayoutEffect(() => {
+    queryRef.current = query;
+    statusRef.current = status;
+  }, [query, status]);
   /** 单击开原图 / 双击放大预览（与经典表单结果图同款交互，共用 ZoomModal） */
   const { zoom, handleClick, handleDoubleClick, closeZoom } = useImageZoom();
 
