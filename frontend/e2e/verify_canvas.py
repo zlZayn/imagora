@@ -69,6 +69,9 @@ def main():
         page.on("dialog", lambda d: d.dismiss())  # 自动拒绝画布恢复存档询问
         page.goto(BASE + "/?mode=canvas&win=e2e")
         page.wait_for_load_state("networkidle")
+        # 就绪判据：React Flow 挂载出 .react-flow__viewport。冷 runner 上 networkidle 早于
+        # 挂载，首个 vp_snap 会返回 null → 断言 1 误判 FAIL 并连带跳过断言 2（TOTAL 少一条）
+        page.wait_for_selector(".react-flow__viewport", timeout=15000)
         page.wait_for_timeout(1000)
 
         # contextmenu 监测：document 冒泡层记录"事件到达且未被 preventDefault"
