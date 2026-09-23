@@ -43,6 +43,7 @@ import { useCanvasDrop } from "../useCanvasDrop";
 import type {
   AppConfig,
   CanvasPromptNodeData,
+  ResultItem,
   WorkflowEdge,
   WorkflowNode,
 } from "../types";
@@ -334,14 +335,14 @@ export function CanvasPage({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const onAnimationEnd = (event: Event) => {
-      const target = event.target as HTMLElement | null;
+    const onAnimationEnd = (event: AnimationEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
       const wrapper = target?.closest<HTMLElement>("[data-id]");
       if (!wrapper) return;
       const nodeId = wrapper.dataset.id;
       if (!nodeId) return;
       // 只在入场动画结束（而非退场 fade-out）时清理；退场动画由删除流程负责
-      if (event.type === "animationend" && (event as AnimationEvent).animationName === "enter-up") {
+      if (event.type === "animationend" && event.animationName === "enter-up") {
         setNodes((nds) => {
           const node = nds.find((n) => n.id === nodeId);
           if (!node || !node.className?.includes("node-enter")) return nds;
@@ -837,9 +838,11 @@ export function CanvasPage({
   /** 结果回流：done 快照 → 结果图复制进画布注册表并建节点（放提示词节点右下方）+ 自动连线，返回回流张数 */
   const reflowResults = useCallback(
     async (nodeId: string, task: GenerationTaskView): Promise<number> => {
-      const successfulResults = (task.results ?? []).filter((r) => r.status === "ok" && r.url);
+      const successfulResults = (task.results ?? []).filter(
+        (r): r is ResultItem & { url: string } => r.status === "ok" && Boolean(r.url),
+      );
       const resultPaths = successfulResults
-        .map((r) => new URLSearchParams(r.url!.split("?")[1] ?? "").get("path") ?? "")
+        .map((r) => new URLSearchParams(r.url.split("?")[1] ?? "").get("path") ?? "")
         .filter(Boolean);
       if (!resultPaths.length) return 0;
       try {
@@ -1187,7 +1190,7 @@ export function CanvasPage({
       const rf = rfInstanceRef.current;
       if (!rf) return;
       // 文本框/输入框内右键仍走原生菜单，不启动框选
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       if (target?.closest("input, textarea, [contenteditable]")) return;
       const startFlow = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
       boxSelectRef.current = { startFlow };
@@ -1244,7 +1247,7 @@ export function CanvasPage({
     /** 无状态屏蔽：非输入区的 contextmenu 一律 preventDefault（含画布内外、拖拽中/后）。
      *  捕获阶段执行，先于一切页面监听器，浏览器默认菜单永远不出现。 */
     const onWindowContextMenu = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       if (!target) return;
       if (target.closest("input, textarea, [contenteditable]")) return;
       event.preventDefault();
