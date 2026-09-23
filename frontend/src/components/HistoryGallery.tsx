@@ -76,7 +76,7 @@ function PromptCell({ text }: { text: string }) {
   );
 }
 
-export default function HistoryGallery({
+export function HistoryGallery({
   open,
   onClose,
   onImport,

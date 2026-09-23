@@ -11,7 +11,7 @@ interface FolderPickerProps {
 /**
  * 输出路径：可手输，或点击按钮弹出系统文件夹选择器（取消则保留原值）
  */
-export default function FolderPicker({ value, onChange, alignEnd = false }: FolderPickerProps) {
+export function FolderPicker({ value, onChange, alignEnd = false }: FolderPickerProps) {
   const [picking, setPicking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 

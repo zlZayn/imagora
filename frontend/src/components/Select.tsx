@@ -17,7 +17,7 @@ interface SelectProps {
  * 自定义下拉框：展开面板带过渡动画，选项 hover / 选中态统一，
  * 点击外部或 Esc 关闭。替代原生 select（原生展开列表无法自定义样式）。
  */
-export default function Select({ options, value, onChange, className = "", id }: SelectProps) {
+export function Select({ options, value, onChange, className = "", id }: SelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
