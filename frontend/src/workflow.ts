@@ -246,6 +246,114 @@ export function canConnect(
   return false;
 }
 
+/** 计数索引：一次建好的只读中间量（{@link buildCountIndexes} 产出，两个计数阶段消费） */
+interface CountIndexes {
+  byId: Map<string, WorkflowNode>;
+  incoming: Map<string, string[]>;
+  outEdges: Map<string, string[]>;
+}
+
+/** 建索引：入边/出边表 + id 查表（分组展开与引用溯源共用） */
+function buildCountIndexes(nodes: WorkflowNode[], edges: WorkflowEdge[]): CountIndexes {
+  // 入边索引：target -> [source...]（分组递归展开用，避免每层全量过滤）
+  const incoming = new Map<string, string[]>();
+  // 出边索引：source -> [target...]（引用溯源用）
+  const outEdges = new Map<string, string[]>();
+  for (const edge of edges) {
+    const inList = incoming.get(edge.target);
+    if (inList) inList.push(edge.source);
+    else incoming.set(edge.target, [edge.source]);
+    const outList = outEdges.get(edge.source);
+    if (outList) outList.push(edge.target);
+    else outEdges.set(edge.source, [edge.target]);
+  }
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  return { byId, incoming, outEdges };
+}
+
+// 引用溯源：从每张图片沿参考数据流方向 BFS，收集可达提示词集合（visited 防组环，
+// 提示词/图片节点不扩展出边——那属于产出方向，反向追溯会串流到无关卡片）。
+function tracePromptRefs(
+  nodes: WorkflowNode[],
+  idx: CountIndexes,
+  refCounts: Map<string, number>,
+): void {
+  const { byId, outEdges } = idx;
+  for (const node of nodes) {
+    if (node.type !== "image") continue;
+    const seen = new Set<string>([node.id]);
+    const prompts = new Set<string>();
+    const stack = [...(outEdges.get(node.id) ?? [])];
+    while (stack.length) {
+      const nextId = stack.pop()!;
+      if (seen.has(nextId)) continue;
+      seen.add(nextId);
+      const next = byId.get(nextId);
+      if (!next) continue;
+      if (next.type === "prompt") {
+        prompts.add(nextId);
+      } else if (next.type === "group") {
+        stack.push(...(outEdges.get(nextId) ?? []));
+      }
+    }
+    refCounts.set(node.data.registryId, prompts.size);
+  }
+}
+
+/** 递归展开一个图片组：直接入边图片计数、嵌套组透传。
+ *  stack 是调用方的**路径栈**（进组 add、出组 delete 回溯），环上靠它剪枝而非全局 visited。 */
+function expandGroup(
+  groupId: string,
+  stack: Set<string>,
+  idx: CountIndexes,
+): { count: number; ids: string[] } {
+  const { byId, incoming } = idx;
+  if (stack.has(groupId)) return { count: 0, ids: [] };
+  const node = byId.get(groupId);
+  if (node?.type !== "group") return { count: 0, ids: [] };
+  stack.add(groupId);
+  let count = 0;
+  const ids: string[] = [];
+  for (const srcId of incoming.get(groupId) ?? []) {
+    const src = byId.get(srcId);
+    if (!src) continue;
+    if (src.type === "image") {
+      count += 1;
+      ids.push(src.data.registryId);
+    } else if (src.type === "group") {
+      const sub = expandGroup(srcId, stack, idx);
+      count += sub.count;
+      ids.push(...sub.ids);
+    }
+  }
+  stack.delete(groupId);
+  return { count, ids };
+}
+
+// 分组聚合：每个组各自以空栈展开（不记忆化——成环时缓存会污染环后节点的值）；
+// 同趟收集 registryId 列表供去重口径使用。
+function aggregateGroups(
+  nodes: WorkflowNode[],
+  idx: CountIndexes,
+  groupCounts: Map<string, number>,
+  groupSizes: Map<string, number>,
+  groupDups: Map<string, number>,
+): void {
+  // registryId -> 单节点大小（画布同一文件只有一个节点，无冲突）
+  const sizeById = new Map<string, number>();
+  for (const node of nodes) {
+    if (node.type === "image") sizeById.set(node.data.registryId, node.data.size ?? 0);
+  }
+  for (const node of nodes) {
+    if (node.type !== "group") continue;
+    const { count, ids } = expandGroup(node.id, new Set(), idx);
+    const unique = new Set(ids);
+    groupCounts.set(node.id, unique.size);
+    groupSizes.set(node.id, Array.from(unique).reduce((sum, rid) => sum + (sizeById.get(rid) ?? 0), 0));
+    groupDups.set(node.id, count - unique.size);
+  }
+}
+
 /** 计算各图片节点的引用计数与分组节点成员数/总大小，
  *  返回 registryId -> refCount、groupId -> 成员数、groupId -> 总字节、groupId -> 重复条目数。
  *  引用计数 = **引用溯源**：图片数据最终流到的提示词数（N 处 = N 个提示词引用该图）。
@@ -281,77 +389,9 @@ export function computeCounts(
       groupDups.set(node.id, 0);
     }
   }
-  // 入边索引：target -> [source...]（分组递归展开用，避免每层全量过滤）
-  const incoming = new Map<string, string[]>();
-  // 出边索引：source -> [target...]（引用溯源用）
-  const outEdges = new Map<string, string[]>();
-  for (const edge of edges) {
-    const inList = incoming.get(edge.target);
-    if (inList) inList.push(edge.source);
-    else incoming.set(edge.target, [edge.source]);
-    const outList = outEdges.get(edge.source);
-    if (outList) outList.push(edge.target);
-    else outEdges.set(edge.source, [edge.target]);
-  }
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  // 引用溯源：从每张图片沿参考数据流方向 BFS，收集可达提示词集合（visited 防组环，
-  // 提示词/图片节点不扩展出边——那属于产出方向，反向追溯会串流到无关卡片）。
-  for (const node of nodes) {
-    if (node.type !== "image") continue;
-    const seen = new Set<string>([node.id]);
-    const prompts = new Set<string>();
-    const stack = [...(outEdges.get(node.id) ?? [])];
-    while (stack.length) {
-      const nextId = stack.pop()!;
-      if (seen.has(nextId)) continue;
-      seen.add(nextId);
-      const next = byId.get(nextId);
-      if (!next) continue;
-      if (next.type === "prompt") {
-        prompts.add(nextId);
-      } else if (next.type === "group") {
-        stack.push(...(outEdges.get(nextId) ?? []));
-      }
-    }
-    refCounts.set(node.data.registryId, prompts.size);
-  }
-  // registryId -> 单节点大小（画布同一文件只有一个节点，无冲突）
-  const sizeById = new Map<string, number>();
-  for (const node of nodes) {
-    if (node.type === "image") sizeById.set(node.data.registryId, node.data.size ?? 0);
-  }
-  // 分组聚合：每个组各自以空栈展开（不记忆化——成环时缓存会污染环后节点的值）；
-  // 同趟收集 registryId 列表供去重口径使用。
-  const expand = (groupId: string, stack: Set<string>): { count: number; ids: string[] } => {
-    if (stack.has(groupId)) return { count: 0, ids: [] };
-    const node = byId.get(groupId);
-    if (node?.type !== "group") return { count: 0, ids: [] };
-    stack.add(groupId);
-    let count = 0;
-    const ids: string[] = [];
-    for (const srcId of incoming.get(groupId) ?? []) {
-      const src = byId.get(srcId);
-      if (!src) continue;
-      if (src.type === "image") {
-        count += 1;
-        ids.push(src.data.registryId);
-      } else if (src.type === "group") {
-        const sub = expand(srcId, stack);
-        count += sub.count;
-        ids.push(...sub.ids);
-      }
-    }
-    stack.delete(groupId);
-    return { count, ids };
-  };
-  for (const node of nodes) {
-    if (node.type !== "group") continue;
-    const { count, ids } = expand(node.id, new Set());
-    const unique = new Set(ids);
-    groupCounts.set(node.id, unique.size);
-    groupSizes.set(node.id, Array.from(unique).reduce((sum, rid) => sum + (sizeById.get(rid) ?? 0), 0));
-    groupDups.set(node.id, count - unique.size);
-  }
+  const idx = buildCountIndexes(nodes, edges);
+  tracePromptRefs(nodes, idx, refCounts);
+  aggregateGroups(nodes, idx, groupCounts, groupSizes, groupDups);
   return { refCounts, groupCounts, groupSizes, groupDups };
 }
 
@@ -396,6 +436,98 @@ export function snapshotIncomingAbsPaths(
     .filter((p): p is string => Boolean(p));
 }
 
+/** 自动连线的可变状态：{@link addAutoEdge} 是唯一写入口 */
+interface AutoConnectState {
+  next: WorkflowEdge[];
+  pairs: Set<string>;
+  connected: Set<string>;
+}
+
+/** 两节点位置的平方距离（只用于比较远近，不开方） */
+function edgeDistanceSq(a: WorkflowNode, b: WorkflowNode): number {
+  const dx = a.position.x - b.position.x;
+  const dy = a.position.y - b.position.y;
+  return dx * dx + dy * dy;
+}
+
+/** 候选里离 node 最近的一个（候选为空返回 null） */
+function nearestNode(node: WorkflowNode, candidates: WorkflowNode[]): WorkflowNode | null {
+  return candidates.reduce<WorkflowNode | null>((closest, candidate) => (
+    !closest || edgeDistanceSq(node, candidate) < edgeDistanceSq(node, closest) ? candidate : closest
+  ), null);
+}
+
+/** 加一条边：同 source->target 已存在则跳过；成功时同步去重表与连通表 */
+function addAutoEdge(state: AutoConnectState, source: WorkflowNode, target: WorkflowNode): void {
+  const id = `${source.id}->${target.id}`;
+  if (state.pairs.has(id)) return;
+  state.next.push({ id, source: source.id, target: target.id });
+  state.pairs.add(id);
+  state.connected.add(source.id);
+}
+
+// 图片优先归入就近的图片组（否则直接连提示词）。
+function connectOrphanImages(
+  state: AutoConnectState,
+  nodes: WorkflowNode[],
+  prompts: WorkflowNode[],
+  groups: WorkflowNode[],
+): void {
+  for (const image of nodes.filter((node) => node.type === "image" && !state.connected.has(node.id))) {
+    const prompt = nearestNode(image, prompts);
+    if (prompt && image.position.y > prompt.position.y) {
+      addAutoEdge(state, prompt, image);
+      continue;
+    }
+    const nearbyGroup = nearestNode(image, groups.filter((group) => group.position.y >= image.position.y));
+    if (nearbyGroup && (!prompt || edgeDistanceSq(image, nearbyGroup) < edgeDistanceSq(image, prompt))) {
+      addAutoEdge(state, image, nearbyGroup);
+    } else if (prompt) {
+      addAutoEdge(state, image, prompt);
+    }
+  }
+}
+
+// 最后把仍孤立的图片组连接到最近的提示词。
+function connectOrphanGroups(
+  state: AutoConnectState,
+  groups: WorkflowNode[],
+  prompts: WorkflowNode[],
+  promptIds: ReadonlySet<string>,
+): void {
+  for (const group of groups) {
+    const hasPromptConnection = state.next.some(
+      (edge) => edge.source === group.id && promptIds.has(edge.target),
+    );
+    if (!hasPromptConnection) {
+      const prompt = nearestNode(group, prompts);
+      if (prompt) addAutoEdge(state, group, prompt);
+    }
+  }
+}
+
+// 已有图片组可以复用：每张新提示词卡片都应获得一个参考来源。
+function ensurePromptReferences(
+  state: AutoConnectState,
+  prompts: WorkflowNode[],
+  groups: WorkflowNode[],
+  nodeById: ReadonlyMap<string, WorkflowNode>,
+): void {
+  const populatedGroups = groups.filter((group) => state.next.some(
+    (edge) => edge.target === group.id && nodeById.get(edge.source)?.type === "image",
+  ));
+  const referenceGroups = populatedGroups.length ? populatedGroups : groups;
+  for (const prompt of prompts) {
+    const hasReference = state.next.some((edge) => {
+      const sourceType = nodeById.get(edge.source)?.type;
+      return edge.target === prompt.id && (sourceType === "image" || sourceType === "group");
+    });
+    if (hasReference) continue;
+    const group = nearestNode(prompt, referenceGroups);
+    if (group) addAutoEdge(state, group, prompt);
+  }
+}
+
 /** 自动补齐明显的连线：只处理孤立节点，已有连线保持不动。 */
 export function autoConnect(nodes: WorkflowNode[], edges: WorkflowEdge[]): WorkflowEdge[] {
   const prompts = nodes.filter((node) => node.type === "prompt");
@@ -403,65 +535,16 @@ export function autoConnect(nodes: WorkflowNode[], edges: WorkflowEdge[]): Workf
   if (!prompts.length && !groups.length) return edges;
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const promptIds = new Set(prompts.map((prompt) => prompt.id));
-  const next = [...edges];
-  const connected = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
-  const pairs = new Set(edges.map((edge) => `${edge.source}->${edge.target}`));
-  const distance = (a: WorkflowNode, b: WorkflowNode) => {
-    const dx = a.position.x - b.position.x;
-    const dy = a.position.y - b.position.y;
-    return dx * dx + dy * dy;
-  };
-  const nearest = (node: WorkflowNode, candidates: WorkflowNode[]) =>
-    candidates.reduce<WorkflowNode | null>((closest, candidate) => (
-      !closest || distance(node, candidate) < distance(node, closest) ? candidate : closest
-    ), null);
-  const add = (source: WorkflowNode, target: WorkflowNode) => {
-    const id = `${source.id}->${target.id}`;
-    if (pairs.has(id)) return;
-    next.push({ id, source: source.id, target: target.id });
-    pairs.add(id);
-    connected.add(source.id);
+  const state: AutoConnectState = {
+    next: [...edges],
+    connected: new Set(edges.flatMap((edge) => [edge.source, edge.target])),
+    pairs: new Set(edges.map((edge) => `${edge.source}->${edge.target}`)),
   };
 
-  // 图片优先归入就近的图片组（否则直接连提示词）。
-  for (const image of nodes.filter((node) => node.type === "image" && !connected.has(node.id))) {
-    const prompt = nearest(image, prompts);
-    if (prompt && image.position.y > prompt.position.y) {
-      add(prompt, image);
-      continue;
-    }
-    const nearbyGroup = nearest(image, groups.filter((group) => group.position.y >= image.position.y));
-    if (nearbyGroup && (!prompt || distance(image, nearbyGroup) < distance(image, prompt))) {
-      add(image, nearbyGroup);
-    } else if (prompt) {
-      add(image, prompt);
-    }
-  }
-  // 最后把仍孤立的图片组连接到最近的提示词。
-  for (const group of groups) {
-    const hasPromptConnection = next.some(
-      (edge) => edge.source === group.id && promptIds.has(edge.target),
-    );
-    if (!hasPromptConnection) {
-      const prompt = nearest(group, prompts);
-      if (prompt) add(group, prompt);
-    }
-  }
-  // 已有图片组可以复用：每张新提示词卡片都应获得一个参考来源。
-  const populatedGroups = groups.filter((group) => next.some(
-    (edge) => edge.target === group.id && nodeById.get(edge.source)?.type === "image",
-  ));
-  const referenceGroups = populatedGroups.length ? populatedGroups : groups;
-  for (const prompt of prompts) {
-    const hasReference = next.some((edge) => {
-      const sourceType = nodeById.get(edge.source)?.type;
-      return edge.target === prompt.id && (sourceType === "image" || sourceType === "group");
-    });
-    if (hasReference) continue;
-    const group = nearest(prompt, referenceGroups);
-    if (group) add(group, prompt);
-  }
-  return next;
+  connectOrphanImages(state, nodes, prompts, groups);
+  connectOrphanGroups(state, groups, prompts, promptIds);
+  ensurePromptReferences(state, prompts, groups, nodeById);
+  return state.next;
 }
 
 /** 自动连线（仅选中）：只对选中节点之间的孤立关系自动补边——候选与新增边两端均限定在选中集合内，
