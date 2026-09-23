@@ -296,7 +296,11 @@ def find_port_pids(port: int) -> list[int]:
 
     pids: list[int] = []
     try:
-        out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, check=False).stdout
+        # netstat 输出按控制台代码页（中文 Windows 为 GBK），只解析其中的 ASCII 行；
+        # errors="replace" 让本地化表头（"活动连接"等）不会把整次探测打断
+        out = subprocess.run(
+            ["netstat", "-ano"], capture_output=True, text=True, check=False, errors="replace",
+        ).stdout
         for line in out.splitlines():
             if f":{port}" in line and "LISTENING" in line.upper():
                 parts = line.split()
@@ -309,6 +313,11 @@ def find_port_pids(port: int) -> list[int]:
     return pids
 
 
+# 单次祖先查询超时（秒）：powershell.exe 冷启动在 CI/负载高时可达数秒（实测 GitHub
+# windows-latest 上 5 秒会超时——那会让祖先链只剩自身，Q 退出就杀不掉 uv/python 宿主）
+_ANCESTOR_QUERY_TIMEOUT = 15
+
+
 def _process_ancestors(pid: int) -> list[int]:
     """向上收集指定进程的完整祖先链（含自身），用于连根拔掉多层包装进程。
 
@@ -316,6 +325,9 @@ def _process_ancestors(pid: int) -> list[int]:
     只杀监听层（taskkill /t 杀的是子进程树）会留下 uv/python 宿主残留。
     这里沿 ParentProcessId 逐级回溯到根，返回 [自身, 父, 祖父, ...]。
     逐级查询而非整表解析：使用 Windows 自带 PowerShell CIM，兼容已移除 WMIC 的新系统。
+
+    超时留足余量（见 _ANCESTOR_QUERY_TIMEOUT）：查询失败即停止回溯，宁可少杀也不误杀。
+    输出统一按 UTF-8 + errors="replace" 解码，避免非中文 locale 下解码异常吞掉结果。
     """
     import subprocess
 
@@ -332,7 +344,8 @@ def _process_ancestors(pid: int) -> list[int]:
             )
             out = subprocess.run(
                 ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                capture_output=True, text=True, check=False, timeout=5,
+                capture_output=True, text=True, check=False,
+                timeout=_ANCESTOR_QUERY_TIMEOUT, encoding="utf-8", errors="replace",
             ).stdout
         except (OSError, subprocess.TimeoutExpired):
             break

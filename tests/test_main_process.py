@@ -18,7 +18,8 @@ def _parent_of(pid: int) -> int:
     )
     out = subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-        capture_output=True, text=True, check=False, timeout=10,
+        capture_output=True, text=True, check=False, timeout=main._ANCESTOR_QUERY_TIMEOUT,
+        encoding="utf-8", errors="replace",
     ).stdout
     for line in out.splitlines():
         stripped = line.strip()
