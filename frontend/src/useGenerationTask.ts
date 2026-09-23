@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cancelTask, checkBudget, fetchTask, submitGenerate } from "./api";
+import { cancelTask, checkBudget, fetchTask, isHttpError, submitGenerate } from "./api";
 import { errMessage } from "./format";
 import type { GenerateParams, GenerationTaskSnapshot, GenerationTaskStatus } from "./types";
 
@@ -28,7 +28,7 @@ async function submitWithBudgetConfirm(
   try {
     return await submitGenerate(params);
   } catch (err) {
-    if ((err as { status?: number }).status !== 409) throw err;
+    if (!isHttpError(err) || err.status !== 409) throw err;
     if (!confirmedRef.current) {
       const check = await checkBudget({ count: 1, size: params.size }).catch(() => null);
       const reason = check?.reason || errMessage(err);

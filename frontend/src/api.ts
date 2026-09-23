@@ -23,14 +23,24 @@ function errorDetail(text: string): string {
   return text.slice(0, 200);
 }
 
-/** 通用 JSON 请求，非 2xx 抛错（Error 上带 status，供调用方区分 409 超预算等分支） */
+/** 带 HTTP 状态码的请求错误（调用方用 isHttpError 判别，如 409 超预算分支） */
+export interface HttpError extends Error {
+  status: number;
+}
+
+/** 判别请求抛出的 Error 是否带 HTTP status（不依赖断言，未知值安全） */
+export function isHttpError(error: unknown): error is HttpError {
+  return error instanceof Error && "status" in error && typeof error.status === "number";
+}
+
+/** 通用 JSON 请求，非 2xx 抛 HttpError（带 status，供调用方区分 409 超预算等分支） */
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
     const detail = await res.text();
-    const error = new Error(`HTTP ${res.status}: ${errorDetail(detail)}`) as Error & { status?: number };
-    error.status = res.status;
-    throw error;
+    throw Object.assign(new Error(`HTTP ${res.status}: ${errorDetail(detail)}`), {
+      status: res.status,
+    });
   }
   return res.json() as Promise<T>;
 }
