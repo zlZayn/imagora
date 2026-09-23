@@ -46,8 +46,8 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 改后必测：`npx tsc --noEmit` + `npm test`；后端接口变更必须同步此处（ARCHITECTURE 7.2）
 
 ### [api.ts](src/api.ts)
-- 职责：后端全部 API 封装（`getConfig` / `uploadRefs` / `submitGenerate` / `fetchTask` / `cancelTask` / `canvasUpload` / `workflowSave` / `generationHistory` / `importHistoryAsset` / `selectFolder` …）
-- 被谁依赖：`App.tsx`、`CanvasPage.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`HistoryGallery.tsx`
+- 职责：后端全部 API 封装（`getConfig` / `uploadRefs` / `submitGenerate` / `fetchTask` / `cancelTask` / `canvasUpload` / `workflowSave` / `generationHistory` / `importHistoryAsset` / `selectFolder` …）；非 2xx 统一抛 `HttpError`，`isHttpError` 供调用方按 `status` 分支（如 409 超预算）
+- 被谁依赖：`App.tsx`、`CanvasPage.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`HistoryGallery.tsx`、`useGenerationTask.ts`（`isHttpError`）
 - 改后必测：`npm test`（若改类型）+ 对应 E2E
 - 注意：与 `server.py` 路由一一对应；url 构造走后端返回，不在前端拼路径
 

@@ -3,19 +3,24 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { checkBudget, submitGenerate } from "./api";
+import { checkBudget, submitGenerate, type HttpError } from "./api";
 import { useGenerationTask } from "./useGenerationTask";
 
 // 提交走真实 API 会因 jsdom 无 baseURL 失败，这里 mock 掉 submit 的网络层
-vi.mock("./api", () => ({
-  submitGenerate: vi.fn(async () => ({ taskId: "task-1", status: "queued" })),
-  cancelTask: vi.fn(async () => undefined),
-  fetchTask: vi.fn(async () => ({ taskId: "task-1", status: "queued" })),
-  checkBudget: vi.fn(async () => ({
-    allowed: false, over: true, confirmed: false, reason: "本次预估 0.15 元，超过单次上限 0.10 元",
-    estimate: 0.15, spentToday: 0, remaining: 0, settings: { dailyLimit: 0, singleRunLimit: 0.1 },
-  })),
-}));
+// isHttpError 用真实实现（纯判别函数，无网络），让 409 分支走生产同款判定
+vi.mock("./api", async () => {
+  const actual = await vi.importActual<typeof import("./api")>("./api");
+  return {
+    submitGenerate: vi.fn(async () => ({ taskId: "task-1", status: "queued" })),
+    cancelTask: vi.fn(async () => undefined),
+    fetchTask: vi.fn(async () => ({ taskId: "task-1", status: "queued" })),
+    isHttpError: actual.isHttpError,
+    checkBudget: vi.fn(async () => ({
+      allowed: false, over: true, confirmed: false, reason: "本次预估 0.15 元，超过单次上限 0.10 元",
+      estimate: 0.15, spentToday: 0, remaining: 0, settings: { dailyLimit: 0, singleRunLimit: 0.1 },
+    })),
+  };
+});
 
 const PARAMS = {
   prompt: "p", refPaths: [], files: [], size: "1024x1024", quality: "high", outputDir: "out", win: 0,
@@ -83,8 +88,10 @@ describe("useGenerationTask 超预算确认（409 → 确认 → 重提）", () 
   function budgetGate() {
     return vi.fn(async (params: { allowOverBudget?: boolean; taskId?: string }) => {
       if (!params.allowOverBudget) {
-        const error = new Error("HTTP 409: 本次预估 0.15 元，超过单次上限 0.10 元") as Error & { status?: number };
-        error.status = 409;
+        const error: HttpError = Object.assign(
+          new Error("HTTP 409: 本次预估 0.15 元，超过单次上限 0.10 元"),
+          { status: 409 },
+        );
         throw error;
       }
       return { taskId: "task-after-confirm", status: "queued" as const };
