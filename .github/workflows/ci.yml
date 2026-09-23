@@ -93,10 +93,29 @@ jobs:
       - name: Start server and run E2E
         shell: pwsh
         run: |
+          # 服务输出落文件：万一没起来，下面能直接把原因打出来（原先 Hidden 且无重定向，失败时无线索）
           $server = Start-Process -FilePath ".\.venv\Scripts\python.exe" `
             -ArgumentList "-m", "main", "ui", "--no-browser", "--port", "7860" `
-            -PassThru -WindowStyle Hidden
+            -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput server.out.log -RedirectStandardError server.err.log
           try {
+            # 等就绪再开浏览器：uvicorn 冷启动 + 前端 dist 静态挂载需要时间，
+            # 起完立刻 goto 会 ERR_CONNECTION_REFUSED（曾实测偶发失败）
+            $ready = $false
+            foreach ($i in 1..60) {
+              try {
+                $null = Invoke-WebRequest "http://127.0.0.1:7860/api/config?win=1" -TimeoutSec 2 -UseBasicParsing
+                $ready = $true
+                break
+              } catch {
+                Start-Sleep -Seconds 1
+              }
+            }
+            if (-not $ready) {
+              Write-Host "::error::服务 60 秒内未就绪，以下是服务输出："
+              Get-Content server.out.log, server.err.log -ErrorAction SilentlyContinue
+              exit 1
+            }
             .\.venv\Scripts\python.exe frontend\e2e\verify_canvas.py
           } finally {
             Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
