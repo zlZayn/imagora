@@ -117,7 +117,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 改后必测：`npm test` + E2E（verify_canvas.py 第 8-11 段）
 
 ### [useGenerationTask.ts](src/useGenerationTask.ts)
-- 职责：生成任务轮询/取消（`useGenerationTask`）
+- 职责：生成任务轮询/取消（`useGenerationTask`）；导出终态常量 `TERMINAL_STATUSES`（轮询停止口径，`HistoryGallery` 批量重跑等待循环共用，勿再内联重复列表）
 - 注意：返回稳定成员引用（hook 单测锁定）
 
 ### [useCanvasRecovery.ts](src/useCanvasRecovery.ts)
