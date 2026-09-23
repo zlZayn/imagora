@@ -70,8 +70,8 @@ export function parsePromptImportFormat(text: string): PromptParseResult {
   // 收集标题锚点（行号 + 标题）
   const headers: { title: string; line: number }[] = [];
   lines.forEach((line, i) => {
-    const m = line.match(HEADER_RE);
-    if (m) headers.push({ title: m[1].trim(), line: i });
+    const title = line.match(HEADER_RE)?.[1];
+    if (title !== undefined) headers.push({ title: title.trim(), line: i });
   });
 
   // 全文无标题
@@ -85,7 +85,7 @@ export function parsePromptImportFormat(text: string): PromptParseResult {
   }
 
   // 序言段：首个标题之前
-  const prelude = lines.slice(0, headers[0].line).join("\n").trim();
+  const prelude = lines.slice(0, headers[0]?.line ?? 0).join("\n").trim();
   if (prelude) {
     skipped.push(prelude);
     if (containsFence(prelude)) {
@@ -95,9 +95,12 @@ export function parsePromptImportFormat(text: string): PromptParseResult {
 
   const seenTitles = new Set<string>();
   for (let h = 0; h < headers.length; h++) {
-    const { title } = headers[h];
-    const segStart = headers[h].line + 1;
-    const segEnd = h + 1 < headers.length ? headers[h + 1].line : lines.length;
+    const header = headers[h];
+    if (header === undefined) continue;
+    const { title } = header;
+    const segStart = header.line + 1;
+    const nextHeader = headers[h + 1];
+    const segEnd = nextHeader === undefined ? lines.length : nextHeader.line;
     const segLines = lines.slice(segStart, segEnd);
 
     // 标题去重（保留首个）
@@ -112,12 +115,12 @@ export function parsePromptImportFormat(text: string): PromptParseResult {
     segLines.forEach((line, i) => {
       if (FENCE_RE.test(line)) fences.push(i);
     });
-    if (fences.length === 0) {
+    const open = fences[0];
+    const close = fences[fences.length - 1];
+    if (open === undefined || close === undefined) {
       issues.push({ code: "missing-fence", title, message: `「${title}」缺少代码块围栏（需要 \`\`\`text）` });
       continue;
     }
-    const open = fences[0];
-    const close = fences[fences.length - 1];
 
     // 开围栏之前的散落文字
     const before = segLines.slice(0, open).join("\n").trim();
@@ -132,7 +135,7 @@ export function parsePromptImportFormat(text: string): PromptParseResult {
     }
 
     // 首非空行必须是 ratio: N:M
-    const firstLine = bodyLines[firstNonBlank].trim();
+    const firstLine = (bodyLines[firstNonBlank] ?? "").trim();
     const ratioMatch = firstLine.match(RATIO_RE);
     if (!ratioMatch) {
       // 首行以 ratio 开头但格式非法 → bad-ratio；否则视为缺 ratio 行
@@ -175,12 +178,13 @@ export interface ResolvedSize {
 
 /** 解析 "N:M" 比例 → 匹配 config.sizes 中 label 含 "(N:M" 的项（label 形如 "1024x1024 (1:1 1K)"） */
 export function resolveCardSize(ratio: string, sizes: SizeOption[]): ResolvedSize {
-  if (!/^\d+:\d+$/.test(ratio) || sizes.length === 0) {
-    return { value: sizes[0]?.value ?? "1024x1024", fallback: true };
+  const first = sizes[0];
+  if (!/^\d+:\d+$/.test(ratio) || first === undefined) {
+    return { value: first?.value ?? "1024x1024", fallback: true };
   }
   const match = sizes.find((s) => s.label.includes(`(${ratio}`));
   if (!match) {
-    return { value: sizes[0].value, fallback: true };
+    return { value: first.value, fallback: true };
   }
   return { value: match.value, fallback: false };
 }
