@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -182,9 +183,14 @@ export function CanvasPage({
   /** 节点/边的最新引用：回调经 ref 读取，避免 useCallback 依赖 nodes/edges
    *  导致 nodeTypes 每次拖拽重建 -> 全节点重渲染闪烁 */
   const nodesRef = useRef<WorkflowNode[]>(nodes);
-  nodesRef.current = nodes;
   const edgesRef = useRef<Edge[]>(edges);
-  edgesRef.current = edges;
+  /** 镜像写入放 layout effect（不是渲染体）：渲染期写 ref 属渲染副作用（严格模式重渲染 /
+   *  并发下被丢弃的 render 会把未提交值留在 ref 里）；layout effect 在 commit 中同步写完，
+   *  事件回调、定时器与 setNodes 更新函数读到的值与原先逐轮一致。 */
+  useLayoutEffect(() => {
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
+  }, [nodes, edges]);
   const [logs, setLogs] = useState<{ id: number; text: string }[]>([]);
   /** 日志自增 id：稳定 key 触发轮播入场动画（index 复用会原地改文字不触发） */
   const logIdRef = useRef(0);
