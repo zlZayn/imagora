@@ -43,7 +43,7 @@ cd frontend; npm test
 | [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
 | [`test_main_cli.py`](test_main_cli.py) | 25 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ config 输出 |
 
-## 文件索引（前端 vitest，共 193，位于 frontend/src/）
+## 文件索引（前端 vitest，共 202，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -63,6 +63,7 @@ cd frontend; npm test
 | [`HistoryGallery.test.tsx`](../frontend/src/components/HistoryGallery.test.tsx) | 16 | 列表行渲染 / 参考图缺失琥珀提示 / 失败文案 / 提示词截断浮层（仅截断弹、跟随、离开消失） / **分页（首屏第 0 页、点加载更多按 offset 追加、搜索与状态筛选重置第 0 页、滚动接近底部自动追加、远离底部不触发）** / **成本看板指标、失败行「重跑」与成功行按钮差异、参考图丢失禁用+条数提示、批量重跑确认弹窗（预估费用/校验调用/提交参数）、超预算警示与 allowOverBudget、保存预算回读** |
 | [`promptImportFormat.test.ts`](../frontend/src/promptImportFormat.test.ts) | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
 | [`cost.test.ts`](../frontend/src/cost.test.ts) | 6 | 金额/比例/耗时格式化（非法值回退 -）/ 预算摘要（不限与设限两种、兼容预检结果的 settings 形态）/ 看板主指标行顺序与文案 |
+| [`api-guards.test.ts`](../frontend/src/api-guards.test.ts) | 9 | `/api` 响应形状守卫（必填字段类型、可选字段「在但类型错」、多出的键放行） |
 | [`rerun.test.ts`](../frontend/src/rerun.test.ts) | 9 | 可重跑判定（成功记录、空提示词、缺尺寸/质量、图生图参考图丢失、参考图仍在、纯文生图）/ 分组与丢失计数 / 批量参数构造（空 path 丢弃）/ 跳过原因聚合排序 |
 
 ## 变更影响路由（改前必看）
