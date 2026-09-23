@@ -17,15 +17,21 @@ export const TOOLBAR_DROP_LABELS: Record<"prompt" | "group", string> = {
   group: "松开新建图片组",
 };
 
+/** 拖拽数据的最小结构面：判定只读 types/getData（文件拖入与工具栏拖出共用） */
+type DragDataLike = { types: readonly string[]; getData: (type: string) => string };
+/** 文件拖入的最小结构面：dragover 从 items 计数量、drop 从 files 取文件
+ *  （jsdom 的 DataTransfer 实现不完整，测试桩按此面构造即可，无需断言成全量类型） */
+type FileDragDataLike = { items: ArrayLike<{ kind: string }>; files: ArrayLike<File> };
+
 /** 拖拽是否携带文件（窗口级拦截与意图判定共用；文本拖拽/内部拖拽不拦截） */
-export function dragCarriesFiles(event: { dataTransfer: DataTransfer | null }): boolean {
+export function dragCarriesFiles(event: { dataTransfer: DragDataLike | null }): boolean {
   return event.dataTransfer?.types.includes("Files") ?? false;
 }
 
 /** 当前拖拽的落画布意图：文件拖入 = images；工具栏拖出 = prompt/group；其他（文本拖拽等）= null 放行。
  *  fallback 传入 dragstart 已登记的意图，兜底真实浏览器 dragover 阶段 getData 偶发为空的兼容问题。 */
 export function resolveDropIntent(
-  event: { dataTransfer: DataTransfer | null },
+  event: { dataTransfer: DragDataLike | null },
   fallback: CanvasDropIntent | null,
 ): CanvasDropIntent | null {
   if (dragCarriesFiles(event)) return "images";
@@ -36,14 +42,14 @@ export function resolveDropIntent(
 
 /** dragover 阶段 dataTransfer.files 为空（浏览器延迟到 drop 才填充），
  *  文件数量只能从 dataTransfer.items（kind === "file"）统计；drop 时才用完整 File 列表过滤图片。 */
-export function countDraggedFiles(dataTransfer: DataTransfer | null): number {
+export function countDraggedFiles(dataTransfer: FileDragDataLike | null): number {
   return dataTransfer
     ? Array.from(dataTransfer.items).filter((item) => item.kind === "file").length
     : 0;
 }
 
 /** drop 时从 dataTransfer.files 提取图片（与上传/导入/新建共用同一 isImageFile 判定，保证各入口一致） */
-export function extractImageFiles(dataTransfer: DataTransfer | null): File[] {
+export function extractImageFiles(dataTransfer: FileDragDataLike | null): File[] {
   return Array.from(dataTransfer?.files ?? []).filter(isImageFile);
 }
 
