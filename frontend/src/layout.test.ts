@@ -55,6 +55,15 @@ function edge(source: string, target: string): WorkflowEdge {
   return { id: `${source}->${target}`, source, target };
 }
 
+/** 测试用：measured 由 React Flow 运行期注入、不在 WorkflowNode 类型上，用交点返回类型显式带上 */
+function withMeasured(
+  node: WorkflowNode,
+  width: number,
+  height: number,
+): WorkflowNode & { measured: { width: number; height: number } } {
+  return { ...node, measured: { width, height } };
+}
+
 function center(node: WorkflowNode): number {
   return node.position.x + nodeSize(node).width / 2;
 }
@@ -113,14 +122,8 @@ describe("auto layout", () => {
   });
 
   it("uses measured node heights so tall images do not overlap the next group", () => {
-    const tallImage = {
-      ...imageNode("tall", 0),
-      measured: { width: 145, height: 274 },
-    } as unknown as WorkflowNode;
-    const group = {
-      ...groupNode("group"),
-      measured: { width: 244, height: 121 },
-    } as unknown as WorkflowNode;
+    const tallImage = withMeasured(imageNode("tall", 0), 145, 274);
+    const group = withMeasured(groupNode("group"), 244, 121);
 
     const result = autoLayout([tallImage, group], [edge("tall", "group")]);
     const imagePosition = result.find((node) => node.id === "tall")!.position;
@@ -130,10 +133,7 @@ describe("auto layout", () => {
   });
 
   it("does not trust a temporary image measurement smaller than its stable card", () => {
-    const loadingImage = {
-      ...imageNode("loading", 0),
-      measured: { width: 144, height: 80 },
-    } as unknown as WorkflowNode;
+    const loadingImage = withMeasured(imageNode("loading", 0), 144, 80);
     const group = groupNode("group");
 
     const result = autoLayout([loadingImage, group], [edge("loading", "group")]);
@@ -144,10 +144,7 @@ describe("auto layout", () => {
   });
 
   it("places wide orphan groups above prompts without vertical overlap", () => {
-    const wideGroup = {
-      ...groupNode("wide-group"),
-      measured: { width: 300, height: 121 },
-    } as unknown as WorkflowNode;
+    const wideGroup = withMeasured(groupNode("wide-group"), 300, 121);
     const prompt = promptNode("prompt");
 
     const result = autoLayout([wideGroup, prompt], []);

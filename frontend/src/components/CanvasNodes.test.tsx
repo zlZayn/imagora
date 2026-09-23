@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { type ComponentProps } from "react";
+import { type ComponentProps, type ElementType } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,8 +9,13 @@ import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
 
 afterEach(cleanup);
 
+/** 测试 mock 只给关心的字段，其余由类型逐字段把关；「不完整 props」的唯一断言点集中在此 */
+function nodeProps<T extends ElementType>(props: Partial<ComponentProps<T>>): ComponentProps<T> {
+  return props as ComponentProps<T>;
+}
+
 function renderImageNode(onZoom = vi.fn(), onCanvasDoubleClick = vi.fn(), lod?: boolean) {
-  const props = {
+  const props = nodeProps<typeof ImageNode>({
     id: "image-1",
     type: "image",
     data: {
@@ -27,7 +32,7 @@ function renderImageNode(onZoom = vi.fn(), onCanvasDoubleClick = vi.fn(), lod?: 
     onZoom,
     onReplace: vi.fn(),
     onDelete: vi.fn(),
-  } as unknown as ComponentProps<typeof ImageNode>;
+  });
 
   render(
     <div onDoubleClick={onCanvasDoubleClick}>
@@ -86,7 +91,7 @@ describe("PromptNode", () => {
   it("keeps failure text out of the card and shows the end of long output paths", () => {
     const outputDir = "C:\\very\\long\\campaign\\product\\outputs\\final";
     const failureMessage = "A very long provider failure that must not resize the card";
-    const props = {
+    const props = nodeProps<typeof PromptNode>({
       id: "prompt-1",
       type: "prompt",
       data: {
@@ -103,7 +108,7 @@ describe("PromptNode", () => {
       onDelete: vi.fn(),
       sizeOptions: [{ value: "1024x1024", label: "1:1" }],
       qualityOptions: [{ value: "high", label: "high" }],
-    } as unknown as ComponentProps<typeof PromptNode>;
+    });
 
     render(<ReactFlowProvider><PromptNode {...props} /></ReactFlowProvider>);
 
@@ -127,7 +132,7 @@ describe("LOD abstract mode", () => {
   });
 
   it("renders prompt cards as abstract read-only cards with status text", () => {
-    const props = {
+    const props = nodeProps<typeof PromptNode>({
       id: "prompt-1",
       type: "prompt",
       data: {
@@ -146,7 +151,7 @@ describe("LOD abstract mode", () => {
       onDelete: vi.fn(),
       sizeOptions: [{ value: "1024x1024", label: "1:1" }],
       qualityOptions: [{ value: "high", label: "high" }],
-    } as unknown as ComponentProps<typeof PromptNode>;
+    });
 
     render(<ReactFlowProvider><PromptNode {...props} /></ReactFlowProvider>);
 
@@ -163,14 +168,14 @@ describe("LOD abstract mode", () => {
   });
 
   it("renders a group node without hover delete actions in LOD mode", () => {
-    const props = {
+    const props = nodeProps<typeof GroupNode>({
       id: "group-1",
       type: "group",
       data: { name: "图片组", imageCount: 5, totalSize: 5 * 1024 * 1024 },
       selected: false,
       lod: true,
       onDelete: vi.fn(),
-    } as unknown as ComponentProps<typeof GroupNode>;
+    });
 
     render(<ReactFlowProvider><GroupNode {...props} /></ReactFlowProvider>);
 
@@ -179,13 +184,13 @@ describe("LOD abstract mode", () => {
   });
 
   it("shows a dedupe badge on the group card when the chain contains duplicates", () => {
-    const props = {
+    const props = nodeProps<typeof GroupNode>({
       id: "group-1",
       type: "group",
       data: { name: "图片组", imageCount: 3, totalSize: 3 * 1024 * 1024, duplicateCount: 2 },
       selected: false,
       onDelete: vi.fn(),
-    } as unknown as ComponentProps<typeof GroupNode>;
+    });
 
     render(<ReactFlowProvider><GroupNode {...props} /></ReactFlowProvider>);
 
@@ -196,13 +201,13 @@ describe("LOD abstract mode", () => {
   });
 
   it("omits the dedupe badge when the group has no duplicates", () => {
-    const props = {
+    const props = nodeProps<typeof GroupNode>({
       id: "group-1",
       type: "group",
       data: { name: "图片组", imageCount: 5, totalSize: 5 * 1024 * 1024 },
       selected: false,
       onDelete: vi.fn(),
-    } as unknown as ComponentProps<typeof GroupNode>;
+    });
 
     render(<ReactFlowProvider><GroupNode {...props} /></ReactFlowProvider>);
 
@@ -211,7 +216,7 @@ describe("LOD abstract mode", () => {
   });
 
   it("renders a failed prompt status without leaking the failure message into the card", () => {
-    const props = {
+    const props = nodeProps<typeof PromptNode>({
       id: "prompt-1",
       type: "prompt",
       data: {
@@ -229,7 +234,7 @@ describe("LOD abstract mode", () => {
       onDelete: vi.fn(),
       sizeOptions: [{ value: "1024x1024", label: "1:1" }],
       qualityOptions: [{ value: "high", label: "high" }],
-    } as unknown as ComponentProps<typeof PromptNode>;
+    });
 
     render(<ReactFlowProvider><PromptNode {...props} /></ReactFlowProvider>);
 
