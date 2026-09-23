@@ -9,19 +9,27 @@ import {
   resolveDropIntent,
 } from "./canvasDrop";
 
+/** 桩的字段面：对齐 canvasDrop 读取的最小结构（types/getData/items/files），字段类型逐项受检查 */
+type DragStub = {
+  types: string[];
+  getData: (type: string) => string;
+  items: ArrayLike<{ kind: string }>;
+  files: ArrayLike<File>;
+};
+
 /** 构造最小 dataTransfer 桩：jsdom 的 DataTransfer 实现不完整，用桩保证测试只依赖类型契约 */
-function stubDataTransfer(overrides: Partial<DataTransfer> = {}): DataTransfer {
+function stubDataTransfer(overrides: Partial<DragStub> = {}): DragStub {
   return {
     types: [],
     getData: () => "",
     items: [],
     files: [],
     ...overrides,
-  } as unknown as DataTransfer;
+  };
 }
 
 /** 拖拽事件桩：只暴露意图解析用到的 dataTransfer 字段 */
-function stubDragEvent(overrides: Partial<DataTransfer> = {}): { dataTransfer: DataTransfer | null } {
+function stubDragEvent(overrides: Partial<DragStub> = {}): { dataTransfer: DragStub | null } {
   return { dataTransfer: stubDataTransfer(overrides) };
 }
 
@@ -70,7 +78,7 @@ describe("countDraggedFiles", () => {
       { kind: "file" },
       { kind: "file" },
       { kind: "string" },
-    ] as unknown as DataTransferItemList;
+    ];
     expect(countDraggedFiles(stubDataTransfer({ items }))).toBe(2);
   });
 
@@ -83,7 +91,7 @@ describe("extractImageFiles", () => {
   it("keeps only image files at drop time", () => {
     const png = new File([""], "a.png", { type: "image/png" });
     const txt = new File([""], "b.txt", { type: "text/plain" });
-    const files = [png, txt] as unknown as FileList;
+    const files = [png, txt];
     expect(extractImageFiles(stubDataTransfer({ files }))).toEqual([png]);
   });
 });
