@@ -55,12 +55,38 @@ export function saveInheritedState(
   }
 }
 
-/** 读取继承状态（不删除，由调用方决定时机清除） */
+/** sessionStorage 属外部输入（旧版本残留 / 手工改写 / 同源他应用），按形状校验后才信任 */
+function isInheritedRef(value: unknown): value is InheritedRef {
+  if (typeof value !== "object" || value === null) return false;
+  const ref = value as Record<string, unknown>;
+  return (
+    typeof ref.path === "string" &&
+    typeof ref.name === "string" &&
+    typeof ref.size === "number" &&
+    typeof ref.ext === "string"
+  );
+}
+
+function isInheritedState(value: unknown): value is InheritedState {
+  if (typeof value !== "object" || value === null) return false;
+  const state = value as Record<string, unknown>;
+  return (
+    typeof state.size === "string" &&
+    typeof state.quality === "string" &&
+    typeof state.outputDir === "string" &&
+    (state.notice === undefined || typeof state.notice === "string") &&
+    Array.isArray(state.refs) &&
+    state.refs.every(isInheritedRef)
+  );
+}
+
+/** 读取继承状态（不删除，由调用方决定时机清除）；形状不符视为无继承 */
 export function readInheritedState(): InheritedState | null {
   const raw = sessionStorage.getItem(INHERIT_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as InheritedState;
+    const parsed: unknown = JSON.parse(raw);
+    return isInheritedState(parsed) ? parsed : null;
   } catch {
     return null;
   }
