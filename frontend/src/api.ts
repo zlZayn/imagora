@@ -8,6 +8,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "./types";
+import { isAppConfig, isHistoryResponse, type HistoryResponse, type Validator } from "./api-guards";
 /** 从错误响应体里取可读原因：FastAPI 的 detail（字符串或 {reason}）优先，非 JSON 原样截断 */
 function errorDetail(text: string): string {
   try {
@@ -33,8 +34,10 @@ export function isHttpError(error: unknown): error is HttpError {
   return error instanceof Error && "status" in error && typeof error.status === "number";
 }
 
-/** 通用 JSON 请求，非 2xx 抛 HttpError（带 status，供调用方区分 409 超预算等分支） */
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+/** 通用 JSON 请求，非 2xx 抛 HttpError（带 status，供调用方区分 409 超预算等分支）。
+ *  可选 `validate`：给了就在 api 边界校验响应形状，形状不符立刻抛错（错误信息带端点路径），
+ *  避免坏数据流到渲染层才炸；没给的端点行为与以往逐字一致。 */
+async function requestJson<T>(url: string, init?: RequestInit, validate?: Validator<T>): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
     const detail = await res.text();
@@ -42,14 +45,20 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       status: res.status,
     });
   }
-  return res.json() as Promise<T>;
+  const payload: unknown = await res.json();
+  if (validate) {
+    if (!validate(payload)) throw new Error(`响应形状不符合预期: ${url}`);
+    return payload;
+  }
+  // 未接校验的端点：维持原断言（逐端点在后续刀接入，见 api-guards.ts 的落地范围）
+  return payload as T;
 }
 
 /** 获取应用初始化配置（尺寸/质量/默认输出路径/窗口编号）
  *  传 win 表示沿用已有窗口编号（URL ?win= 或 window.name 记忆），否则由服务端分配 */
 export function getConfig(win?: number): Promise<AppConfig> {
   const query = win ? `?win=${win}` : "";
-  return requestJson<AppConfig>(`/api/config${query}`);
+  return requestJson(`/api/config${query}`, undefined, isAppConfig);
 }
 
 export function getHealthDetails(): Promise<{
@@ -275,13 +284,13 @@ export async function generationHistory(params: {
   offset?: number;
   query?: string;
   status?: string;
-} = {}): Promise<{ items: GenerationHistoryItem[]; hasMore: boolean }> {
+} = {}): Promise<HistoryResponse> {
   const query = new URLSearchParams();
   query.set("limit", String(params.limit ?? 60));
   if (params.offset) query.set("offset", String(params.offset));
   if (params.query) query.set("query", params.query);
   if (params.status) query.set("status", params.status);
-  return requestJson(`/api/history?${query.toString()}`);
+  return requestJson(`/api/history?${query.toString()}`, undefined, isHistoryResponse);
 }
 
 export async function importHistoryAsset(path: string): Promise<{

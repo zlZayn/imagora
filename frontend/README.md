@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（193 用例）
+npm test           # vitest run（202 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -46,7 +46,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 改后必测：`npx tsc --noEmit` + `npm test`；后端接口变更必须同步此处（ARCHITECTURE 7.2）
 
 ### [api.ts](src/api.ts)
-- 职责：后端全部 API 封装（`getConfig` / `uploadRefs` / `submitGenerate` / `fetchTask` / `cancelTask` / `canvasUpload` / `workflowSave` / `generationHistory` / `importHistoryAsset` / `selectFolder` …）；非 2xx 统一抛 `HttpError`，`isHttpError` 供调用方按 `status` 分支（如 409 超预算）
+- 职责：后端全部 API 封装（`getConfig` / `uploadRefs` / `submitGenerate` / `fetchTask` / `cancelTask` / `canvasUpload` / `workflowSave` / `generationHistory` / `importHistoryAsset` / `selectFolder` …）；非 2xx 统一抛 `HttpError`，`isHttpError` 供调用方按 `status` 分支（如 409 超预算）；`requestJson` 可选 `validate`：已接的端点（`config` / `history`）在 api 边界校验响应形状，不符即抛（见 [api-guards.ts](src/api-guards.ts)）
 - 被谁依赖：`App.tsx`、`CanvasPage.tsx`、`UploadZone.tsx`、`Gallery.tsx`、`HistoryGallery.tsx`、`useGenerationTask.ts`（`isHttpError`）
 - 改后必测：`npm test`（若改类型）+ 对应 E2E
 - 注意：与 `server.py` 路由一一对应；url 构造走后端返回，不在前端拼路径
@@ -109,6 +109,10 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ### [windowInherit.ts](src/windowInherit.ts)
 - 职责：新窗口继承（`saveInheritedState` / `readInheritedState` / `clearInheritedState`，sessionStorage）
+
+### [api-guards.ts](src/api-guards.ts)
+- 职责：`/api` 响应形状守卫（`isAppConfig` / `isHistoryResponse`）；只校验消费面读的字段、多出的键放行，由 `api.ts` 的 `requestJson(url, init, validate?)` 消费 —— 形状不符在 api 边界抛错（含端点路径），不让坏数据流到渲染层
+- 注意：逐端点增量接入；未接的端点行为与以往逐字一致
 
 ### Hooks（组件级逻辑）
 
