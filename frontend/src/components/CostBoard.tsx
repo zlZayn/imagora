@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import type { BudgetSettings, HistoryStats } from "../api";
-import { budgetSummary, statRows } from "../cost";
+import { statRows } from "../cost";
 
 /** 预算设置初值（stats 未加载时按"不限"显示） */
 const EMPTY_BUDGET: BudgetSettings = { dailyLimit: 0, singleRunLimit: 0 };
@@ -49,28 +49,25 @@ export function CostBoard({
   const topSizes = stats?.bySize.slice(0, 3) ?? [];
 
   return (
-    <section
-      data-testid="cost-board"
-      className="border-b border-neutral-200 bg-white px-4 py-2 text-[11px] text-neutral-600"
-    >
+    <section data-testid="cost-board" className="border-b border-neutral-200 bg-white px-4 py-3">
       {loading && !stats ? (
-        <span className="text-neutral-400">正在统计成本...</span>
+        <span className="text-[11px] text-neutral-400">正在统计成本...</span>
       ) : stats ? (
-        <div className="flex flex-col gap-1">
-          {/* 第一行：左侧指标 + 预算摘要（自然宽度、不拆字），右侧预算设置（窗口窄时整组落到下一行） */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <div className="flex min-w-0 flex-wrap items-baseline gap-x-5 gap-y-1">
+        <>
+          {/* 指标 + 预算设置：指标等宽成列（标签在上、数值在下，列间对齐），
+              设置靠右、与指标用竖线分区；窄屏各自换行。 */}
+          <div className="flex flex-wrap items-stretch gap-x-4 gap-y-2">
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-5">
               {rows.map((row) => (
-                <span key={row.label} className="flex items-baseline gap-1 whitespace-nowrap">
-                  <span className="text-neutral-400">{row.label}</span>
-                  <span className="font-medium text-neutral-800">{row.value}</span>
-                </span>
+                <div key={row.label} className="min-w-0">
+                  <div className="truncate text-[10px] leading-4 text-neutral-400">{row.label}</div>
+                  <div className="truncate text-[13px] font-semibold leading-5 text-neutral-800">{row.value}</div>
+                </div>
               ))}
-              <span className="whitespace-nowrap text-neutral-400">{budgetSummary(stats.budget)}</span>
             </div>
-            <div className="compact-controls ml-auto flex shrink-0 flex-wrap items-center gap-2">
+            <div className="compact-controls flex shrink-0 flex-wrap items-center gap-2 border-neutral-200 pl-0 sm:border-l sm:pl-4">
               <label className="flex items-center gap-1">
-                <span className="text-neutral-400">日预算</span>
+                <span className="text-[11px] text-neutral-400">日预算</span>
                 <input
                   type="number"
                   min={0}
@@ -82,7 +79,7 @@ export function CostBoard({
                 />
               </label>
               <label className="flex items-center gap-1">
-                <span className="text-neutral-400">单次上限</span>
+                <span className="text-[11px] text-neutral-400">单次上限</span>
                 <input
                   type="number"
                   min={0}
@@ -99,23 +96,23 @@ export function CostBoard({
               <button type="button" className="btn-ghost" disabled={loading} onClick={onRefresh}>
                 刷新
               </button>
-              {savedTip && <span className="text-neutral-400">{savedTip}</span>}
+              {savedTip && <span className="text-[11px] text-neutral-400">{savedTip}</span>}
             </div>
           </div>
-          {/* 第二行：按尺寸明细（与指标同色阶，横向自然排开） */}
+          {/* 按尺寸：次要信息，独立一行、与指标同一色阶（左上角小标签说明这是哪一类） */}
           {topSizes.length > 0 && (
-            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 whitespace-nowrap text-neutral-400">
-              <span className="shrink-0">按尺寸</span>
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-neutral-100 pt-2 text-[11px] text-neutral-500">
+              <span className="text-[10px] text-neutral-400">按尺寸</span>
               {topSizes.map((row) => (
-                <span key={row.size}>
-                  {row.size} ×{row.count} · {row.cost.toFixed(2)} 元
+                <span key={row.size} className="whitespace-nowrap">
+                  {row.size} <span className="text-neutral-400">×{row.count}</span> · {row.cost.toFixed(2)} 元
                 </span>
               ))}
             </div>
           )}
-        </div>
+        </>
       ) : (
-        <span className="text-neutral-400">成本统计不可用</span>
+        <span className="text-[11px] text-neutral-400">成本统计不可用</span>
       )}
     </section>
   );
