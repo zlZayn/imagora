@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（169 用例）
+npm test           # vitest run（193 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -89,6 +89,16 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 ### [format.ts](src/format.ts)
 - 职责：显示格式化（`formatBytes` / `generatingLabel` / `errMessage`）
 
+### [cost.ts](src/cost.ts)
+- 职责：成本展示纯函数（`formatMoney` / `formatRate` / `formatSeconds` / `budgetSummary` / `statRows`）
+- 被谁依赖：CostBoard.tsx、HistoryGallery.tsx（重跑确认弹窗的预估费用与预算摘要）
+- 注意：费用口径由后端给出（`/api/history/stats`、`/api/budget/check`），前端只做显示，不重算价格规则
+
+### [rerun.ts](src/rerun.ts)
+- 职责：「重跑失败项」纯逻辑——`rerunBlockReason`（单条为何不可重跑）、`planRerun`（可重跑 / 跳过 + 参考图丢失计数）、`toBatchItems`（历史条目 → 批量提交参数）、`groupSkipReasons`（原因聚合）
+- 被谁依赖：HistoryGallery.tsx
+- 注意：图生图记录参考图找不回时**明确跳过并报因**（`RERUN_LOST_REFS`），绝不静默降级成文生图
+
 ### [logPath.ts](src/logPath.ts)
 - 职责：日志文本路径词条解析（`splitLogPath`：本机绝对路径段 → 可点击复制词条；正反斜杠/单引号包裹/一行多路径）
 - 被谁依赖：LogLine.tsx（经典表单日志区）
@@ -128,7 +138,8 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - [`LogLine.tsx`](src/components/LogLine.tsx) — 日志单行：文本里的本机绝对路径拆成可点击复制词条（CopyChip），其余保持文本；行动画 log-line
 - [`CopyChip.tsx`](src/components/CopyChip.tsx) — 路径词条：点击复制完整路径（`navigator.clipboard`），复制后边框/底色高亮反馈 1.2s（不换文字，避免宽度跳动）
 - [`UploadZone.tsx`](src/components/UploadZone.tsx) — 参考图上传区（缩略图单击不触发文件选择器、双击放大）
-- [`HistoryGallery.tsx`](src/components/HistoryGallery.tsx) — 生成历史面板：**分页滚动加载**（首屏 60 条，滚动接近底部 600px 内自动追加、未占满视口自动续拉，按钮仅兜底，DOM 恒在单页数量级）两栏网格卡片（160px 结果图 | 提示词 2 行截断随容器宽 | 56px 参考图换行 | 按钮底部对齐横排）；提示词超 2 行时悬浮浮层补全（仅截断弹、宽固定 80vw 水平居中左/右各留 10vw、高随行数自动长、垂直跟随鼠标、无滚动条）；搜索/状态筛选重置到第 0 页；双击放大预览 / 单击新窗口开原图 / 导入当前画布
+- [`HistoryGallery.tsx`](src/components/HistoryGallery.tsx) — 生成历史面板：**分页滚动加载**（首屏 60 条，滚动接近底部 600px 内自动追加、未占满视口自动续拉，按钮仅兜底，DOM 恒在单页数量级）两栏网格卡片（160px 结果图 | 提示词 2 行截断随容器宽 | 56px 参考图换行 | 按钮底部对齐横排）；提示词超 2 行时悬浮浮层补全（仅截断弹、宽固定 80vw 水平居中左/右各留 10vw、高随行数自动长、垂直跟随鼠标、无滚动条）；搜索/状态筛选重置到第 0 页；双击放大预览 / 单击新窗口开原图 / 导入当前画布；**失败行「重跑」+ 顶部「重跑失败项（N）」**（确认弹窗含费用预估、预算警示、不可重跑原因聚合、输出目录选择；提交后逐任务轮询进度，完成后刷新列表与看板）
+- [`CostBoard.tsx`](src/components/CostBoard.tsx) — 成本看板条（历史面板顶部）：今日/累计花费、成功率、失败数、成功平均耗时、按尺寸分布 + 本机预算（日预算 / 单次上限，0 = 不限）编辑保存；数据来自 `/api/history/stats`，保存走 `/api/budget`
 - [`PromptImportModal.tsx`](src/components/PromptImportModal.tsx) — 粘贴导入弹窗（实时解析 + 问题标红）
 - [`FolderPicker.tsx`](src/components/FolderPicker.tsx) / [`Select.tsx`](src/components/Select.tsx) — 目录选择 / 尺寸质量下拉
 

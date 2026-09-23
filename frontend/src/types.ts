@@ -84,6 +84,8 @@ export interface GenerateParams {
   outputDir: string;
   /** 窗口编号（多开页面溯源到日志），无窗口传 0 */
   win: number;
+  /** 超预算已确认（预算闸门：服务端超限未确认时 409，前端确认后带此标记重提） */
+  allowOverBudget?: boolean;
 }
 
 /** 画布图片注册表条目（/api/canvas/* 返回；registry entry + absPath/url 供生成引用与显示） */

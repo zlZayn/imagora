@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
 | `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
-| `tests/` | 后端 pytest（222 用例）+ 前端 vitest（169 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
+| `tests/` | 后端 pytest（258 用例）+ 前端 vitest（193 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流、`submissions/` 经典提交图快照 |
@@ -272,9 +272,14 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | POST | `/api/upload-ref` | multipart：images | { refs[ id, path, url, name, size, ext, mime ] }（落盘 `output/.refs/`） |
 | POST | `/api/delete-ref` | { path } | { ok }（尽力删除，文件不存在也算 ok） |
 | POST | `/api/output-dir` | { path } | { ok }（记住输出路径，重启沿用） |
-| POST | `/api/generate` | multipart：prompt/size/quality/output_dir/win + images 或 ref_paths | { taskId, status }（提交即返回） |
+| POST | `/api/generate` | multipart：prompt/size/quality/output_dir/win/allow_over_budget + images 或 ref_paths | { taskId, status }（提交即返回；**预算闸门**：超出 `singleRunLimit`/`dailyLimit` 且 `allow_over_budget≠true` 时 409 + `detail{reason, estimate, spentToday, settings}`） |
+| POST | `/api/generate/batch` | { items[{prompt,size,quality,refPaths[]}], outputDir, win, allowOverBudget } | { submitted[{taskId,prompt,size,cost}], skipped[{index,reason}], estimate, budget }（生成历史「重跑失败项」用：一次提交多条，单条非法只跳过该条；全部被跳过或超预算未确认则不提交任何任务） |
 | GET | `/api/tasks/{task_id}` | 无 | 快照（queued → running → done/failed，可 cancelled；终态保留 10 分钟，超时 404） |
 | POST | `/api/tasks/{task_id}/cancel` | 无 | { ok }（排队立即取消；运行中跑完当前张丢弃结果） |
+| GET | `/api/history/stats` | ?days=（默认 14） | 成本看板：total/ok/error/successRate/cost/seconds/avgSeconds/todayCost + byDay[]/bySize[]/byMode[] + budget（**口径与 /api/history 不同**：这里取账本**原始行**，不去重不截断——每个成功行都真实花过钱，聚合会少算费用） |
+| GET | `/api/budget` | 无 | { dailyLimit, singleRunLimit, spentToday, remaining }（本机预算，`output/.budget.json`，0 = 不限；git 忽略，不进公开仓库） |
+| POST | `/api/budget` | { dailyLimit, singleRunLimit } | { ok, dailyLimit, singleRunLimit }（清洗后原子落盘；负数按 0） |
+| POST | `/api/budget/check` | { items[{size}] } 或 { count, size } | { allowed, over, reason, estimate, spentToday, remaining, settings }（**无副作用预检**，前端据此决定是否弹超预算确认） |
 | GET | `/api/image` | ?path= | 图片文件（FileResponse） |
 | POST | `/api/canvas/upload` | multipart：images | { images[ entry ] }（复制进 `.assets/` 并登记，同内容去重） |
 | POST | `/api/canvas/import` | { paths } | { imported, skipped[{path,reason}] }（目录递归，路径须在 output 根内） |
@@ -292,7 +297,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 7.2 类型契约
 
-前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerationTaskSnapshot` / `GenerateParams` / `ResultItem` / `AssetEntry` / `WorkflowNode` / `WorkflowEdge`；`GenerationTaskSnapshot` 含可选 `submissionId`），与后端返回结构一一对应。改接口必须同步改这里和对应测试。
+前端类型契约见 `frontend/src/types.ts`（`AppConfig` / `GenerationTaskSnapshot` / `GenerateParams` / `ResultItem` / `AssetEntry` / `WorkflowNode` / `WorkflowEdge`；`GenerationTaskSnapshot` 含可选 `submissionId`）+ `frontend/src/api.ts`（历史/成本：`GenerationHistoryItem` / `HistoryStats` / `BudgetInfo` / `BudgetCheck` / `BatchSubmitItem` / `BatchSubmitResult`），与后端返回结构一一对应。改接口必须同步改这里和对应测试。
 
 ### 7.3 路径与配置基准
 
@@ -414,8 +419,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-- 后端 pytest：**222 用例**（Windows 下必带 `--basetemp=<ASCII 可写目录>` 规避默认 tmp 路径权限异常 WinError 5；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
-- 前端 vitest：**169 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 后端 pytest：**258 用例**（Windows 下必带 `--basetemp=<ASCII 可写目录>` 规避默认 tmp 路径权限异常 WinError 5；含 5 个 Windows 专属测试，CI 必须 `windows-latest`）
+- 前端 vitest：**193 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - 文档完整性：`python scripts/check_docs.py`（相对链接可解析 + AGENTS/tests-README/ARCHITECTURE/frontend-README 的测试计数与源码一致；改任何文档后必跑，见 [scripts/README.md](../scripts/README.md)）
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 

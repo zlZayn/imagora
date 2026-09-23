@@ -1533,6 +1533,7 @@ export default function CanvasPage({
         open={showHistory}
         onClose={() => setShowHistory(false)}
         onImport={handleHistoryImport}
+        defaultOutputDir={config.defaultOutputDir}
       />
       {showLoadModal && (
         <WorkflowLoadModal

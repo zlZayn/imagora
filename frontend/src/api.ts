@@ -8,12 +8,29 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "./types";
-/** 通用 JSON 请求，非 2xx 抛错 */
+/** 从错误响应体里取可读原因：FastAPI 的 detail（字符串或 {reason}）优先，非 JSON 原样截断 */
+function errorDetail(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as { detail?: unknown };
+    const detail = parsed?.detail;
+    if (typeof detail === "string") return detail;
+    if (detail && typeof detail === "object" && "reason" in detail) {
+      return String((detail as { reason: unknown }).reason);
+    }
+  } catch {
+    // 非 JSON（HTML 报错页等）：走下方原样截断
+  }
+  return text.slice(0, 200);
+}
+
+/** 通用 JSON 请求，非 2xx 抛错（Error 上带 status，供调用方区分 409 超预算等分支） */
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
     const detail = await res.text();
-    throw new Error(`HTTP ${res.status}: ${detail.slice(0, 200)}`);
+    const error = new Error(`HTTP ${res.status}: ${errorDetail(detail)}`) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
   return res.json() as Promise<T>;
 }
@@ -98,6 +115,10 @@ export async function submitGenerate(
   formData.append("quality", params.quality);
   formData.append("output_dir", params.outputDir);
   formData.append("win", String(params.win)); // 与后端 Form 参数名一致，日志按窗口溯源
+  if (params.allowOverBudget) {
+    // 预算预检已确认：超限才放行（见 core/cost.py check_budget 与 /api/budget/check）
+    formData.append("allow_over_budget", "true");
+  }
   return requestJson("/api/generate", { method: "POST", body: formData });
 }
 
@@ -261,5 +282,129 @@ export async function importHistoryAsset(path: string): Promise<{
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
+  });
+}
+
+/* ---------------- 成本看板 + 预算保护（core/cost.py ↔ server.py 同名契约） ---------------- */
+
+/** 本机预算设置（output/.budget.json，git 忽略；0 = 不限） */
+export interface BudgetSettings {
+  /** 当日累计费用上限（元），0 = 不限 */
+  dailyLimit: number;
+  /** 单次提交预估上限（元），0 = 不限 */
+  singleRunLimit: number;
+}
+
+/** 预算 + 今日占用（GET/POST /api/budget 返回） */
+export interface BudgetInfo extends BudgetSettings {
+  /** 今天已花（只统计成功记录） */
+  spentToday: number;
+  /** 日预算余额（未设日预算时为 0） */
+  remaining: number;
+}
+
+export interface HistoryStatsDay {
+  date: string;
+  count: number;
+  ok: number;
+  error: number;
+  cost: number;
+}
+
+export interface HistoryStatsSizeRow {
+  size: string;
+  count: number;
+  cost: number;
+}
+
+export interface HistoryStatsModeRow {
+  mode: string;
+  count: number;
+  cost: number;
+}
+
+/** 成本看板数据（GET /api/history/stats；账本**原始行**聚合，不去重不截断） */
+export interface HistoryStats {
+  total: number;
+  ok: number;
+  error: number;
+  successRate: number;
+  cost: number;
+  seconds: number;
+  avgSeconds: number;
+  todayCost: number;
+  byDay: HistoryStatsDay[];
+  bySize: HistoryStatsSizeRow[];
+  byMode: HistoryStatsModeRow[];
+  budget: BudgetInfo;
+}
+
+/** 预算预检结果（POST /api/budget/check；无副作用） */
+export interface BudgetCheck {
+  allowed: boolean;
+  over: boolean;
+  confirmed: boolean;
+  reason: string;
+  estimate: number;
+  spentToday: number;
+  remaining: number;
+  settings: BudgetSettings;
+}
+
+export function generationStats(days = 14): Promise<HistoryStats> {
+  return requestJson<HistoryStats>(`/api/history/stats?days=${days}`);
+}
+
+export function getBudget(): Promise<BudgetInfo> {
+  return requestJson<BudgetInfo>("/api/budget");
+}
+
+export function saveBudget(settings: BudgetSettings): Promise<{ ok: boolean } & BudgetSettings> {
+  return requestJson("/api/budget", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+}
+
+/** 提交前预检：按本次内容估算费用并判断是否超预算（不提交、不花钱） */
+export function checkBudget(payload: {
+  count?: number;
+  size?: string;
+  items?: { size: string }[];
+}): Promise<BudgetCheck> {
+  return requestJson<BudgetCheck>("/api/budget/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 批量提交的单个条目（生成历史「重跑失败项」用；refPaths 只接受 .refs/.assets 内路径） */
+export interface BatchSubmitItem {
+  prompt: string;
+  size: string;
+  quality: string;
+  refPaths: string[];
+}
+
+export interface BatchSubmitResult {
+  submitted: { taskId: string; prompt: string; size: string; cost: number }[];
+  skipped: { index: number; reason: string }[];
+  estimate: number;
+  budget: BudgetCheck;
+}
+
+/** 批量提交生成（一次请求多条，服务端并发队列执行）；超预算未确认时后端 409 */
+export function submitGenerateBatch(payload: {
+  items: BatchSubmitItem[];
+  outputDir?: string;
+  win?: number;
+  allowOverBudget?: boolean;
+}): Promise<BatchSubmitResult> {
+  return requestJson<BatchSubmitResult>("/api/generate/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 }

@@ -15,7 +15,8 @@
 ## 变更速查（改代码前先查这里）
 
 - 改 core/ 任意文件 → 查 [core/README.md](core/README.md) 文件索引 → 跑 `pytest tests/test_core_*.py` → 如改设计同步 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- 改 [server.py](server.py) 路由 → 查 core/README.md（registry/graphstore/history 节）→ 跑 `pytest tests/test_server_*.py` → 同步 [frontend/src/types.ts](frontend/src/types.ts) + [frontend/src/api.ts](frontend/src/api.ts) + ARCHITECTURE 7.1 表
+- 改 [server.py](server.py) 路由 → 查 core/README.md（registry/graphstore/history/cost 节）→ 跑 `pytest tests/test_server_*.py` → 同步 [frontend/src/types.ts](frontend/src/types.ts) + [frontend/src/api.ts](frontend/src/api.ts) + ARCHITECTURE 7.1 表
+- 改成本统计 / 预算保护（[core/cost.py](core/cost.py)）→ 跑 `pytest tests/test_core_cost.py tests/test_server_cost.py` → 预算落在 `output/.budget.json`（git 忽略，勿改成进仓库的配置）
 - 改 frontend/src/ 纯函数 → 查 [frontend/README.md](frontend/README.md) 文件索引 → 跑 `npm test`（有单测即够，无需文档）
 - 改 frontend/components/ UI → 查 frontend/README.md 组件索引 → 跑 `npm test` + [E2E](frontend/e2e/verify_canvas.py) → 样式改 [index.css](frontend/src/index.css)
 - 改 [scripts/migrate.py](scripts/migrate.py) 或存储格式 → 查 [scripts/README.md](scripts/README.md) → 跑 `pytest tests/test_core_migrate.py` → **必须先 Handoff 确认（硬边界）**
@@ -23,18 +24,19 @@
 
 ## 仪表盘（最近验证快照）
 
-- 后端 pytest：**222 passed**（命令与逐文件覆盖见 [tests/README.md](tests/README.md)）
-- 前端 vitest：**169 passed**；tsc + vite build 成功；lint / ruff 零告警（命令见 [frontend/README.md](frontend/README.md)、[tests/README.md](tests/README.md)）
+- 后端 pytest：**258 passed**（命令与逐文件覆盖见 [tests/README.md](tests/README.md)）
+- 前端 vitest：**193 passed**；tsc + vite build 成功；lint / ruff 零告警（命令见 [frontend/README.md](frontend/README.md)、[tests/README.md](tests/README.md)）
 - E2E [verify_canvas.py](frontend/e2e/verify_canvas.py)：**36/36 PASS**（前置：起 7860 服务，见 [frontend/README.md](frontend/README.md)）
 - 迁移（v1→v2 / .canvas→.assets / 账本回填）已完成，日常无需执行（见 [scripts/README.md](scripts/README.md)）
 
 ## 待办
 
-- 无（8-23 备份清理；8-24 文档体系重构 + CI 完善已完成）
+- 无（8-23 备份清理；8-24 文档体系重构 + CI 完善；9-22 成本看板 + 预算保护 + 重跑失败项）
 
 ## 活跃坑 / 注意
 
 - pytest 必须带 `--basetemp` 指向 ASCII 可写目录（默认 `%TEMP%\pytest-of-speak` 权限异常报 WinError 5；CI 用 `${{ runner.temp }}`，见 [.github/workflows/ci.yml](.github/workflows/ci.yml)）
+- 测试用户数据默认隔离（autouse `isolate_user_data`，见 [tests/conftest.py](tests/conftest.py)）：pytest **不得**读写真实 `output/`、`logs/`（历史坑：`asset_iso` 曾为 opt-in，漏用即往真实资产库写假图）
 - [server.py](server.py) LSP 报「Argument missing for parameter id」是误报（GenerationTask.id 有 default_factory），勿修
 - `dist/` git 忽略：改前端后 `npm run build` 才在浏览器生效；CI/E2E 须自建（见 [frontend/README.md](frontend/README.md)）
 - E2E 只测画布交互、不触发生成链路；未来覆盖「生成→回流」前必须先 mock [core/api.py](core/api.py) 的 `generate_image`（ci.yml 注释 TODO）

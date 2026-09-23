@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cancelTask, fetchTask, submitGenerate } from "./api";
+import { cancelTask, checkBudget, fetchTask, submitGenerate } from "./api";
+import { errMessage } from "./format";
 import type { GenerateParams, GenerationTaskSnapshot, GenerationTaskStatus } from "./types";
 
 /** 任务视图 = 服务端快照 + 前端本地计时（elapsed 秒） */
@@ -11,6 +12,33 @@ export interface GenerationTaskView extends GenerationTaskSnapshot {
 const POLL_INTERVAL_MS = 2000;
 
 const TERMINAL_STATUSES: GenerationTaskStatus[] = ["done", "failed", "cancelled"];
+
+/**
+ * 提交（单张走经典表单 / 画布节点）：命中预算闸门（服务端 409）时问一次再重提。
+ *
+ * 服务端在「超预算且未确认」时返回 409 + 结构化 detail；这里读 /api/budget/check 拿到
+ * 人话原因，确认后带 allowOverBudget 重提。confirmedRef 记忆"本次会话已确认"——
+ * 「全部运行」会连续提交多条，只在第一次询问，不连问 N 次。
+ * 注：这是单张提交的兜底确认（原生 confirm）；历史面板的批量重跑走自己的样式化弹窗。
+ */
+async function submitWithBudgetConfirm(
+  params: GenerateParams,
+  confirmedRef: { current: boolean },
+): Promise<{ taskId: string; status: GenerationTaskStatus }> {
+  try {
+    return await submitGenerate(params);
+  } catch (err) {
+    if ((err as { status?: number }).status !== 409) throw err;
+    if (!confirmedRef.current) {
+      const check = await checkBudget({ count: 1, size: params.size }).catch(() => null);
+      const reason = check?.reason || errMessage(err);
+      const accepted = typeof window !== "undefined" && window.confirm(`超出预算：${reason}\n仍要生成吗？`);
+      if (!accepted) throw err;
+      confirmedRef.current = true;
+    }
+    return await submitGenerate({ ...params, allowOverBudget: true });
+  }
+}
 
 export interface UseGenerationTaskResult {
   /** 提交生成任务，立即返回 taskId（自动注册并开始轮询） */
@@ -37,6 +65,8 @@ export function useGenerationTask(): UseGenerationTaskResult {
   const pollTimersRef = useRef(new Map<string, number>());
   const elapsedTimersRef = useRef(new Map<string, number>());
   const listenersRef = useRef(new Set<(taskId: string, view: GenerationTaskView) => void>());
+  /** 本窗口会话内已确认过超预算（「全部运行」多条提交只问一次） */
+  const overBudgetConfirmedRef = useRef(false);
   const [, setVersion] = useState(0);
 
   const emit = useCallback((taskId: string, view: GenerationTaskView) => {
@@ -120,7 +150,7 @@ export function useGenerationTask(): UseGenerationTaskResult {
 
   const submit = useCallback(
     async (params: GenerateParams): Promise<string> => {
-      const { taskId, status } = await submitGenerate(params);
+      const { taskId, status } = await submitWithBudgetConfirm(params, overBudgetConfirmedRef);
       const view: GenerationTaskView = { taskId, status, elapsed: 0 };
       tasksRef.current.set(taskId, view);
       emit(taskId, view);

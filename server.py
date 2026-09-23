@@ -42,7 +42,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from core import canvas, config, graphstore, history
+from core import canvas, config, cost, graphstore, history
 from core.api import format_error, generate_image
 from core.canvas import safe_ref_path_allowlist
 from core.config import (
@@ -56,7 +56,11 @@ from core.config import (
     SIZE_OPTIONS,
     get_api_key,
 )
-from core.history import read_generation_history, read_generation_history_paged
+from core.history import (
+    read_generation_history,
+    read_generation_history_paged,
+    read_raw_history,
+)
 from core.logging import log_generation
 from core.tasks import MAX_CONCURRENCY, GenerationTask, TaskManager
 
@@ -302,6 +306,86 @@ def generation_history(limit: int = 60, offset: int = 0, query: str = "", status
             "inputRefMissing": input_ref_missing,
         })
     return {"items": items, "hasMore": offset + len(page["items"]) < page["total"]}
+
+
+@app.get("/api/history/stats")
+def history_stats(days: int = cost.DEFAULT_DAYS):
+    """成本看板数据：账本**原始行**聚合（不去重、不截断）+ 今日预算占用。
+
+    与 /api/history 口径不同：那边面向列表展示（同参数聚合、最多 500 原始行），
+    这里面向计费——每个成功行都真实花过钱，聚合会少算费用。
+    """
+    stats = cost.summarize_records(read_raw_history(), days=days)
+    budget = cost.load_budget()
+    spent_today = stats["todayCost"]
+    return {
+        **stats,
+        "budget": {
+            **budget,
+            "spentToday": spent_today,
+            "remaining": (
+                round(max(0.0, budget["dailyLimit"] - spent_today), 2)
+                if budget["dailyLimit"] > 0 else 0.0
+            ),
+        },
+    }
+
+
+@app.get("/api/budget")
+def get_budget():
+    """读取本机预算设置（output/.budget.json，git 忽略；0 = 不限）"""
+    budget = cost.load_budget()
+    spent_today = cost.today_spent(read_raw_history())
+    return {
+        **budget,
+        "spentToday": spent_today,
+        "remaining": (
+            round(max(0.0, budget["dailyLimit"] - spent_today), 2)
+            if budget["dailyLimit"] > 0 else 0.0
+        ),
+    }
+
+
+@app.post("/api/budget")
+def set_budget(body: dict):
+    """保存本机预算设置：dailyLimit（当日累计上限）/ singleRunLimit（单次上限），0 = 不限"""
+    return {"ok": True, **cost.save_budget(body)}
+
+
+def _budget_guard(estimate: float, confirmed: bool) -> dict:
+    """提交前的预算闸门：超限且未确认 → 抛 409（结构化 detail 供前端弹确认）。
+
+    先算「今日已花」（读账本原始行）再校验：日预算比较的是「已花 + 本次预估」。
+    """
+    spent_today = cost.today_spent(read_raw_history())
+    result = cost.check_budget(estimate, cost.load_budget(), spent_today, confirmed=confirmed)
+    if not result["allowed"]:
+        raise HTTPException(status_code=409, detail={
+            "reason": result["reason"],
+            "estimate": result["estimate"],
+            "spentToday": result["spentToday"],
+            "settings": result["settings"],
+        })
+    return result
+
+
+@app.post("/api/budget/check")
+def check_budget_route(body: dict):
+    """提交前预检（无副作用）：按本次张数与尺寸估算费用，判断是否超预算。
+
+    body: {items: [{size}]} 或 {count: int, size: str}；返回 estimate / over / reason，
+    前端据此决定是否弹「超预算确认」。
+    """
+    items = body.get("items")
+    if isinstance(items, list):
+        estimate = round(sum(cost.estimate_cost(1, str(i.get("size") or "")) for i in items if isinstance(i, dict)), 2)
+    else:
+        estimate = cost.estimate_cost(int(body.get("count") or 0), str(body.get("size") or ""))
+    spent_today = cost.today_spent(read_raw_history())
+    return {
+        **cost.check_budget(estimate, cost.load_budget(), spent_today, confirmed=False),
+        "todayCost": spent_today,
+    }
 
 
 @app.post("/api/history/import")
@@ -645,12 +729,14 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
              quality: str = Form(DEFAULT_QUALITY), output_dir: str = Form(""),
              images: list[UploadFile] = File(default=[]),
              ref_paths: str = Form(""),
-             win: int = Form(0)):
+             win: int = Form(0),
+             allow_over_budget: bool = Form(False)):
     """提交生成任务（文生图 / 图生图），立即返回 taskId 与初始状态。
 
     实际生成进入全局任务池排队执行（并发上限 10，经典表单与无限画布共用），
     前端轮询 GET /api/tasks/{taskId} 获取状态与最终结果。
     同步提交：仅在提交阶段做参数校验与文件落盘，不阻塞生成。
+    allow_over_budget：预算预检已确认时由前端置 true，超限才放行（见 /api/budget/check）。
     """
     ref_bases: list[str] = []
     if ref_paths:
@@ -664,6 +750,9 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
             if not safe or not os.path.isfile(safe):
                 raise HTTPException(status_code=400, detail=f"非法参考图路径: {p}")
             ref_bases.append(safe)
+
+    # 预算闸门：超限且未确认（allow_over_budget）时 409，前端弹确认后带标记重提
+    _budget_guard(size_cost(size), allow_over_budget)
 
     # multipart 兜底文件：UploadFile 不能跨线程读取，必须在请求线程落临时文件
     temp_bases: list[str] = []
@@ -686,6 +775,75 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
     )
     task_id = task_manager.submit(task)
     return {"taskId": task_id, "status": task.status}
+
+
+@app.post("/api/generate/batch")
+def generate_batch(body: dict):
+    """批量提交生成（生成历史「重跑失败项」用）：一次请求提交多条，不阻塞生成。
+
+    body:
+      items: [{prompt, size, quality, refPaths: [str]}]  —— refPaths 只接受 .refs/.assets 内路径
+      outputDir / win / allowOverBudget: 与单条提交同义
+
+    返回 {submitted: [{taskId, prompt, size, cost}], skipped: [{index, reason}], estimate, budget}：
+      - 单条非法（空提示词 / 参考图不可用）只跳过该条，不整体失败（批量重跑要能部分成功）；
+      - 全部被跳过 / 超预算未确认 → 不提交任何任务（避免「提交一半再被拦」）。
+    """
+    raw_items = body.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise HTTPException(status_code=400, detail="items 不能为空")
+    output_dir = str(body.get("outputDir") or "")
+    win = int(body.get("win") or 0)
+
+    prepared: list[dict] = []
+    skipped: list[dict] = []
+    for index, item in enumerate(raw_items):
+        if not isinstance(item, dict):
+            skipped.append({"index": index, "reason": "条目结构非法"})
+            continue
+        prompt = str(item.get("prompt") or "").strip()
+        if not prompt:
+            skipped.append({"index": index, "reason": "提示词为空"})
+            continue
+        size = str(item.get("size") or DEFAULT_SIZE)
+        quality = str(item.get("quality") or DEFAULT_QUALITY)
+        ref_bases: list[str] = []
+        bad_ref = ""
+        for raw_path in (item.get("refPaths") or []):
+            safe = safe_ref_path_allowlist(str(raw_path), [REF_DIR, canvas.ASSET_DIR])
+            if not safe or not os.path.isfile(safe):
+                bad_ref = f"参考图不可用：{raw_path}"
+                break
+            ref_bases.append(safe)
+        if bad_ref:
+            skipped.append({"index": index, "reason": bad_ref})
+            continue
+        prepared.append({"prompt": prompt, "size": size, "quality": quality, "ref_bases": ref_bases})
+
+    estimate = round(sum(size_cost(item["size"]) for item in prepared), 2)
+    if not prepared:
+        return {"submitted": [], "skipped": skipped, "estimate": 0.0,
+                "budget": cost.check_budget(0.0, cost.load_budget(), cost.today_spent(read_raw_history()))}
+
+    budget = _budget_guard(estimate, bool(body.get("allowOverBudget")))
+
+    submitted = []
+    for item in prepared:
+        submission_id = graphstore.next_submission_id()
+        # 与单条提交同源：提交阶段即注册参考图，排队期间源文件被删也不漏记
+        input_asset_ids = graphstore.register_input_assets(submission_id, item["ref_bases"])
+        task = GenerationTask(
+            prompt=item["prompt"], size=item["size"], quality=item["quality"],
+            output_dir=output_dir, win=win, ref_bases=item["ref_bases"], temp_bases=[],
+            submission_id=submission_id, input_asset_ids=input_asset_ids,
+        )
+        submitted.append({
+            "taskId": task_manager.submit(task),
+            "prompt": item["prompt"],
+            "size": item["size"],
+            "cost": size_cost(item["size"]),
+        })
+    return {"submitted": submitted, "skipped": skipped, "estimate": estimate, "budget": budget}
 
 
 @app.get("/api/tasks/{task_id}")

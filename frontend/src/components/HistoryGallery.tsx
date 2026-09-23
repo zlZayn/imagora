@@ -1,8 +1,24 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 
-import { generationHistory, openFolder, type GenerationHistoryItem } from "../api";
+import {
+  checkBudget,
+  fetchTask,
+  generationHistory,
+  generationStats,
+  openFolder,
+  saveBudget,
+  submitGenerateBatch,
+  type BudgetCheck,
+  type BudgetSettings,
+  type GenerationHistoryItem,
+  type HistoryStats,
+} from "../api";
 import { errMessage } from "../format";
+import { budgetSummary, formatMoney } from "../cost";
+import { groupSkipReasons, planRerun, rerunBlockReason, toBatchItems } from "../rerun";
 import { useImageZoom } from "../useImageZoom";
+import CostBoard from "./CostBoard";
+import FolderPicker from "./FolderPicker";
 import { ZoomModal } from "./WorkflowModals";
 
 function parentDirectory(path: string): string {
@@ -80,10 +96,13 @@ export default function HistoryGallery({
   open,
   onClose,
   onImport,
+  defaultOutputDir = "",
 }: {
   open: boolean;
   onClose: () => void;
   onImport: (path: string) => Promise<void>;
+  /** 重跑失败项的输出目录默认值（画布传 config.defaultOutputDir） */
+  defaultOutputDir?: string;
 }) {
   const [items, setItems] = useState<GenerationHistoryItem[]>([]);
   const [query, setQuery] = useState("");
@@ -108,8 +127,81 @@ export default function HistoryGallery({
   /** 单击开原图 / 双击放大预览（与经典表单结果图同款交互，共用 ZoomModal） */
   const { zoom, handleClick, handleDoubleClick, closeZoom } = useImageZoom();
 
+  /* ---------------- 成本看板 + 重跑失败项 ---------------- */
+  const [stats, setStats] = useState<HistoryStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  /** 非空 = 重跑确认弹窗打开（内含本次要重跑的条目） */
+  const [rerunPlan, setRerunPlan] = useState<GenerationHistoryItem[] | null>(null);
+  /** 弹窗里的预算预检结果（预估费用 / 是否超限） */
+  const [rerunCheck, setRerunCheck] = useState<BudgetCheck | null>(null);
+  const [rerunOutputDir, setRerunOutputDir] = useState(defaultOutputDir);
+  const [rerunBusy, setRerunBusy] = useState(false);
+  const [rerunProgress, setRerunProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const [rerunNotice, setRerunNotice] = useState("");
+
+  /** 当前列表里失败记录的「可重跑 / 跳过」分组（参考图找不回的单列统计） */
+  const rerunCandidates = useMemo(() => planRerun(items.filter((it) => it.status === "error")), [items]);
+
   /** 分页大小：DOM 总量控制在单页数量级，滚动顺滑 */
   const PAGE_SIZE = 60;
+
+  /** 成本看板数据（账本原始行聚合 + 预算占用） */
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      setStats(await generationStats());
+    } catch (err) {
+      setRerunNotice(`成本统计读取失败：${errMessage(err)}`);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  /** 保存本机预算设置并回读看板（0 = 不限） */
+  const handleSaveBudget = useCallback(async (settings: BudgetSettings) => {
+    await saveBudget(settings);
+    await loadStats();
+  }, [loadStats]);
+
+  /** 打开重跑确认弹窗：先做无副作用的预算预检（不提交、不花钱） */
+  const openRerun = useCallback(async (targets: GenerationHistoryItem[]) => {
+    if (!targets.length) return;
+    setRerunPlan(targets);
+    setRerunCheck(null);
+    setRerunProgress(null);
+    setRerunNotice("");
+    try {
+      setRerunCheck(await checkBudget({ items: toBatchItems(targets).map((row) => ({ size: row.size })) }));
+    } catch (err) {
+      setRerunNotice(`预算预检失败：${errMessage(err)}`);
+    }
+  }, []);
+
+  /** 轮询到全部任务终态，返回失败张数（终态含 failed/cancelled） */
+  const waitTasks = useCallback(async (taskIds: string[]): Promise<number> => {
+    const pending = new Set(taskIds);
+    let failed = 0;
+    while (pending.size > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      for (const taskId of [...pending]) {
+        try {
+          const snap = await fetchTask(taskId);
+          if (["done", "failed", "cancelled"].includes(snap.status)) {
+            pending.delete(taskId);
+            if (snap.status !== "done") failed += 1;
+          } else {
+            continue;
+          }
+        } catch {
+          // 任务过期 / 服务重启：按失败计，避免界面悬挂
+          pending.delete(taskId);
+          failed += 1;
+        }
+        setRerunProgress({ done: taskIds.length - pending.size, total: taskIds.length, failed });
+      }
+    }
+    return failed;
+  }, []);
 
   /** 首屏 / 搜索重载：重置分页从第 0 页拉取（overrides 用于 select 等"值刚变"的场景） */
   const load = useCallback(
@@ -164,8 +256,46 @@ export default function HistoryGallery({
   }, [hasMore, loadingMore]);
 
   useEffect(() => {
-    if (open) void load();
-  }, [load, open]);
+    if (open) {
+      void load();
+      void loadStats();
+    }
+  }, [load, loadStats, open]);
+
+  /** 确认重跑：提交批量任务（超预算时带 allowOverBudget）→ 轮询 → 刷新列表与看板 */
+  const confirmRerun = useCallback(async () => {
+    const targets = rerunPlan ?? [];
+    if (!targets.length) return;
+    setRerunBusy(true);
+    setRerunNotice("");
+    try {
+      const result = await submitGenerateBatch({
+        items: toBatchItems(targets),
+        outputDir: rerunOutputDir,
+        win: 0,
+        allowOverBudget: Boolean(rerunCheck?.over),
+      });
+      const serverSkipped = result.skipped.length;
+      if (!result.submitted.length) {
+        setRerunNotice(`没有任务被提交${serverSkipped ? `（${serverSkipped} 条被服务端跳过）` : ""}`);
+        return;
+      }
+      setRerunProgress({ done: 0, total: result.submitted.length, failed: 0 });
+      const failed = await waitTasks(result.submitted.map((row) => row.taskId));
+      setRerunNotice(
+        `重跑完成：成功 ${result.submitted.length - failed} 张 · 失败 ${failed} 张`
+        + (serverSkipped ? ` · 服务端跳过 ${serverSkipped} 条` : ""),
+      );
+      setRerunPlan(null);
+      await load();
+      await loadStats();
+    } catch (err) {
+      setRerunNotice(`重跑失败：${errMessage(err)}`);
+    } finally {
+      setRerunBusy(false);
+      setRerunProgress(null);
+    }
+  }, [load, loadStats, rerunCheck, rerunOutputDir, rerunPlan, waitTasks]);
 
   /** 接近底部阈值（px）：提前预载下一页，滚到手感不间断 */
   const NEAR_BOTTOM_PX = 600;
@@ -205,8 +335,34 @@ export default function HistoryGallery({
             <option value="error">失败</option>
           </select>
           <button type="button" className="btn-ghost !px-3 !py-1" onClick={() => void load()}>搜索</button>
+          {rerunCandidates.runnable.length > 0 && (
+            <button
+              type="button"
+              className="btn-ghost !px-3 !py-1"
+              title="把当前列表里的失败记录重新跑一遍（结果落输出目录并写入历史）"
+              onClick={() => void openRerun(rerunCandidates.runnable)}
+            >
+              重跑失败项（{rerunCandidates.runnable.length}）
+            </button>
+          )}
+          {rerunCandidates.lostRefs > 0 && (
+            <span className="text-[11px] text-amber-600" title="图生图记录但参考图已从资产库找不回，无法还原">
+              {rerunCandidates.lostRefs} 条参考图已丢失
+            </span>
+          )}
           <button type="button" className="btn-ghost ml-auto !px-3 !py-1" onClick={onClose}>关闭</button>
         </header>
+        <CostBoard
+          stats={stats}
+          loading={statsLoading}
+          onRefresh={() => void loadStats()}
+          onSaveBudget={handleSaveBudget}
+        />
+        {rerunNotice && (
+          <div data-testid="rerun-notice" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11px] text-amber-800">
+            {rerunNotice}
+          </div>
+        )}
         <div ref={listRef} data-testid="history-list" onScroll={handleScroll} className="min-h-0 flex-1 overflow-auto p-4">
           {error && <div className="mb-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
           {loading ? (
@@ -216,7 +372,9 @@ export default function HistoryGallery({
                右侧提示词随容器宽（2 行截断）+ 大参考图 + 全文字按钮（底部对齐）；结果图 min-h-36 兜底卡片高度。 */
             <>
               <ul className="grid grid-cols-2 gap-3">
-              {items.map((item, index) => (
+              {items.map((item, index) => {
+                const rerunBlocked = rerunBlockReason(item);
+                return (
                 <li key={`${item.time}-${item.output}-${index}`} className="flex gap-3 rounded-lg border border-neutral-200 bg-white p-3">
                   <div className="w-40 min-h-36 flex-none self-stretch overflow-hidden bg-neutral-100">
                     {item.url ? (
@@ -262,12 +420,27 @@ export default function HistoryGallery({
                     {item.inputRefMissing && <p className="text-[10px] text-amber-600">参考图缺失</p>}
                     <div className="mt-auto flex gap-1.5">
                       <button type="button" className="btn-ghost min-w-0 flex-1 !px-1.5 !py-1 text-[11px]" onClick={() => void navigator.clipboard.writeText(item.prompt || "")}>复制提示词</button>
-                      <button type="button" disabled={!item.path} className="btn-ghost min-w-0 flex-1 !px-1.5 !py-1 text-[11px]" onClick={() => void openFolder(parentDirectory(item.path))}>打开目录</button>
-                      <button type="button" disabled={!item.path} className="btn-primary min-w-0 flex-1 !px-1.5 !py-1 text-[11px]" onClick={() => void onImport(item.path)}>导入当前画布</button>
+                      {item.status === "error" ? (
+                        <button
+                          type="button"
+                          disabled={rerunBlocked !== null}
+                          title={rerunBlocked ?? "重跑这条失败记录（结果落输出目录并写入历史）"}
+                          className="btn-primary min-w-0 flex-1 !px-1.5 !py-1 text-[11px]"
+                          onClick={() => void openRerun([item])}
+                        >
+                          重跑
+                        </button>
+                      ) : (
+                        <>
+                          <button type="button" disabled={!item.path} className="btn-ghost min-w-0 flex-1 !px-1.5 !py-1 text-[11px]" onClick={() => void openFolder(parentDirectory(item.path))}>打开目录</button>
+                          <button type="button" disabled={!item.path} className="btn-primary min-w-0 flex-1 !px-1.5 !py-1 text-[11px]" onClick={() => void onImport(item.path)}>导入当前画布</button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
             {/* 底部翻页区：滚动接近底部自动加载，按钮仅作手动兜底 */}
             <div className="py-3 text-center text-xs text-neutral-400">
@@ -288,6 +461,61 @@ export default function HistoryGallery({
         </div>
       </section>
       {zoom && <ZoomModal imageUrl={zoom.url} name={zoom.name} onClose={closeZoom} />}
+      {rerunPlan && (
+        <section
+          data-testid="rerun-dialog"
+          className="w-[min(560px,94vw)] rounded-lg bg-white p-4 shadow-2xl"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <h3 className="text-sm font-semibold">重跑失败项</h3>
+          <p className="mt-2 text-[11px] text-neutral-600">
+            本次重跑 <span className="font-medium text-neutral-800">{rerunPlan.length}</span> 条
+            {" · "}预估费用{" "}
+            <span className="font-medium text-neutral-800">
+              {rerunCheck ? formatMoney(rerunCheck.estimate) : "计算中..."}
+            </span>
+            {rerunCheck && <> · {budgetSummary(rerunCheck)}</>}
+          </p>
+          {rerunCheck?.over && (
+            <div data-testid="rerun-over-budget" className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+              超出预算：{rerunCheck.reason}。确认后将按超限提交。
+            </div>
+          )}
+          {groupSkipReasons(rerunCandidates.skipped).length > 0 && (
+            <div className="mt-2 text-[11px] text-neutral-500">
+              列表中另有 {rerunCandidates.skipped.length} 条失败记录不可重跑：
+              {groupSkipReasons(rerunCandidates.skipped).map((row) => (
+                <span key={row.reason} className="ml-1">
+                  {row.reason} ×{row.count}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="mt-3">
+            <p className="mb-1 text-[11px] text-neutral-400">输出目录（重跑结果落在这里，可在历史里再导入画布）</p>
+            <FolderPicker value={rerunOutputDir} onChange={setRerunOutputDir} alignEnd />
+          </div>
+          {rerunProgress && (
+            <p className="mt-2 text-[11px] text-neutral-600">
+              重跑中 {rerunProgress.done}/{rerunProgress.total}
+              {rerunProgress.failed > 0 ? `（失败 ${rerunProgress.failed}）` : ""}...
+            </p>
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" className="btn-ghost !px-3 !py-1 text-[11px]" disabled={rerunBusy} onClick={() => setRerunPlan(null)}>
+              取消
+            </button>
+            <button
+              type="button"
+              className={rerunCheck?.over ? "btn-danger !px-3 !py-1 text-[11px]" : "btn-primary !px-3 !py-1 text-[11px]"}
+              disabled={rerunBusy || !rerunCheck}
+              onClick={() => void confirmRerun()}
+            >
+              {rerunBusy ? "提交中..." : rerunCheck?.over ? "仍然重跑（超预算）" : "确认重跑"}
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -54,10 +54,17 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 
 ### [history.py](history.py)
 - 职责：生成历史 JSONL 读取（容错坏行、筛选、**同参数聚合**）+ 账本迁移（backfill）
-- 关键导出：`read_generation_history()` / `read_generation_history_paged()`（分页 {items,total}，offset 为聚合后偏移，供滚动加载）、`dedupe_generation_history()`（同参数只留最新一条，时间不算参数，失败不刷屏）、`resolve_output_path()`、`backfill_output_asset_ids()`
-- 被谁依赖：`server.py`（/api/history、/api/history/import，白名单同源判定——注册表副本 + 账本 output 原路径双收，见 ARCHITECTURE 9.7）
+- 关键导出：`read_generation_history()` / `read_generation_history_paged()`（分页 {items,total}，offset 为聚合后偏移，供滚动加载）、`read_raw_history()`（**原始行**口径：不去重、不截断 500 行，供成本统计/计费）、`dedupe_generation_history()`（同参数只留最新一条，时间不算参数，失败不刷屏）、`resolve_output_path()`、`backfill_output_asset_ids()`
+- 被谁依赖：`server.py`（/api/history、/api/history/import，白名单同源判定——注册表副本 + 账本 output 原路径双收，见 ARCHITECTURE 9.7；/api/history/stats 走 `read_raw_history`）、`core/cost.py`（统计读原始行）
 - 改后必测：`tests/test_core_history.py` + `tests/test_server_helpers.py`
-- 注意：展示与导入同源（ARCHITECTURE 9.7）——改路径解析逻辑必须两端一致；**搜索对换行鲁棒**：query 与账本字段两侧都做空白折叠（账本 prompt 存 CRLF，用户粘进单行搜索框换行被浏览器归一/移除，折叠后才不整串错位）
+- 注意：展示与导入同源（ARCHITECTURE 9.7）——改路径解析逻辑必须两端一致；**搜索对换行鲁棒**：query 与账本字段两侧都做空白折叠（账本 prompt 存 CRLF，用户粘进单行搜索框换行被浏览器归一/移除，折叠后才不整串错位）；**列表口径 vs 计费口径**：展示用聚合+500 行上限，统计/预算必须用 `read_raw_history`（聚合会少算费用）
+
+### [cost.py](cost.py)
+- 职责：成本统计与预算保护——账本原始行聚合（总量/成功率/费用/耗时/按天/按尺寸/按模式）+ 本机预算设置读写 + 超预算判定
+- 关键导出：`summarize_records()`、`today_spent()`、`estimate_cost()`、`load_budget()` / `save_budget()`（`output/.budget.json`，原子写，git 忽略）、`normalize_budget()`、`check_budget()`（超限需 `confirmed=True` 才放行）
+- 被谁依赖：`server.py`（/api/history/stats、/api/budget、/api/budget/check，以及 /api/generate 与 /api/generate/batch 的预算闸门）
+- 改后必测：`tests/test_core_cost.py` + `tests/test_server_cost.py`
+- 注意：费用唯一来源是 `core.config.cost_for_size`（config.json 的 size_options），此处不硬编码价格；预算语义是"超限需确认"而非硬拦（0 = 不限，默认不打扰）
 
 ### [logging.py](logging.py)
 - 职责：`logs/generation.jsonl` 账本写入（线程安全、路径相对化）
@@ -102,7 +109,7 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 - 无 `server.py` / `main.py` 反向依赖（约束见 [AGENTS.md](AGENTS.md)，grep 已验证）
 
 ### 谁用到了本目录
-- `server.py`：canvas / config / graphstore / history / api / logging / tasks
+- `server.py`：canvas / config / cost / graphstore / history / api / logging / tasks
 - `main.py`：api / config / batch / console / logging / graphstore
 - `scripts/migrate.py`：registry / graphstore / history
 - `tests/`：全部测试文件（见 tests/README.md）

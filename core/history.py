@@ -84,6 +84,31 @@ def read_generation_history_paged(
     return {"items": page, "total": len(all_items)}
 
 
+def read_raw_history(limit: int | None = None) -> list[dict]:
+    """读取账本**原始行**（最新在前，坏行忽略；不做参数聚合、不做 500 行截断）。
+
+    与 read_generation_history 的区别是口径不同：那边面向「列表展示」，会聚合同参数
+    记录并限制原始行数；这边面向**统计与计费**——每个成功行都真实花过钱，聚合会少算
+    费用，故保留全部原始行。limit 为 None 表示不限。
+    """
+    try:
+        lines = Path(HISTORY_FILE).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    items: list[dict] = []
+    for line in reversed(lines):
+        try:
+            record = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        items.append(record)
+        if limit is not None and len(items) >= max(1, int(limit)):
+            break
+    return items
+
+
 def _params_key(record: dict) -> tuple:
     """同一生成参数的判别键（含缺失字段容错）。
 
