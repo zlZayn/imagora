@@ -353,7 +353,13 @@ export function CanvasPage({
           const node = nds.find((n) => n.id === nodeId);
           if (!node || !node.className?.includes("node-enter")) return nds;
           const cleaned = stripAnimClasses(node.className);
-          return nds.map((n) => (n.id === nodeId ? { ...n, className: cleaned } : n));
+          return nds.map((n) => {
+            if (n.id !== nodeId) return n;
+            const next = { ...n };
+            if (cleaned === undefined) delete next.className;
+            else next.className = cleaned;
+            return next;
+          });
         });
       }
     };
@@ -454,7 +460,11 @@ export function CanvasPage({
             .filter(Boolean)
             .join(" ") || undefined;
           if (n.className !== cls) changed = true;
-          return n.className === cls ? n : { ...n, className: cls };
+          if (n.className === cls) return n;
+          const next = { ...n };
+          if (cls === undefined) delete next.className;
+          else next.className = cls;
+          return next;
         });
         return changed ? next : nds;
       });
@@ -472,7 +482,7 @@ export function CanvasPage({
     setSelectedCount(selected.length);
     setSelectedPromptCount(selected.filter((node) => node.type === "prompt").length);
     const first = selected[0];
-    setHighlightId(selected.length === 1 && first.type === "prompt" ? first.id : null);
+    setHighlightId(selected.length === 1 && first?.type === "prompt" ? first?.id ?? null : null);
   }, []);
   useEffect(() => {
     applyHighlight(highlightId, edges);
@@ -527,7 +537,13 @@ export function CanvasPage({
     try {
       const { path } = await workflowSave({
         name,
-        nodes: nodes.map((node) => ({ ...node, className: stripAnimClasses(node.className) })),
+        nodes: nodes.map((node) => {
+          const cleaned = stripAnimClasses(node.className);
+          const next = { ...node };
+          if (cleaned === undefined) delete next.className;
+          else next.className = cleaned;
+          return next;
+        }),
         edges,
       });
       setShowSaveModal(false);
@@ -598,6 +614,7 @@ export function CanvasPage({
           return;
         }
         const entry = images[0];
+        if (entry === undefined) return;
         recordHistory();
         setNodes((nds) =>
           nds.map((n) => {
