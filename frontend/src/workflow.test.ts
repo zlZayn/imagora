@@ -48,19 +48,24 @@ function groupNode(id: string): WorkflowNode {
   } as WorkflowNode;
 }
 
+/** 旧版本持久化节点可能缺字段（如 quality）：刻意构造 schema 外数据，验证加载期兜底 */
+function legacyPromptNode(id: string): WorkflowNode {
+  return {
+    id,
+    type: "prompt",
+    position: { x: 0, y: 0 },
+    data: {
+      prompt: "product photo",
+      size: "1024x1024",
+      outputDir: "output",
+      status: "idle",
+    },
+  } as WorkflowNode;
+}
+
 describe("workflow defaults", () => {
   it("uses high for a legacy prompt without quality", () => {
-    const legacyPrompt = {
-      id: "p1",
-      type: "prompt",
-      position: { x: 0, y: 0 },
-      data: {
-        prompt: "product photo",
-        size: "1024x1024",
-        outputDir: "output",
-        status: "idle",
-      },
-    } as unknown as WorkflowNode;
+    const legacyPrompt = legacyPromptNode("p1");
 
     const result = workflowToCanvas([legacyPrompt], [], []);
     const prompt = result.nodes[0];
