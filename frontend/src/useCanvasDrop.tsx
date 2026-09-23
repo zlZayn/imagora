@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type DragEventHandler, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Layers, Plus, Type, X } from "lucide-react";
 import type { Edge, Node, ReactFlowInstance } from "@xyflow/react";
@@ -33,9 +33,9 @@ const DROP_CHIP_MARGIN = 8;
 /** 泛型 N/E 与画布的实际节点/边类型对齐（ReactFlowInstance 是泛型，ref 类型需一致才能传入） */
 export interface CanvasDropCallbacks<N extends Node = Node, E extends Edge = Edge> {
   /** 画布容器引用：落点夹紧到可见画布区域 */
-  canvasRef: React.RefObject<HTMLDivElement | null>;
+  canvasRef: RefObject<HTMLDivElement | null>;
   /** React Flow 实例引用：screenToFlowPosition 换算落点 */
-  rfInstanceRef: React.RefObject<ReactFlowInstance<N, E> | null>;
+  rfInstanceRef: RefObject<ReactFlowInstance<N, E> | null>;
   /** 弹窗打开时暂停拖放接管（避免误落到弹窗背后） */
   modalOpen: boolean;
   /** 落点换算兜底：实例未就绪时回退视口中心定位 */
@@ -52,16 +52,16 @@ export interface UseCanvasDropResult {
   /** 当前拖拽意图（决定落点示意图标/文案、画布 copy 光标）；null = 无拖拽 */
   dropIntent: CanvasDropIntent | null;
   /** 落点示意元素（portal 到 body，跟随光标；渲染到组件任意位置即可） */
-  dropChip: React.ReactNode;
+  dropChip: ReactNode;
   /** 工作区拖放四事件（挂在 CanvasPage 根节点） */
   dragHandlers: {
-    onDragEnter: React.DragEventHandler<HTMLDivElement>;
-    onDragOver: React.DragEventHandler<HTMLDivElement>;
-    onDragLeave: React.DragEventHandler<HTMLDivElement>;
-    onDrop: React.DragEventHandler<HTMLDivElement>;
+    onDragEnter: DragEventHandler<HTMLDivElement>;
+    onDragOver: DragEventHandler<HTMLDivElement>;
+    onDragLeave: DragEventHandler<HTMLDivElement>;
+    onDrop: DragEventHandler<HTMLDivElement>;
   };
   /** 工具栏按钮拖起：登记拖拽类型并显示落点示意（dragStart 用） */
-  startToolbarDrag: (event: React.DragEvent<HTMLButtonElement>, kind: "prompt" | "group") => void;
+  startToolbarDrag: (event: DragEvent<HTMLButtonElement>, kind: "prompt" | "group") => void;
   /** 清理落点示意（dragEnd / 复位用） */
   hideDropChip: () => void;
 }
@@ -135,10 +135,10 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
    * 3) dragend / 窗口失焦复位拖拽状态：文件拖出浏览器窗口或按 Esc 取消时没有 drop 事件，
    *    计数可能残留，统一归零保证下次拖拽状态干净。 */
   useEffect(() => {
-    const preventFileDrop = (event: DragEvent) => {
+    const preventFileDrop = (event: WindowEventMap["dragover"]) => {
       if (dragCarriesFiles(event)) event.preventDefault();
     };
-    const positionToolbarDrag = (event: DragEvent) => {
+    const positionToolbarDrag = (event: WindowEventMap["dragover"]) => {
       const intent = dropIntentRef.current;
       if (!intent || intent === "images") return;
       positionDropChip(event.clientX, event.clientY);
@@ -171,9 +171,9 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
   /** 工作区拖放四事件（挂 CanvasPage 根节点）：整块工作区都是拖放区，UI 上不出现浏览器禁止标志；
    *  文本/无关拖拽放行（输入框原生行为不受影响）；弹窗打开时暂停接管。 */
   const dragHandlers = useMemo<UseCanvasDropResult["dragHandlers"]>(() => {
-    const resolveKind = (event: React.DragEvent) => resolveDropIntent(event, dropIntentRef.current);
+    const resolveKind = (event: DragEvent) => resolveDropIntent(event, dropIntentRef.current);
 
-    const handleDragEnter = (event: React.DragEvent) => {
+    const handleDragEnter = (event: DragEvent) => {
       if (modalOpen) return;
       const kind = resolveKind(event);
       if (!kind) return;
@@ -188,7 +188,7 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
       positionDropChip(event.clientX, event.clientY);
     };
 
-    const handleDragOver = (event: React.DragEvent) => {
+    const handleDragOver = (event: DragEvent) => {
       if (modalOpen) return;
       const kind = resolveKind(event);
       if (!kind) return;
@@ -197,7 +197,7 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
       positionDropChip(event.clientX, event.clientY);
     };
 
-    const handleDragLeave = (event: React.DragEvent) => {
+    const handleDragLeave = (event: DragEvent) => {
       if (modalOpen) return;
       // 只对文件拖拽做计数平衡：离开工作区即隐藏示意；工具栏拖出示意全局跟随，不在这里隐藏
       if (resolveKind(event) === "images") {
@@ -209,7 +209,7 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
       }
     };
 
-    const handleDrop = (event: React.DragEvent) => {
+    const handleDrop = (event: DragEvent) => {
       if (modalOpen) return;
       const kind = resolveKind(event);
       if (!kind) return;
@@ -245,7 +245,7 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
 
   /** 工具栏按钮拖起：登记拖拽类型 → 显示落点示意（portal 全局跟随，不限于画布内） */
   const startToolbarDrag = useCallback(
-    (event: React.DragEvent<HTMLButtonElement>, kind: "prompt" | "group") => {
+    (event: DragEvent<HTMLButtonElement>, kind: "prompt" | "group") => {
       event.dataTransfer.setData(CANVAS_DRAG_MIME, kind);
       event.dataTransfer.effectAllowed = "copy";
       showDropChip(kind, dropChipLabel(kind, 0));

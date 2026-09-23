@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { clampPreviewPan, clampZoom } from "../previewZoom";
@@ -229,7 +229,7 @@ export function ZoomModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const onPointerDown = (event: React.PointerEvent) => {
+  const onPointerDown = (event: PointerEvent) => {
     // 未放大：不拦截，冒泡给 overlay 判定（点空白关闭 / 点图片本体不关）
     if (view.zoom <= 1) return;
     // 放大：拦截并捕获指针用于拖拽；按下位置记录是否在图片本体（endDrag 判断点击时用）
@@ -246,7 +246,7 @@ export function ZoomModal({
     };
     setDragging(true);
   };
-  const onPointerMove = (event: React.PointerEvent) => {
+  const onPointerMove = (event: PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
     // 位移超过阈值才进入平移，避免"点击"被误判为拖拽
@@ -272,7 +272,7 @@ export function ZoomModal({
   /** 点击关闭判定：图片本体与按钮（控制条）不关闭，其余区域（含图片周围透明容器）都算"空白处"。
    *  用 pointerdown 而非 click——放大后拖拽的 pointer capture 会把 click 目标重定向到容器，
    *  按 target 判断会误关；pointerdown 始终派发到真实按下元素。 */
-  const onOverlayPointerDown = (event: React.PointerEvent) => {
+  const onOverlayPointerDown = (event: PointerEvent) => {
     const target = event.target as HTMLElement | null;
     if (!target) return;
     if (target.closest("button, [data-zoom-image], [data-zoom-controls]")) return;

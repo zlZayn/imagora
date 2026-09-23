@@ -3,7 +3,7 @@ import { AlertTriangle, Ban, Sparkles } from "lucide-react";
 
 import { errMessage, generatingLabel } from "../format";
 import type { GenerationTaskStatus, ResultItem } from "../types";
-import Gallery from "./Gallery";
+import { Gallery } from "./Gallery";
 
 interface ResultPanelProps {
   /** 任务状态：queued/running/failed/cancelled 覆盖成状态面板；null/done 透传 Gallery */
@@ -138,7 +138,7 @@ function renderScene(props: ResultPanelProps): ReactNode {
  * 排队→生成中→失败/完成不再是硬切。完成/初始透传 Gallery（画廊功能零改动）。
  * 秒数只在右栏主状态行（视线位），按钮侧只留忙碌语义。
  */
-export default function ResultPanel(props: ResultPanelProps) {
+export function ResultPanel(props: ResultPanelProps) {
   const key = statusKey(props.status);
   const node = renderScene(props);
   /** 状态切换时的旧面板快照（保留至淡出结束） */

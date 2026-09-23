@@ -4,6 +4,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
+  type DragEvent,
+  type ReactNode,
 } from "react";
 import {
   addEdge,
@@ -65,7 +68,7 @@ import {
 } from "../workflow";
 import { layoutPromptResults, layoutSelection, nodeSize } from "../layout";
 import { GroupNode, ImageNode, PromptNode } from "./CanvasNodes";
-import HistoryGallery from "./HistoryGallery";
+import { HistoryGallery } from "./HistoryGallery";
 import { PromptImportModal } from "./PromptImportModal";
 import { WorkflowLoadModal, WorkflowSaveModal, ZoomModal } from "./WorkflowModals";
 import { buildPromptNodes, type PromptCardSpec } from "../promptImportFormat";
@@ -91,8 +94,8 @@ function ToolbarButton({
 }: {
   onClick: () => void;
   disabled?: boolean;
-  children: React.ReactNode;
-  dragStart?: (event: React.DragEvent<HTMLButtonElement>) => void;
+  children: ReactNode;
+  dragStart?: (event: DragEvent<HTMLButtonElement>) => void;
   dragEnd?: () => void;
 }) {
   const draggable = !!dragStart;
@@ -143,7 +146,7 @@ interface CanvasPageProps {
   onSubmissionImported?: () => void;
 }
 
-export default function CanvasPage({
+export function CanvasPage({
   config,
   importSubmissionId,
   onSubmissionImported,
@@ -1274,7 +1277,7 @@ export default function CanvasPage({
     () => ({
       image: (props: object) => (
         <ImageNode
-          {...(props as React.ComponentProps<typeof ImageNode>)}
+          {...(props as ComponentProps<typeof ImageNode>)}
           lod={lod}
           onReplace={handleReplaceImage}
           onDelete={handleDeleteNode}
@@ -1283,14 +1286,14 @@ export default function CanvasPage({
       ),
       group: (props: object) => (
         <GroupNode
-          {...(props as React.ComponentProps<typeof GroupNode>)}
+          {...(props as ComponentProps<typeof GroupNode>)}
           lod={lod}
           onDelete={handleDeleteNode}
         />
       ),
       prompt: (props: object) => (
         <PromptNode
-          {...(props as React.ComponentProps<typeof PromptNode>)}
+          {...(props as ComponentProps<typeof PromptNode>)}
           lod={lod}
           onRun={handleRun}
           onUpdate={handleNodeUpdate}

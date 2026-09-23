@@ -17,8 +17,8 @@ import { errMessage } from "../format";
 import { budgetSummary, formatMoney } from "../cost";
 import { groupSkipReasons, planRerun, rerunBlockReason, toBatchItems } from "../rerun";
 import { useImageZoom } from "../useImageZoom";
-import CostBoard from "./CostBoard";
-import FolderPicker from "./FolderPicker";
+import { CostBoard } from "./CostBoard";
+import { FolderPicker } from "./FolderPicker";
 import { ZoomModal } from "./WorkflowModals";
 
 function parentDirectory(path: string): string {
@@ -92,7 +92,7 @@ function PromptCell({ text }: { text: string }) {
   );
 }
 
-export default function HistoryGallery({
+export function HistoryGallery({
   open,
   onClose,
   onImport,

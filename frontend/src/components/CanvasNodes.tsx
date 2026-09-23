@@ -3,8 +3,8 @@ import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import type { CanvasGroupNodeData, CanvasImageNodeData, CanvasPromptNodeData } from "../types";
 import { generatingLabel } from "../format";
-import FolderPicker from "./FolderPicker";
-import Select from "./Select";
+import { FolderPicker } from "./FolderPicker";
+import { Select } from "./Select";
 
 /* ---------------- 统一节点右侧操作区（hover 显示，竖排不遮挡内容，全部 nodrag 防误拖） ---------------- */
 function NodeActions({ children, testId }: { children: ReactNode; testId?: string }) {

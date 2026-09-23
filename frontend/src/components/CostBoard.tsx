@@ -10,7 +10,7 @@ const EMPTY_BUDGET: BudgetSettings = { dailyLimit: 0, singleRunLimit: 0 };
  * 成本看板：账本原始行聚合的关键指标 + 本机预算设置（当日上限 / 单次上限，0 = 不限）。
  * 只负责渲染与本地草稿：数据加载与保存都交给宿主（HistoryGallery），保持组件无副作用。
  */
-export default function CostBoard({
+export function CostBoard({
   stats,
   loading,
   onRefresh,
