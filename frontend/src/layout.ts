@@ -208,7 +208,7 @@ interface LayoutRun {
   boundsWidth?: number;
 }
 
-/** 布局一次：分层 → 逐层放置三趟（forward → backward 层 0 → forward 收敛）。
+/** 布局一次：分层 → 两趟逐层放置（pass A 浅→深定群顺序，pass B 深→浅按后继锚定）→ 无锚点时整体中心对齐。
  *  返回值只改写 moves 内节点的 position；锚点与无关节点原样返回。 */
 function runLayout(run: LayoutRun): WorkflowNode[] {
   const { nodes, edges, moves, origin, boundsWidth } = run;
