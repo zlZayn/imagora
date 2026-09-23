@@ -235,7 +235,7 @@ export function ZoomModal({
     // 放大：拦截并捕获指针用于拖拽；按下位置记录是否在图片本体（endDrag 判断点击时用）
     event.preventDefault();
     event.stopPropagation();
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    if (event.currentTarget instanceof Element) event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       startX: event.clientX,
       startY: event.clientY,
@@ -273,7 +273,7 @@ export function ZoomModal({
    *  用 pointerdown 而非 click——放大后拖拽的 pointer capture 会把 click 目标重定向到容器，
    *  按 target 判断会误关；pointerdown 始终派发到真实按下元素。 */
   const onOverlayPointerDown = (event: PointerEvent) => {
-    const target = event.target as HTMLElement | null;
+    const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
     if (target.closest("button, [data-zoom-image], [data-zoom-controls]")) return;
     onClose();
