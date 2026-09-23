@@ -11,7 +11,8 @@ export interface GenerationTaskView extends GenerationTaskSnapshot {
 
 const POLL_INTERVAL_MS = 2000;
 
-const TERMINAL_STATUSES: GenerationTaskStatus[] = ["done", "failed", "cancelled"];
+/** 任务终态（轮询可停）：历史面板批量重跑的等待循环共用同一口径 */
+export const TERMINAL_STATUSES: readonly GenerationTaskStatus[] = ["done", "failed", "cancelled"];
 
 /**
  * 提交（单张走经典表单 / 画布节点）：命中预算闸门（服务端 409）时问一次再重提。

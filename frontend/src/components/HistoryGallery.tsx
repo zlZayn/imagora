@@ -16,6 +16,7 @@ import {
 import { errMessage } from "../format";
 import { budgetSummary, formatMoney } from "../cost";
 import { groupSkipReasons, planRerun, rerunBlockReason, toBatchItems } from "../rerun";
+import { TERMINAL_STATUSES } from "../useGenerationTask";
 import { useImageZoom } from "../useImageZoom";
 import { CostBoard } from "./CostBoard";
 import { FolderPicker } from "./FolderPicker";
@@ -186,7 +187,7 @@ export function HistoryGallery({
       for (const taskId of [...pending]) {
         try {
           const snap = await fetchTask(taskId);
-          if (["done", "failed", "cancelled"].includes(snap.status)) {
+          if (TERMINAL_STATUSES.includes(snap.status)) {
             pending.delete(taskId);
             if (snap.status !== "done") failed += 1;
           } else {
