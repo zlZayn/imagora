@@ -118,7 +118,7 @@ export function ImageNode({
       </div>
     </>
   );
-  // LOD 抽象模式：保留缩略图与双击放大，去掉右侧操作栏与引用行（节点多时轻量渲染）
+  // LOD 抽象模式：保留缩略图、双击放大与名称/引用行，去掉右侧操作栏与 node-pop 入场动画（节点多时轻量渲染）
   if (lod) {
     return (
       <div
