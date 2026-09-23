@@ -279,14 +279,18 @@ function placeLayer(
   let cursorX = baseX - LAYOUT.nodeGap;
   let i = 0;
   while (i < ordered.length) {
-    const center = desired.get(ordered[i].id)!;
+    const head = ordered[i];
+    if (head === undefined) break;
+    const center = desired.get(head.id)!;
     let j = i;
+    let next = ordered[j + 1];
     while (
-      j + 1 < ordered.length &&
-      Math.abs(desired.get(ordered[j + 1].id)! - center) < 0.5 &&
-      sameSource(ordered.slice(i, j + 1), ordered[j + 1])
+      next !== undefined &&
+      Math.abs(desired.get(next.id)! - center) < 0.5 &&
+      sameSource(ordered.slice(i, j + 1), next)
     ) {
       j += 1;
+      next = ordered[j + 1];
     }
     const block = ordered.slice(i, j + 1);
     const blockWidth = block.reduce(
