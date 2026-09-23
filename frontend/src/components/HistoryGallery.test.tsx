@@ -15,6 +15,13 @@ import {
   type HistoryStats,
 } from "../api";
 
+/** noUncheckedIndexedAccess 守卫：越界即失败，不把断言弱化为可选链 */
+function indexed<T>(items: ArrayLike<T>, at: number): T {
+  const item = items[at];
+  if (item === undefined) throw new Error(`indexed: 长度 ${items.length} 越界下标 ${at}`);
+  return item;
+}
+
 // 历史记录走后端 API，jsdom 无真实后端，mock 掉网络层
 vi.mock("../api", () => ({
   generationHistory: vi.fn(),
@@ -360,8 +367,8 @@ describe("HistoryGallery 成本看板与重跑失败项", () => {
     await screen.findByText("任意记录");
 
     const inputs = screen.getByTestId("cost-board").querySelectorAll("input[type=number]");
-    fireEvent.change(inputs[0], { target: { value: "5" } });
-    fireEvent.change(inputs[1], { target: { value: "1" } });
+    fireEvent.change(indexed(inputs, 0), { target: { value: "5" } });
+    fireEvent.change(indexed(inputs, 1), { target: { value: "1" } });
     fireEvent.click(screen.getByText("保存预算"));
 
     await screen.findByText("预算已保存");

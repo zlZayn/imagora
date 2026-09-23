@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { budgetSummary, formatMoney, formatRate, formatSeconds, statRows } from "./cost";
 
 /** 成本展示纯函数：金额/比例/耗时格式化与看板摘要行（口径由后端给出，这里只管显示） */
+/** noUncheckedIndexedAccess 守卫：越界即失败，不把断言弱化为可选链 */
+function indexed<T>(items: ArrayLike<T>, at: number): T {
+  const item = items[at];
+  if (item === undefined) throw new Error(`indexed: 长度 ${items.length} 越界下标 ${at}`);
+  return item;
+}
+
 describe("cost 展示纯函数", () => {
   it("formatMoney：两位小数 + 元；非法值回退 -", () => {
     expect(formatMoney(0.15)).toBe("0.15 元");
@@ -51,9 +58,9 @@ describe("cost 展示纯函数", () => {
       total: 556, ok: 290, error: 266, successRate: 52.2, cost: 28.9, todayCost: 1.2, avgSeconds: 190.9,
     });
     expect(rows.map((r) => r.label)).toEqual(["今日花费", "累计花费", "成功率", "失败", "成功平均耗时"]);
-    expect(rows[0].value).toBe("1.20 元");
-    expect(rows[2].value).toBe("52.2%（290/556）");
-    expect(rows[3].value).toBe("266");
-    expect(rows[4].value).toBe("3m11s");
+    expect(indexed(rows, 0).value).toBe("1.20 元");
+    expect(indexed(rows, 2).value).toBe("52.2%（290/556）");
+    expect(indexed(rows, 3).value).toBe("266");
+    expect(indexed(rows, 4).value).toBe("3m11s");
   });
 });

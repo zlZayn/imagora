@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { buildPromptNodes, parsePromptImportFormat, resolveCardSize } from "./promptImportFormat";
 
 /** 构造一块导入格式文本（标题 + ```text 围栏 + ratio 行 + 正文） */
+/** noUncheckedIndexedAccess 守卫：越界即失败，不把断言弱化为可选链 */
+function indexed<T>(items: ArrayLike<T>, at: number): T {
+  const item = items[at];
+  if (item === undefined) throw new Error(`indexed: 长度 ${items.length} 越界下标 ${at}`);
+  return item;
+}
+
 function block(title: string, ratio: string, prompt: string): string {
   return `=== ${title} ===\n\`\`\`text\nratio: ${ratio}\n\n${prompt}\n\`\`\`\n`;
 }
@@ -31,9 +38,9 @@ describe("parsePromptImportFormat", () => {
       ratio: "1:1",
       prompt: "product bottle on clean mint background, centered, studio light",
     });
-    expect(result.cards[5].title).toBe("详情图1");
-    expect(result.cards[5].ratio).toBe("9:16");
-    expect(result.cards[9].title).toBe("详情图5");
+    expect(indexed(result.cards, 5).title).toBe("详情图1");
+    expect(indexed(result.cards, 5).ratio).toBe("9:16");
+    expect(indexed(result.cards, 9).title).toBe("详情图5");
   });
 
   it("单块最小合法性", () => {
@@ -45,35 +52,35 @@ describe("parsePromptImportFormat", () => {
     const text = `=== 轮播图1 ===\n\`\`\`text\nsome prompt without ratio\n\`\`\`\n`;
     const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(0);
-    expect(result.issues[0].code).toBe("missing-ratio");
-    expect(result.issues[0].title).toBe("轮播图1");
+    expect(indexed(result.issues, 0).code).toBe("missing-ratio");
+    expect(indexed(result.issues, 0).title).toBe("轮播图1");
   });
 
   it("ratio 行格式非法（abc / 1）→ bad-ratio", () => {
     const bad1 = `=== 轮播图1 ===\n\`\`\`text\nratio: abc\n\nbody\n\`\`\`\n`;
     const bad2 = `=== 轮播图1 ===\n\`\`\`text\nratio: 1\n\nbody\n\`\`\`\n`;
-    expect(parsePromptImportFormat(bad1).issues[0].code).toBe("bad-ratio");
-    expect(parsePromptImportFormat(bad2).issues[0].code).toBe("bad-ratio");
+    expect(indexed(parsePromptImportFormat(bad1).issues, 0).code).toBe("bad-ratio");
+    expect(indexed(parsePromptImportFormat(bad2).issues, 0).code).toBe("bad-ratio");
   });
 
   it("ratio 冒号后无空格也能解析（容错）", () => {
     const text = `=== 轮播图1 ===\n\`\`\`text\nratio:1:1\n\nbody\n\`\`\`\n`;
     const result = parsePromptImportFormat(text);
-    expect(result.cards[0].ratio).toBe("1:1");
+    expect(indexed(result.cards, 0).ratio).toBe("1:1");
   });
 
   it("正文为空 → empty-prompt", () => {
     const text = `=== 轮播图1 ===\n\`\`\`text\nratio: 1:1\n\n\`\`\`\n`;
     const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(0);
-    expect(result.issues[0].code).toBe("empty-prompt");
+    expect(indexed(result.issues, 0).code).toBe("empty-prompt");
   });
 
   it("标题重复 → duplicate-title，保留首个、排除后续", () => {
     const text = `${block("轮播图1", "1:1", "first")}${block("轮播图1", "1:1", "second")}`;
     const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(1);
-    expect(result.cards[0].prompt).toBe("first");
+    expect(indexed(result.cards, 0).prompt).toBe("first");
     expect(result.issues.some((i) => i.code === "duplicate-title")).toBe(true);
   });
 
@@ -81,14 +88,14 @@ describe("parsePromptImportFormat", () => {
     const text = `=== 轮播图1 ===\nplain text without fence\n`;
     const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(0);
-    expect(result.issues[0].code).toBe("missing-fence");
+    expect(indexed(result.issues, 0).code).toBe("missing-fence");
   });
 
   it("全文无标题但存在围栏 → missing-header", () => {
     const text = "some intro\n```text\nratio: 1:1\n\nbody\n```\n";
     const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(0);
-    expect(result.issues[0].code).toBe("missing-header");
+    expect(indexed(result.issues, 0).code).toBe("missing-header");
   });
 
   it("块前解说文字 → 进 skippedText，块不受影响", () => {
@@ -103,7 +110,7 @@ describe("parsePromptImportFormat", () => {
     const text = `\uFEFF${crlf}`;
     const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(1);
-    expect(result.cards[0].prompt).toBe("a bottle");
+    expect(indexed(result.cards, 0).prompt).toBe("a bottle");
   });
 
   it("``` 与 ```text 围栏混合均接受", () => {
@@ -119,8 +126,8 @@ describe("parsePromptImportFormat", () => {
     const text = `=== 轮播图1 ===\n\`\`\`text\nratio: 1:1\n\nline with \`\`\` inside\nlast line\n\`\`\`\n`;
     const result = parsePromptImportFormat(text);
     expect(result.cards).toHaveLength(1);
-    expect(result.cards[0].prompt).toContain("inside");
-    expect(result.cards[0].prompt).toContain("last line");
+    expect(indexed(result.cards, 0).prompt).toContain("inside");
+    expect(indexed(result.cards, 0).prompt).toContain("last line");
   });
 });
 
@@ -172,14 +179,14 @@ describe("buildPromptNodes", () => {
       { x: 100, y: 50 },
     );
     expect(nodes).toHaveLength(2);
-    expect(nodes[0].id).toMatch(/^prompt-\d+-0$/);
-    expect(nodes[0].type).toBe("prompt");
-    expect(nodes[0].data.title).toBe("轮播图1");
-    expect(nodes[0].data.size).toBe("1024x1024");
-    expect(nodes[0].data.quality).toBe("high");
-    expect(nodes[0].data.outputDir).toBe("imgs");
-    expect(nodes[1].data.title).toBe("详情图1");
-    expect(nodes[1].data.size).toBe("1152x2048");
+    expect(indexed(nodes, 0).id).toMatch(/^prompt-\d+-0$/);
+    expect(indexed(nodes, 0).type).toBe("prompt");
+    expect(indexed(nodes, 0).data.title).toBe("轮播图1");
+    expect(indexed(nodes, 0).data.size).toBe("1024x1024");
+    expect(indexed(nodes, 0).data.quality).toBe("high");
+    expect(indexed(nodes, 0).data.outputDir).toBe("imgs");
+    expect(indexed(nodes, 1).data.title).toBe("详情图1");
+    expect(indexed(nodes, 1).data.size).toBe("1152x2048");
   });
 
   it("位置按 6 列栅格平铺", () => {
@@ -188,8 +195,8 @@ describe("buildPromptNodes", () => {
       config,
       { x: 100, y: 50 },
     );
-    expect(nodes[0].position).toEqual({ x: 100, y: 50 });
-    expect(nodes[1].position).toEqual({ x: 130, y: 50 });
-    expect(nodes[2].position).toEqual({ x: 160, y: 50 });
+    expect(indexed(nodes, 0).position).toEqual({ x: 100, y: 50 });
+    expect(indexed(nodes, 1).position).toEqual({ x: 130, y: 50 });
+    expect(indexed(nodes, 2).position).toEqual({ x: 160, y: 50 });
   });
 });

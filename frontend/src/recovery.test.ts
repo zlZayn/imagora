@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "./types";
 import { buildRecoverySnapshot } from "./recovery";
 
+/** noUncheckedIndexedAccess 守卫：越界即失败，不把断言弱化为可选链 */
+function indexed<T>(items: ArrayLike<T>, at: number): T {
+  const item = items[at];
+  if (item === undefined) throw new Error(`indexed: 长度 ${items.length} 越界下标 ${at}`);
+  return item;
+}
+
 function runningPrompt(startedAtMs: number): WorkflowNode {
   return {
     id: "p1",
@@ -25,7 +32,7 @@ describe("recovery snapshots", () => {
   it("removes runtime-only prompt state without mutating canvas nodes", () => {
     const source = runningPrompt(1_700_000_000_000);
     const snapshot = buildRecoverySnapshot([source], []);
-    const saved = snapshot.nodes[0];
+    const saved = indexed(snapshot.nodes, 0);
 
     expect(saved.type === "prompt" && saved.data).toMatchObject({ status: "idle", quality: "high" });
     expect(saved.type === "prompt" && saved.data.startedAtMs).toBeUndefined();
@@ -46,7 +53,7 @@ describe("recovery snapshot strips animation classes", () => {
   it("strips node animation classes from prompt nodes", () => {
     const source = { ...runningPrompt(1), className: "node-enter enter-delay-2" } as WorkflowNode;
     const snapshot = buildRecoverySnapshot([source], []);
-    expect(snapshot.nodes[0].className).toBeUndefined();
+    expect(indexed(snapshot.nodes, 0).className).toBeUndefined();
   });
 
   it("strips animation classes from image nodes but keeps unrelated classes", () => {
@@ -66,6 +73,6 @@ describe("recovery snapshot strips animation classes", () => {
       },
     } as WorkflowNode;
     const snapshot = buildRecoverySnapshot([image], []);
-    expect(snapshot.nodes[0].className).toBe("node-related");
+    expect(indexed(snapshot.nodes, 0).className).toBe("node-related");
   });
 });
