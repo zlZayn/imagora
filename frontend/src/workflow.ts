@@ -156,7 +156,10 @@ export function workflowToCanvas(
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
   const missingSet = new Set(missing);
   const marked = nodes.map((node) => {
-    const base = { ...node, className: stripAnimClasses(node.className) };
+    const cleaned = stripAnimClasses(node.className);
+    const base = { ...node };
+    if (cleaned === undefined) delete base.className;
+    else base.className = cleaned;
     if (base.type === "image" && missingSet.has(base.data.registryId)) {
       return { ...base, data: { ...base.data, missing: true } };
     }

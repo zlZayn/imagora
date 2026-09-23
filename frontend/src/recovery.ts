@@ -13,7 +13,10 @@ export function buildRecoverySnapshot(
 ): RecoverySnapshotPayload {
   return {
     nodes: nodes.map((node) => {
-      const base = { ...node, className: stripAnimClasses(node.className) };
+      const cleaned = stripAnimClasses(node.className);
+      const base = { ...node };
+      if (cleaned === undefined) delete base.className;
+      else base.className = cleaned;
       if (base.type !== "prompt") return base;
       const { startedAtMs: _startedAtMs, resultCount: _resultCount, message: _message, ...data } = base.data;
       return {
