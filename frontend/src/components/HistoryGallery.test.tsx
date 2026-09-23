@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HistoryGallery } from "./HistoryGallery";
@@ -208,7 +208,8 @@ describe("HistoryGallery 分页（滚动加载）", () => {
     render(<HistoryGallery open onClose={vi.fn()} onImport={vi.fn()} />);
     await screen.findByText("全量记录");
 
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "error" } });
+    fireEvent.click(screen.getByRole("button", { name: /全部状态/, expanded: false }));
+    fireEvent.click(within(screen.getByRole("listbox")).getByText("失败"));
 
     expect(await screen.findByText("仅失败记录")).toBeTruthy();
     expect(screen.queryByText("全量记录")).toBeNull();
