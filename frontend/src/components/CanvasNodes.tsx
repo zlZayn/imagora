@@ -42,6 +42,27 @@ function ActionButton({
   );
 }
 
+/* ---------------- 三类节点共用的连接把手：顶部接收上游、底部输出下游 ----------------
+ * 样式收敛到这一处（尺寸交给画布 zoom 样式，见 CanvasNodes.test.tsx 的回归断言）。
+ * Fragment 不产生 DOM 节点——两个把手仍是节点根 div 的直接子元素，绝对定位与
+ * React Flow 的 handle 注册（走 context，不走 DOM 父子）均不受影响。 */
+function NodeHandles() {
+  return (
+    <>
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!rounded !border-0 !bg-brand/90"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!rounded !border-0 !bg-brand"
+      />
+    </>
+  );
+}
+
 /* ---------------- 图片节点：固定宽度、高度按图片比例自适应 ---------------- */
 export type ImageFlowNode = Node<CanvasImageNodeData, "image">;
 
@@ -63,6 +84,40 @@ export function ImageNode({
   onDelete,
   onZoom,
 }: NodeProps<ImageFlowNode> & ImageNodeExtraProps & { lod?: boolean }) {
+  // lod / normal 两分支共用的三段片段（原为两份逐字相同的内联 JSX）
+  const missingBadge = data.missing ? (
+    <span className="absolute right-1 top-1 z-20 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
+      文件缺失
+    </span>
+  ) : null;
+  // 固定展示框避免图片加载后撑高节点，object-contain 保留完整画面。
+  const thumb = (
+    <div
+      className="h-40 w-32 cursor-zoom-in overflow-hidden rounded bg-neutral-50"
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onZoom(id);
+      }}
+    >
+      {data.url ? (
+        <img src={data.url} alt={data.name} className="block h-full w-full object-contain" draggable={false} />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center p-2 text-center text-[11px] text-red-500">
+          图片缺失
+        </div>
+      )}
+    </div>
+  );
+  const meta = (
+    <>
+      <div className="mt-1 max-w-[128px] truncate text-[11px] text-neutral-600" title={data.name}>
+        {data.name}
+      </div>
+      <div className={`text-[10px] ${data.refCount > 0 ? "text-brand" : "text-neutral-400"}`}>
+        {data.refCount > 0 ? `引用 ${data.refCount} 处` : "未引用"}
+      </div>
+    </>
+  );
   // LOD 抽象模式：保留缩略图与双击放大，去掉右侧操作栏与引用行（节点多时轻量渲染）
   if (lod) {
     return (
@@ -71,42 +126,10 @@ export function ImageNode({
           selected ? "node-selected" : ""
         }`}
       >
-        <Handle
-          type="target"
-          position={Position.Top}
-          className="!rounded !border-0 !bg-brand/90"
-        />
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          className="!rounded !border-0 !bg-brand"
-        />
-        {data.missing && (
-          <span className="absolute right-1 top-1 z-20 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
-            文件缺失
-          </span>
-        )}
-        <div
-          className="h-40 w-32 cursor-zoom-in overflow-hidden rounded bg-neutral-50"
-          onDoubleClick={(event) => {
-            event.stopPropagation();
-            onZoom(id);
-          }}
-        >
-          {data.url ? (
-            <img src={data.url} alt={data.name} className="block h-full w-full object-contain" draggable={false} />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center p-2 text-center text-[11px] text-red-500">
-              图片缺失
-            </div>
-          )}
-        </div>
-        <div className="mt-1 max-w-[128px] truncate text-[11px] text-neutral-600" title={data.name}>
-          {data.name}
-        </div>
-        <div className={`text-[10px] ${data.refCount > 0 ? "text-brand" : "text-neutral-400"}`}>
-          {data.refCount > 0 ? `引用 ${data.refCount} 处` : "未引用"}
-        </div>
+        <NodeHandles />
+        {missingBadge}
+        {thumb}
+        {meta}
       </div>
     );
   }
@@ -117,21 +140,8 @@ export function ImageNode({
       }`}
     >
       {/* 顶部接收提示词产出；底部作为参考图输出。 */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!rounded !border-0 !bg-brand/90"
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!rounded !border-0 !bg-brand"
-      />
-      {data.missing && (
-        <span className="absolute right-1 top-1 z-20 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
-          文件缺失
-        </span>
-      )}
+      <NodeHandles />
+      {missingBadge}
       {/* 图片专用操作区：悬停时在右侧显示，不遮挡图片。 */}
       <NodeActions testId="image-action-rail">
         <ActionButton label="预览大图" onClick={() => onZoom(id)}>
@@ -144,28 +154,8 @@ export function ImageNode({
           <Trash2 aria-hidden="true" size={14} />
         </ActionButton>
       </NodeActions>
-      {/* 固定展示框避免图片加载后撑高节点，object-contain 保留完整画面。 */}
-      <div
-        className="h-40 w-32 cursor-zoom-in overflow-hidden rounded bg-neutral-50"
-        onDoubleClick={(event) => {
-          event.stopPropagation();
-          onZoom(id);
-        }}
-      >
-        {data.url ? (
-          <img src={data.url} alt={data.name} className="block h-full w-full object-contain" draggable={false} />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center p-2 text-center text-[11px] text-red-500">
-            图片缺失
-          </div>
-        )}
-      </div>
-      <div className="mt-1 max-w-[128px] truncate text-[11px] text-neutral-600" title={data.name}>
-        {data.name}
-      </div>
-      <div className={`text-[10px] ${data.refCount > 0 ? "text-brand" : "text-neutral-400"}`}>
-        {data.refCount > 0 ? `引用 ${data.refCount} 处` : "未引用"}
-      </div>
+      {thumb}
+      {meta}
     </div>
   );
 }
@@ -196,29 +186,23 @@ export function GroupNode({
       去重
     </span>
   ) : null;
+  const body = (
+    <div className="py-2 text-center">
+      <div className="text-xl font-semibold leading-tight text-brand-dark">
+        {data.imageCount} 张图
+      </div>
+      <div className="mt-1 text-base text-neutral-500">{mb} MB</div>
+      {dupBadge}
+    </div>
+  );
   // LOD 抽象模式：去掉 hover 删除栏，只保留组本体（组节点本身已足够轻量）
   if (lod) {
     return (
       <div
         className={`relative w-56 rounded-lg bg-brand/5 !p-4 ${selected ? "node-selected" : ""}`}
       >
-        <Handle
-          type="target"
-          position={Position.Top}
-          className="!rounded !border-0 !bg-brand/90"
-        />
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          className="!rounded !border-0 !bg-brand"
-        />
-        <div className="py-2 text-center">
-          <div className="text-xl font-semibold leading-tight text-brand-dark">
-            {data.imageCount} 张图
-          </div>
-          <div className="mt-1 text-base text-neutral-500">{mb} MB</div>
-          {dupBadge}
-        </div>
+        <NodeHandles />
+        {body}
       </div>
     );
   }
@@ -227,28 +211,13 @@ export function GroupNode({
       className={`group relative w-56 rounded-lg bg-brand/5 !p-4 node-pop ${selected ? "node-selected" : ""}`}
     >
       {/* 顶部接收图片，底部输出到提示词。 */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!rounded !border-0 !bg-brand/90"
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!rounded !border-0 !bg-brand"
-      />
+      <NodeHandles />
       <NodeActions>
         <ActionButton label="删除图片组" onClick={() => onDelete(id)} danger>
           <Trash2 aria-hidden="true" size={14} />
         </ActionButton>
       </NodeActions>
-      <div className="py-2 text-center">
-        <div className="text-xl font-semibold leading-tight text-brand-dark">
-          {data.imageCount} 张图
-        </div>
-        <div className="mt-1 text-base text-neutral-500">{mb} MB</div>
-        {dupBadge}
-      </div>
+      {body}
     </div>
   );
 }
@@ -364,16 +333,7 @@ export const PromptNode = memo(function PromptNode({
       <div
         className={`panel-card flex min-h-[320px] !w-[380px] flex-col items-center justify-center gap-3 !p-3 ${selected ? "node-selected" : ""}`}
       >
-        <Handle
-          type="target"
-          position={Position.Top}
-          className="!rounded !border-0 !bg-brand/90"
-        />
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          className="!rounded !border-0 !bg-brand"
-        />
+        <NodeHandles />
         <div
           className="max-w-full truncate text-center text-3xl font-semibold leading-tight text-brand-dark"
           title={data.title ?? "提示词生成"}
@@ -389,16 +349,7 @@ export const PromptNode = memo(function PromptNode({
   return (
     <div className={`panel-card group relative !w-[380px] min-w-0 !p-3 node-pop ${selected ? "node-selected" : ""}`}>
       {/* 顶部接收参考图，底部输出生成结果。 */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!rounded !border-0 !bg-brand/90"
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!rounded !border-0 !bg-brand"
-      />
+      <NodeHandles />
       {/* 右侧统一操作区：状态灯 + 删除 */}
       <NodeActions>
         <StatusLight data={data} />
