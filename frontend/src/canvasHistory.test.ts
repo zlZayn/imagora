@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { createCanvasHistory } from "./canvasHistory";
 import type { WorkflowNode } from "./types";
 
+/** noUncheckedIndexedAccess 守卫：越界即失败，不把断言弱化为可选链 */
+function indexed<T>(items: ArrayLike<T>, at: number): T {
+  const item = items[at];
+  if (item === undefined) throw new Error(`indexed: 长度 ${items.length} 越界下标 ${at}`);
+  return item;
+}
+
 const state = (id: string) => ({
   nodes: [{ id, type: "group", position: { x: 0, y: 0 }, data: { name: id, imageCount: 0, totalSize: 0 } } as WorkflowNode],
   edges: [],
@@ -15,9 +22,9 @@ describe("canvas history", () => {
     history.record(state("b"));
 
     const undone = history.undo(state("c"));
-    expect(undone?.nodes[0].id).toBe("b");
+    expect(undone && indexed(undone.nodes, 0).id).toBe("b");
     const restored = history.restore(undone!);
-    expect(restored?.nodes[0].id).toBe("c");
+    expect(restored && indexed(restored.nodes, 0).id).toBe("c");
   });
 
   it("clears restore after recording a new branch and respects the limit", () => {
@@ -25,11 +32,14 @@ describe("canvas history", () => {
     history.record(state("a"));
     history.record(state("b"));
     history.record(state("c"));
-    expect(history.undo(state("d"))?.nodes[0].id).toBe("c");
+    const afterD = history.undo(state("d"));
+    expect(afterD && indexed(afterD.nodes, 0).id).toBe("c");
     history.record(state("new"));
     expect(history.canRestore()).toBe(false);
-    expect(history.undo(state("latest"))?.nodes[0].id).toBe("new");
-    expect(history.undo(state("new"))?.nodes[0].id).toBe("b");
+    const afterLatest = history.undo(state("latest"));
+    expect(afterLatest && indexed(afterLatest.nodes, 0).id).toBe("new");
+    const afterNew = history.undo(state("new"));
+    expect(afterNew && indexed(afterNew.nodes, 0).id).toBe("b");
     expect(history.undo(state("b"))).toBeNull();
   });
 });

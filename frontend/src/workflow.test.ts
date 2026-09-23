@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { WorkflowEdge, WorkflowNode } from "./types";
 import { autoConnect, autoConnectSelection, buildGroupNode, buildPromptNode, canConnect, collectIncomingImages, computeCounts, extractAnimClasses, isImageFile, mergeSubmissionGraph, snapshotIncomingAbsPaths, staggerCreatePosition, updatePromptNode, updateSelectedPromptOutputDirs, withEnterAnim, workflowToCanvas } from "./workflow";
 
+/** noUncheckedIndexedAccess 守卫：越界即失败，不把断言弱化为可选链 */
+function indexed<T>(items: ArrayLike<T>, at: number): T {
+  const item = items[at];
+  if (item === undefined) throw new Error(`indexed: 长度 ${items.length} 越界下标 ${at}`);
+  return item;
+}
+
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
     id,
@@ -68,7 +75,7 @@ describe("workflow defaults", () => {
     const legacyPrompt = legacyPromptNode("p1");
 
     const result = workflowToCanvas([legacyPrompt], [], []);
-    const prompt = result.nodes[0];
+    const prompt = indexed(result.nodes, 0);
 
     expect(prompt.type === "prompt" && prompt.data.quality).toBe("high");
   });
@@ -91,8 +98,8 @@ describe("prompt node updates", () => {
     const changed = updatePromptNode(nodes, "p1", { status: "running", startedAtMs: 1000 });
     expect(changed).not.toBe(nodes);
     expect(changed[0]).not.toBe(prompt);
-    expect(changed[0].data.status).toBe("running");
-    expect(changed[0].data.startedAtMs).toBe(1000);
+    expect(indexed(changed, 0).data.status).toBe("running");
+    expect(indexed(changed, 0).data.startedAtMs).toBe(1000);
     expect(changed[1]).toBe(image);
   });
 
@@ -563,13 +570,13 @@ describe("animation class helpers", () => {
   it("strips runtime animation classes from node className on load", () => {
     const node = { ...imageNode("a"), className: "node-enter enter-delay-2 node-related" } as WorkflowNode;
     const result = workflowToCanvas([node], [], []);
-    expect(result.nodes[0].className).toBe("node-related");
+    expect(indexed(result.nodes, 0).className).toBe("node-related");
   });
 
   it("removes the exit marker so a restored workflow never lingers in fade-out", () => {
     const node = { ...imageNode("b"), className: "node-exiting" } as WorkflowNode;
     const result = workflowToCanvas([node], [], []);
-    expect(result.nodes[0].className).toBeUndefined();
+    expect(indexed(result.nodes, 0).className).toBeUndefined();
   });
 
   it("extracts only animation classes for highlight merging", () => {

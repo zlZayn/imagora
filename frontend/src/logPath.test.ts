@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { splitLogPath } from "./logPath";
 
 /** 回归测试：日志文本中的本机绝对路径必须拆成可点击复制的词条段 */
+/** noUncheckedIndexedAccess 守卫：越界即失败，不把断言弱化为可选链 */
+function indexed<T>(items: ArrayLike<T>, at: number): T {
+  const item = items[at];
+  if (item === undefined) throw new Error(`indexed: 长度 ${items.length} 越界下标 ${at}`);
+  return item;
+}
+
 describe("splitLogPath 路径词条解析", () => {
   it("保存消息：相对/绝对反斜杠路径拆成词条，其余文本保留", () => {
     const segs = splitLogPath("已保存 · E:\\新下载\\txt2img_20260825_113443_001.png（1024x1024）");
@@ -36,6 +43,6 @@ describe("splitLogPath 路径词条解析", () => {
 
   it("路径后紧跟中文标点/全角括号：路径不含标点", () => {
     const segs = splitLogPath("已保存 · C:\\out\\x.png（尺寸）");
-    expect(segs[1].path).toBe("C:\\out\\x.png");
+    expect(indexed(segs, 1).path).toBe("C:\\out\\x.png");
   });
 });

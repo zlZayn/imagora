@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { WorkflowEdge, WorkflowNode } from "./types";
 import { autoLayout, layoutPromptResults, layoutSelection, nodeSize } from "./layout";
 
+/** noUncheckedIndexedAccess 守卫：越界即失败，不把断言弱化为可选链 */
+function indexed<T>(items: ArrayLike<T>, at: number): T {
+  const item = items[at];
+  if (item === undefined) throw new Error(`indexed: 长度 ${items.length} 越界下标 ${at}`);
+  return item;
+}
+
 function promptNode(id: string, y = 0): WorkflowNode {
   return {
     id,
@@ -205,8 +212,8 @@ describe("auto layout", () => {
     const texts = prompts.map((node) => (node.type === "prompt" ? node.data.title : ""));
     // 同一参考来源（shared）组内从左到右按标题升序：Alpha < Beta < Gamma
     expect(texts).toEqual(["Alpha", "Beta", "Gamma"]);
-    expect(prompts[0].position.x).toBeLessThan(prompts[1].position.x);
-    expect(prompts[1].position.x).toBeLessThan(prompts[2].position.x);
+    expect(indexed(prompts, 0).position.x).toBeLessThan(indexed(prompts, 1).position.x);
+    expect(indexed(prompts, 1).position.x).toBeLessThan(indexed(prompts, 2).position.x);
   });
 
   it("defaults the title sort key for prompt cards without one", () => {
@@ -247,7 +254,7 @@ describe("auto layout complex connections", () => {
     const arranged = autoLayout(nodes, edges);
     const ys = arranged.map((node) => node.position.y);
     for (let i = 1; i < ys.length; i += 1) {
-      expect(ys[i - 1]).toBeLessThan(ys[i]);
+      expect(indexed(ys, i - 1)).toBeLessThan(indexed(ys, i));
     }
   });
 
@@ -318,7 +325,7 @@ describe("layout selection", () => {
     const nodes = [{ ...promptNode("p1"), position: { x: 100, y: 100 } } as WorkflowNode];
     const result = layoutSelection(nodes, [], new Set());
     expect(result).toBe(nodes);
-    expect(result[0].position).toEqual({ x: 100, y: 100 });
+    expect(indexed(result, 0).position).toEqual({ x: 100, y: 100 });
   });
 
   it("re-layout on the same selection does not drift right/down (origin is the anchor, not an offset)", () => {
@@ -447,7 +454,7 @@ describe("layout balancing", () => {
     expect(Math.abs(center(onceById.get("b")!) - center(g2))).toBeLessThanOrEqual(3);
     // 卡片行内部不混排：组内标题有序（标题组前缀 g1-01..g1-10）
     for (let i = 1; i < leftCards.length; i += 1) {
-      expect(leftCards[i - 1].position.x).toBeLessThan(leftCards[i].position.x);
+      expect(indexed(leftCards, i - 1).position.x).toBeLessThan(indexed(leftCards, i).position.x);
     }
     // 连续整理幂等：第二次结果与第一次完全一致（不漂移）
     const twice = layoutSelection(once, edges, all);
@@ -509,23 +516,23 @@ describe("layout bipartite mesh", () => {
     const gs = ["g1", "g2"].map((id) => byId.get(id)!);
 
     // 源图分散（不左对齐成一人堆）：a 左、b 中、c 右；组同样左→右
-    expect(imgs[0].position.x).toBeLessThan(imgs[1].position.x);
-    expect(imgs[1].position.x).toBeLessThan(imgs[2].position.x);
-    expect(gs[0].position.x).toBeLessThan(gs[1].position.x);
+    expect(indexed(imgs, 0).position.x).toBeLessThan(indexed(imgs, 1).position.x);
+    expect(indexed(imgs, 1).position.x).toBeLessThan(indexed(imgs, 2).position.x);
+    expect(indexed(gs, 0).position.x).toBeLessThan(indexed(gs, 1).position.x);
     // 同层不重叠
-    expect(horizontalGap(imgs[0], imgs[1])).toBeGreaterThanOrEqual(0);
-    expect(horizontalGap(imgs[1], imgs[2])).toBeGreaterThanOrEqual(0);
-    expect(horizontalGap(gs[0], gs[1])).toBeGreaterThanOrEqual(0);
+    expect(horizontalGap(indexed(imgs, 0), indexed(imgs, 1))).toBeGreaterThanOrEqual(0);
+    expect(horizontalGap(indexed(imgs, 1), indexed(imgs, 2))).toBeGreaterThanOrEqual(0);
+    expect(horizontalGap(indexed(gs, 0), indexed(gs, 1))).toBeGreaterThanOrEqual(0);
     // 图在上、组在下
     for (const img of imgs) {
-      expect(img.position.y).toBeLessThan(gs[0].position.y);
+      expect(img.position.y).toBeLessThan(indexed(gs, 0).position.y);
     }
     // b 站在 g1 与 g2 之间（对称几何中心附近，容差 = 半个组宽 + 余量）
-    const mid = (center(gs[0]) + center(gs[1])) / 2;
+    const mid = (center(indexed(gs, 0)) + center(indexed(gs, 1))) / 2;
     expect(Math.abs(center(byId.get("b")!) - mid)).toBeLessThanOrEqual(224);
     // 端源图与对应组中心对齐（容差 = 图宽：对质心对齐的近似等价形式）
-    expect(Math.abs(center(byId.get("a")!) - center(gs[0]))).toBeLessThanOrEqual(160);
-    expect(Math.abs(center(byId.get("c")!) - center(gs[1]))).toBeLessThanOrEqual(160);
+    expect(Math.abs(center(byId.get("a")!) - center(indexed(gs, 0)))).toBeLessThanOrEqual(160);
+    expect(Math.abs(center(byId.get("c")!) - center(indexed(gs, 1)))).toBeLessThanOrEqual(160);
   });
 
   it("centers multiple groups under their shared source image", () => {

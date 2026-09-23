@@ -6,6 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkBudget, submitGenerate, type HttpError } from "./api";
 import { useGenerationTask } from "./useGenerationTask";
 
+/** noUncheckedIndexedAccess 守卫：越界即失败，不把断言弱化为可选链 */
+function indexed<T>(items: ArrayLike<T>, at: number): T {
+  const item = items[at];
+  if (item === undefined) throw new Error(`indexed: 长度 ${items.length} 越界下标 ${at}`);
+  return item;
+}
+
 // 提交走真实 API 会因 jsdom 无 baseURL 失败，这里 mock 掉 submit 的网络层
 // isHttpError 用真实实现（纯判别函数，无网络），让 409 分支走生产同款判定
 vi.mock("./api", async () => {
@@ -119,9 +126,9 @@ describe("useGenerationTask 超预算确认（409 → 确认 → 重提）", () 
     expect(taskId).toBe("task-after-confirm");
     expect(checkBudget).toHaveBeenCalledWith({ count: 1, size: "1024x1024" });
     expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(confirmSpy.mock.calls[0][0]).toContain("超过单次上限");
+    expect(indexed(confirmSpy.mock.calls, 0)[0]).toContain("超过单次上限");
     expect(submitGenerate).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(submitGenerate).mock.calls[1][0]).toMatchObject({ allowOverBudget: true });
+    expect(indexed(vi.mocked(submitGenerate).mock.calls, 1)[0]).toMatchObject({ allowOverBudget: true });
   });
 
   it("取消确认：抛出 409 错误且不重提", async () => {
