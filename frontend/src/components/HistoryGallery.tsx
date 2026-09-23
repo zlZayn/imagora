@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 
+import { Select } from "./Select";
+
 import {
   checkBudget,
   fetchTask,
@@ -147,7 +149,14 @@ export function HistoryGallery({
   const rerunCandidates = useMemo(() => planRerun(items.filter((it) => it.status === "error")), [items]);
 
   /** 分页大小：DOM 总量控制在单页数量级，滚动顺滑 */
-  const PAGE_SIZE = 60;
+  /** 状态筛选选项（值 = `/api/history` 的 status 参数；空串 = 全部）。 */
+const STATUS_OPTIONS = [
+  { value: "", label: "全部状态" },
+  { value: "ok", label: "成功" },
+  { value: "error", label: "失败" },
+];
+
+const PAGE_SIZE = 60;
 
   /** 成本看板数据（账本原始行聚合 + 预算占用） */
   const loadStats = useCallback(async () => {
@@ -324,25 +333,28 @@ export function HistoryGallery({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <section className="flex h-[86vh] w-[min(1100px,96vw)] flex-col overflow-hidden rounded-lg bg-[#f7f7f5] shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <header className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-4 py-3">
+        <header className="compact-controls flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-4 py-3">
           <h2 className="mr-2 text-sm font-semibold">生成历史</h2>
+          <div className="flex flex-wrap items-center gap-2">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => { if (event.key === "Enter") void load(); }}
             placeholder="搜索提示词、质量或文件名"
-            className="field-control !w-72 !py-1"
+            className="field-control !w-72"
           />
-          <select value={status} onChange={(event) => { const next = event.target.value; setStatus(next); void load({ status: next }); }} className="field-control !w-28 !py-1">
-            <option value="">全部状态</option>
-            <option value="ok">成功</option>
-            <option value="error">失败</option>
-          </select>
-          <button type="button" className="btn-ghost !px-3 !py-1" onClick={() => void load()}>搜索</button>
+          <Select
+            options={STATUS_OPTIONS}
+            value={status}
+            onChange={(next) => { setStatus(next); void load({ status: next }); }}
+            className="w-28"
+          />
+          <button type="button" className="btn-ghost" onClick={() => void load()}>搜索</button>
+          </div>
           {rerunCandidates.runnable.length > 0 && (
             <button
               type="button"
-              className="btn-ghost !px-3 !py-1"
+              className="btn-ghost ml-auto"
               title="把当前列表里的失败记录重新跑一遍（结果落输出目录并写入历史）"
               onClick={() => void openRerun(rerunCandidates.runnable)}
             >
@@ -354,7 +366,7 @@ export function HistoryGallery({
               {rerunCandidates.lostRefs} 条参考图已丢失
             </span>
           )}
-          <button type="button" className="btn-ghost ml-auto !px-3 !py-1" onClick={onClose}>关闭</button>
+          <button type="button" className="btn-ghost ml-auto" onClick={onClose}>关闭</button>
         </header>
         <CostBoard
           stats={stats}

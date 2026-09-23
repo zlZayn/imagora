@@ -29,6 +29,26 @@ body {
     @apply border-brand ring-2 ring-brand/20;
   }
 
+  /* 紧凑控件行：一行内并排的输入 / 下拉 / 按钮统一尺寸（历史页筛选行、成本看板预算行）。
+     收敛在此、而不是散成各元素的 !py-* / !px-* 覆盖 —— 覆盖各写各的，同排控件就会参差不齐。 */
+  .compact-controls .field-control {
+    @apply px-2.5 py-1 text-xs;
+  }
+  .compact-controls .btn-primary,
+  .compact-controls .btn-ghost {
+    @apply px-2.5 py-1 text-xs;
+  }
+  /* 数字输入去掉原生上下箭头：它在紧凑行里几乎与字段等宽，且各浏览器外观不一 */
+  .compact-controls .field-control[type='number']::-webkit-outer-spin-button,
+  .compact-controls .field-control[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .compact-controls .field-control[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
   /* 字段标签 */
   .field-label {
     @apply text-sm font-medium text-neutral-700;
