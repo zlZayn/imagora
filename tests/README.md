@@ -43,7 +43,7 @@ cd frontend; npm test
 | [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
 | [`test_main_cli.py`](test_main_cli.py) | 25 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ config 输出 |
 
-## 文件索引（前端 vitest，共 202，位于 frontend/src/）
+## 文件索引（前端 vitest，共 222，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -64,6 +64,9 @@ cd frontend; npm test
 | [`promptImportFormat.test.ts`](../frontend/src/promptImportFormat.test.ts) | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
 | [`cost.test.ts`](../frontend/src/cost.test.ts) | 6 | 金额/比例/耗时格式化（非法值回退 -）/ 预算摘要（不限与设限两种、兼容预检结果的 settings 形态）/ 看板主指标行顺序与文案 |
 | [`api-guards.test.ts`](../frontend/src/api-guards.test.ts) | 9 | `/api` 响应形状守卫（必填字段类型、可选字段「在但类型错」、多出的键放行） |
+| [`format.test.ts`](../frontend/src/format.test.ts) | 6 | `formatBytes` 三档与 1024 边界 / `generatingLabel` 文案 / `errMessage`（Error 与非 Error、超长才截断、恰好等于上限不截、limit 可覆盖） |
+| [`accent.test.ts`](../frontend/src/accent.test.ts) | 4 | 同一编号恒定取色、`null` 回落 1 号、黄金角色相分布（含越过 360 回绕与 0 号负色相的现行为）、`brand` 与 `brandDark` 只差明度 |
+| [`windowInherit.test.ts`](../frontend/src/windowInherit.test.ts) | 10 | 写读往返且不清除、`notice` 省略即不写该键、空参考图 `filesIncluded: false`、`sessionStorage` 抛错时放弃继承不抛错、无键 / 非 JSON / 顶层形状不符 / `refs` 字段类型不符 / `notice` 非字符串一律判无继承、清除不误伤其他键 |
 | [`rerun.test.ts`](../frontend/src/rerun.test.ts) | 9 | 可重跑判定（成功记录、空提示词、缺尺寸/质量、图生图参考图丢失、参考图仍在、纯文生图）/ 分组与丢失计数 / 批量参数构造（空 path 丢弃）/ 跳过原因聚合排序 |
 
 ## 变更影响路由（改前必看）
@@ -83,7 +86,7 @@ cd frontend; npm test
 
 - Backend Job：**windows-latest**（5 个 Windows 专属测试）
 - `--basetemp` 指向 ASCII 临时目录（本地自选目录，CI 用 `${{ runner.temp }}`，见 ci.yml）
-- 细节见 [../.github/workflows/ci.yml](../.github/workflows/ci.yml)（草稿）
+- 细节见 [../.github/workflows/ci.yml](../.github/workflows/ci.yml)（三 Job：Backend / Frontend / E2E）
 
 ## 参考
 
