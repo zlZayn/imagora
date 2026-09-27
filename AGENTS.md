@@ -29,6 +29,13 @@
 - E2E [verify_canvas.py](frontend/e2e/verify_canvas.py)：**36/36 PASS**（前置：起 7860 服务，见 [frontend/README.md](frontend/README.md)）
 - 迁移（v1→v2 / .canvas→.assets / 账本回填）已完成，日常无需执行（见 [scripts/README.md](scripts/README.md)）
 
+## 常用命令（后端）
+
+- `uv run pytest --basetemp=<ASCII 可写目录>`：**必须带 `--basetemp`**（原因见「活跃坑」）；逐文件覆盖见 [tests/README.md](tests/README.md)
+- `uv run ruff check .`：Lint（ruff 默认规则集，列宽默认 88）
+- `uv run ruff format .`：格式化（`--check` 只看不改）
+- 前端 npm 命令（dev / build / lint / test）→ [frontend/README.md](frontend/README.md)
+
 ## 待办
 
 - [ ] 把 [scripts/check_docs.py](scripts/check_docs.py) 接进 [ci.yml](.github/workflows/ci.yml)：它现在只有本地跑，链接与计数漂移靠人记得
