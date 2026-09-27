@@ -1,6 +1,6 @@
 # 决策：迁移至 ProjectSomething 并重建 .venv（2026-09-01）
 
-已实施：shipped
+状态：生效
 
 ## 问题
 
