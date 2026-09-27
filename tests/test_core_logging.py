@@ -3,6 +3,7 @@
 
 覆盖: log_generation 写入 JSONL、字段完整性、路径相对化。不依赖网络。
 """
+
 import json
 
 from core import logging as log_module
@@ -31,15 +32,36 @@ def test_log_generation_appends_line(monkeypatch, tmp_path):
     assert record["cost"] == 0.05
     assert record["seconds"] == 3.2
     assert record["status"] == "ok"
-    assert set(record) == {"time", "mode", "refs", "prompt", "size", "quality", "status", "cost", "seconds", "output"}
+    assert set(record) == {
+        "time",
+        "mode",
+        "refs",
+        "prompt",
+        "size",
+        "quality",
+        "status",
+        "cost",
+        "seconds",
+        "output",
+    }
 
 
 def test_log_generation_appends_multiple(monkeypatch, tmp_path):
     """多次调用累积多行"""
     monkeypatch.setattr(log_module, "LOGS_DIR", tmp_path)
     for i in range(3):
-        log_module.log_generation(prompt=f"p{i}", mode="img2img", refs=1, size="1024x1024", quality="low", status="ok")
-    assert len((tmp_path / "generation.jsonl").read_text(encoding="utf-8").splitlines()) == 3
+        log_module.log_generation(
+            prompt=f"p{i}",
+            mode="img2img",
+            refs=1,
+            size="1024x1024",
+            quality="low",
+            status="ok",
+        )
+    assert (
+        len((tmp_path / "generation.jsonl").read_text(encoding="utf-8").splitlines())
+        == 3
+    )
 
 
 def test_log_generation_path_relativized(monkeypatch, tmp_path):
@@ -48,7 +70,15 @@ def test_log_generation_path_relativized(monkeypatch, tmp_path):
     from core.config import WORK_ROOT
 
     target = str(WORK_ROOT / "薄荷脑皮肤抑菌乳膏" / "output" / "a.png")
-    log_module.log_generation(prompt="p", mode="img2img", refs=1, size="1024x1024", quality="low", status="ok", output=target)
+    log_module.log_generation(
+        prompt="p",
+        mode="img2img",
+        refs=1,
+        size="1024x1024",
+        quality="low",
+        status="ok",
+        output=target,
+    )
     record = json.loads((tmp_path / "generation.jsonl").read_text(encoding="utf-8"))
     assert record["output"] == "薄荷脑皮肤抑菌乳膏/output/a.png"
 
@@ -78,18 +108,35 @@ def test_log_generation_write_failure_does_not_raise(monkeypatch, tmp_path):
     # 目录创建失败（父路径是文件）会触发 OSError
     (tmp_path / "readonly").write_text("occupied", encoding="utf-8")
     # 不应抛异常
-    log_module.log_generation(prompt="p", mode="txt2img", refs=0, size="1024x1024", quality="low", status="ok")
+    log_module.log_generation(
+        prompt="p", mode="txt2img", refs=0, size="1024x1024", quality="low", status="ok"
+    )
 
 
 def test_log_generation_win_field_optional(monkeypatch, tmp_path):
     """传 win -> 记录窗口号；不传 -> 无 win 字段（batch/main 兼容）"""
     monkeypatch.setattr(log_module, "LOGS_DIR", tmp_path)
 
-    log_module.log_generation(prompt="p", mode="txt2img", refs=0, size="1024x1024", quality="low", status="ok", win=3)
+    log_module.log_generation(
+        prompt="p",
+        mode="txt2img",
+        refs=0,
+        size="1024x1024",
+        quality="low",
+        status="ok",
+        win=3,
+    )
     record = json.loads((tmp_path / "generation.jsonl").read_text(encoding="utf-8"))
     assert record["win"] == 3
 
-    log_module.log_generation(prompt="p2", mode="txt2img", refs=0, size="1024x1024", quality="low", status="ok")
+    log_module.log_generation(
+        prompt="p2",
+        mode="txt2img",
+        refs=0,
+        size="1024x1024",
+        quality="low",
+        status="ok",
+    )
     lines = (tmp_path / "generation.jsonl").read_text(encoding="utf-8").splitlines()
     assert "win" not in json.loads(lines[1])
 
@@ -103,7 +150,14 @@ def test_log_generation_concurrent_writes_not_interleaved(monkeypatch, tmp_path)
     threads = [
         threading.Thread(
             target=log_module.log_generation,
-            kwargs={"prompt": f"p{i}", "mode": "img2img", "refs": 1, "size": "1024x1024", "quality": "low", "status": "ok"},
+            kwargs={
+                "prompt": f"p{i}",
+                "mode": "img2img",
+                "refs": 1,
+                "size": "1024x1024",
+                "quality": "low",
+                "status": "ok",
+            },
         )
         for i in range(n)
     ]
@@ -122,11 +176,26 @@ def test_log_generation_optional_submission_fields(monkeypatch, tmp_path):
     """可选账本联动字段：传入则写入，缺省不写入（旧行兼容）"""
     monkeypatch.setattr(log_module, "LOGS_DIR", tmp_path)
     log_module.log_generation(
-        prompt="p", mode="txt2img", refs=0, size="1024x1024", quality="low",
-        status="ok", cost=0.01, seconds=1.0,
-        submission_id="sub-1", input_asset_ids=["in1", "in2"], output_asset_ids=["out1"],
+        prompt="p",
+        mode="txt2img",
+        refs=0,
+        size="1024x1024",
+        quality="low",
+        status="ok",
+        cost=0.01,
+        seconds=1.0,
+        submission_id="sub-1",
+        input_asset_ids=["in1", "in2"],
+        output_asset_ids=["out1"],
     )
-    log_module.log_generation(prompt="p2", mode="txt2img", refs=0, size="1024x1024", quality="low", status="ok")
+    log_module.log_generation(
+        prompt="p2",
+        mode="txt2img",
+        refs=0,
+        size="1024x1024",
+        quality="low",
+        status="ok",
+    )
 
     lines = (tmp_path / "generation.jsonl").read_text(encoding="utf-8").splitlines()
     r1, r2 = (json.loads(x) for x in lines)

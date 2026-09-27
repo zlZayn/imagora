@@ -5,6 +5,7 @@
 CLI 入口在 main.py（python main.py batch --config <项目>/batch_prompts.json）。
 输出用 rich 统一美化：任务预览表格、逐张进度条、完成总结面板。
 """
+
 import json
 import os
 import time
@@ -59,7 +60,9 @@ def _print_job_preview(jobs, base_images, size, tier_cost):
         image_desc = base_images.get(img, img) if img else "文生图"
         table.add_row(job["id"], f"{job['module']}/{job['name']}", image_desc)
     console.print(table)
-    print_dim(f"档位 {size} · 单张 {tier_cost} 元 · 预估总成本 {len(jobs) * tier_cost:.2f} 元")
+    print_dim(
+        f"档位 {size} · 单张 {tier_cost} 元 · 预估总成本 {len(jobs) * tier_cost:.2f} 元"
+    )
 
 
 def run_batch_generation(config_path, module_filter=None, dry_run=False):
@@ -111,11 +114,15 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
                     output_path=output_path,
                 )
                 job_ok = True
-                progress.console.print(f"[green]完成 [{job['id']}] {job['name']}[/green]")
+                progress.console.print(
+                    f"[green]完成 [{job['id']}] {job['name']}[/green]"
+                )
             except Exception as e:
                 job_ok = False
                 failed.append(job["id"])
-                progress.console.print(f"[red]失败 [{job['id']}] {job['name']}: {format_error(e, 120)}[/red]")
+                progress.console.print(
+                    f"[red]失败 [{job['id']}] {job['name']}: {format_error(e, 120)}[/red]"
+                )
             log_generation(
                 prompt=job["prompt"],
                 mode="img2img" if image_path else "txt2img",
@@ -124,7 +131,12 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
                 quality=DEFAULT_QUALITY,
                 status="ok" if job_ok else "error",
                 output=output_path if job_ok else "",
-                cost=(config.get("tier_cost") or global_config.cost_for_size(config["size"])) if job_ok else 0.0,
+                cost=(
+                    config.get("tier_cost")
+                    or global_config.cost_for_size(config["size"])
+                )
+                if job_ok
+                else 0.0,
                 seconds=time.time() - job_started_at,
             )
             progress.advance(task)
@@ -140,5 +152,9 @@ def run_batch_generation(config_path, module_filter=None, dry_run=False):
             style="red",
         )
     else:
-        print_panel(f"完成 · {len(jobs)} 张全部成功\n输出目录: {output_root}", title="批量完成", style="green")
+        print_panel(
+            f"完成 · {len(jobs)} 张全部成功\n输出目录: {output_root}",
+            title="批量完成",
+            style="green",
+        )
     return failed

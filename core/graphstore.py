@@ -3,6 +3,7 @@
 图片节点只存 registryId，路径由 core.registry.resolve_asset 实时重建。
 原为 core/canvas.py 的一部分，现拆出。
 """
+
 import json
 import os
 import re
@@ -27,6 +28,7 @@ def next_submission_id() -> str:
     """
     return f"sub-{time.time_ns()}-{next(_SUB_SEQ):04d}"
 
+
 WORKFLOWS_DIR = os.path.join(DEFAULT_OUTPUT_DIR, "workflows")
 
 RECOVERY_DIR = os.path.join(WORKFLOWS_DIR, ".recovery")
@@ -43,12 +45,14 @@ WORKFLOW_LOAD_VERSIONS = (1, 2)
 
 _INVALID_NAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
+
 def sanitize_workflow_name(name: str) -> str | None:
     """工作流名 -> 安全文件名（去路径分隔符/非法字符，去点防隐藏，空返回 None）"""
     cleaned = _INVALID_NAME_CHARS.sub("", name.strip())
     if not cleaned or cleaned in (".", ".."):
         return None
     return cleaned
+
 
 def _atomic_write_json(path: str, payload: dict) -> None:
     """用唯一临时文件原子写 JSON，支持多窗口同时保存。"""
@@ -62,6 +66,7 @@ def _atomic_write_json(path: str, payload: dict) -> None:
             os.unlink(tmp)
         except OSError:
             pass
+
 
 def _resolve_image_node_paths(nodes: list) -> list[str]:
     """加载工作流时按 registryId 统一解析图片节点（单一事实来源）。
@@ -87,6 +92,7 @@ def _resolve_image_node_paths(nodes: list) -> list[str]:
         data_part["url"] = resolved["url"]
     return missing
 
+
 def _strip_derived_node_paths(nodes: list) -> list:
     """落盘前归一化：图片节点只保留 registryId + 元数据，剥离派生路径（url/absPath）。
 
@@ -105,6 +111,7 @@ def _strip_derived_node_paths(nodes: list) -> list:
         clean = {k: v for k, v in data_part.items() if k not in ("url", "absPath")}
         normalized.append({**node, "data": clean})
     return normalized
+
 
 def workflow_save(name: str, nodes: list, edges: list) -> dict:
     """保存工作流为 JSON 文件（固定目录 output/workflows/<name>.json，version 2）。
@@ -132,6 +139,7 @@ def workflow_save(name: str, nodes: list, edges: list) -> dict:
     except (OSError, TypeError, ValueError) as e:
         return {"ok": False, "error": str(e)}
 
+
 def workflow_list() -> list[dict]:
     """列出 output/workflows/ 下所有工作流（按修改时间倒序），条目含 name/modified"""
     workflows = []
@@ -152,6 +160,7 @@ def workflow_list() -> list[dict]:
         workflows.append({"name": os.path.splitext(name)[0], "modified": modified})
     workflows.sort(key=lambda w: w["modified"], reverse=True)
     return workflows
+
 
 def workflow_load(name: str) -> dict:
     """加载工作流 JSON：校验版本（v1/v2 均支持）、按 registryId 实时解析图片节点路径。
@@ -174,7 +183,10 @@ def workflow_load(name: str) -> dict:
         return {"ok": False, "error": "工作流结构非法"}
     version = data.get("version")
     if version not in WORKFLOW_LOAD_VERSIONS:
-        return {"ok": False, "error": f"不支持的版本（{version}），仅支持 v{'/v'.join(str(v) for v in WORKFLOW_LOAD_VERSIONS)}"}
+        return {
+            "ok": False,
+            "error": f"不支持的版本（{version}），仅支持 v{'/v'.join(str(v) for v in WORKFLOW_LOAD_VERSIONS)}",
+        }
     nodes = data.get("nodes", [])
     edges = data.get("edges", [])
     if not isinstance(nodes, list) or not isinstance(edges, list):
@@ -187,9 +199,11 @@ def workflow_load(name: str) -> dict:
         "missing": _resolve_image_node_paths(nodes),
     }
 
+
 def _safe_submission_id(submission_id: str) -> bool:
     """提交 id 白名单：仅字母/数字/短横线/下划线（内部生成，防御性校验防路径穿越）"""
     return bool(submission_id) and bool(re.fullmatch(r"[A-Za-z0-9_-]+", submission_id))
+
 
 def submission_save(
     submission_id: str,
@@ -247,12 +261,25 @@ def submission_save(
         nodes.append(_img(nid, asset))
         group_member_ids.append(nid)
     if use_group:
-        nodes.append({"id": group_id, "type": "group", "position": {"x": 0, "y": 0},
-                      "data": {"name": "图片组", "imageCount": len(input_assets),
-                               "totalSize": sum(a.get("size", 0) for a in input_assets)}})
+        nodes.append(
+            {
+                "id": group_id,
+                "type": "group",
+                "position": {"x": 0, "y": 0},
+                "data": {
+                    "name": "图片组",
+                    "imageCount": len(input_assets),
+                    "totalSize": sum(a.get("size", 0) for a in input_assets),
+                },
+            }
+        )
         for nid in group_member_ids:
-            edges.append({"id": f"{nid}->{group_id}", "source": nid, "target": group_id})
-        edges.append({"id": f"{group_id}->{prompt_id}", "source": group_id, "target": prompt_id})
+            edges.append(
+                {"id": f"{nid}->{group_id}", "source": nid, "target": group_id}
+            )
+        edges.append(
+            {"id": f"{group_id}->{prompt_id}", "source": group_id, "target": prompt_id}
+        )
 
     for asset in result_assets:
         nid = f"img-{asset['id']}"
@@ -282,7 +309,9 @@ def _register_one(path: str, kind: str, source_key: str) -> dict | None:
     if not path or not os.path.isfile(path):
         return None
     try:
-        return register_asset(path, os.path.basename(path), kind=kind, source_key=source_key)
+        return register_asset(
+            path, os.path.basename(path), kind=kind, source_key=source_key
+        )
     except Exception:
         return None
 
@@ -362,6 +391,7 @@ def persist_submission_assets(
         "output_asset_ids": [e["id"] for e in result_entries],
     }
 
+
 def submission_load(submission_id: str) -> dict:
     """读取提交图快照并按注册表实时解析图片节点路径（同 workflow_load 规则）。
 
@@ -393,22 +423,26 @@ def submission_load(submission_id: str) -> dict:
         "missing": _resolve_image_node_paths(nodes),
     }
 
+
 def _recovery_paths() -> list[str]:
     try:
         names = [
-            name for name in os.listdir(RECOVERY_DIR)
+            name
+            for name in os.listdir(RECOVERY_DIR)
             if name.startswith("recovery_") and name.endswith(".json")
         ]
     except OSError:
         return []
     return [os.path.join(RECOVERY_DIR, name) for name in sorted(names, reverse=True)]
 
+
 def _prune_recovery_snapshots(limit: int = RECOVERY_LIMIT) -> None:
-    for path in _recovery_paths()[max(0, limit):]:
+    for path in _recovery_paths()[max(0, limit) :]:
         try:
             os.unlink(path)
         except OSError:
             pass
+
 
 def recovery_save(nodes: list, edges: list) -> dict:
     """创建独立恢复快照并轮转；永不写入手动工作流文件。
@@ -438,6 +472,7 @@ def recovery_save(nodes: list, edges: list) -> dict:
     except (OSError, TypeError, ValueError) as e:
         return {"ok": False, "error": str(e)}
 
+
 def recovery_latest() -> dict:
     """读取最近一份可用恢复快照；损坏文件自动跳过。
 
@@ -449,7 +484,10 @@ def recovery_latest() -> dict:
                 data = json.load(f)
         except (OSError, ValueError):
             continue
-        if not isinstance(data, dict) or data.get("version") not in WORKFLOW_LOAD_VERSIONS:
+        if (
+            not isinstance(data, dict)
+            or data.get("version") not in WORKFLOW_LOAD_VERSIONS
+        ):
             continue
         nodes = data.get("nodes")
         edges = data.get("edges")
@@ -467,6 +505,7 @@ def recovery_latest() -> dict:
 
 
 # ================= 工作流迁移（graphstore 自带） =================
+
 
 def workflow_files(pattern: str = ".json") -> list[str]:
     """工作流目录下匹配扩展名（含 .json）的文件绝对路径列表。"""
@@ -507,7 +546,9 @@ def upgrade_workflow(path: str, apply: bool) -> dict:
     payload = {**data, "version": WORKFLOW_VERSION, "savedAt": saved_at}
     backup = _atomic_write_workflow_backup(path, payload)
     result = workflow_load(name)
-    nodes_ok = result.get("ok") is True and len(result.get("nodes", [])) == len(data.get("nodes", []))
+    nodes_ok = result.get("ok") is True and len(result.get("nodes", [])) == len(
+        data.get("nodes", [])
+    )
     return {
         "name": name,
         "version": WORKFLOW_VERSION,
@@ -521,6 +562,7 @@ def _atomic_write_workflow_backup(path: str, payload: dict) -> str:
     import shutil
 
     from core.registry import _mig_ts
+
     backup = None
     if os.path.isfile(path):
         backup = f"{path}.bak-{_mig_ts()}"

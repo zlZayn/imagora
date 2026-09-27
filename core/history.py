@@ -1,4 +1,5 @@
 """本地生成历史读取：容忍损坏 JSONL，支持轻量筛选。"""
+
 import hashlib
 import json
 import os
@@ -80,7 +81,7 @@ def read_generation_history_paged(
     all_items = _collect_all(query=query, status=status)
     safe_offset = max(0, int(offset or 0))
     safe_limit = min(500, max(1, int(limit)))
-    page = all_items[safe_offset:safe_offset + safe_limit]
+    page = all_items[safe_offset : safe_offset + safe_limit]
     return {"items": page, "total": len(all_items)}
 
 
@@ -146,8 +147,8 @@ def dedupe_generation_history(items: list[dict]) -> list[dict]:
     return out
 
 
-
 # ================= 历史账本迁移（core.history 自带，供 scripts/migrate.py 调用） =================
+
 
 def resolve_output_path(output: str) -> str:
     """把账本里的 output 路径解析为绝对路径（相对路径按 WORK_ROOT 拼接）。
@@ -162,6 +163,7 @@ def resolve_output_path(output: str) -> str:
 
 def _mig_ts() -> str:
     import time
+
     return time.strftime("%Y%m%d-%H%M%S")
 
 
@@ -210,7 +212,12 @@ def backfill_output_asset_ids(apply: bool = False) -> dict:
         if not filled:
             unable += 1
     if not apply:
-        return {"action": "report", "backfill": backfill, "unable": unable, "already": already}
+        return {
+            "action": "report",
+            "backfill": backfill,
+            "unable": unable,
+            "already": already,
+        }
     backup = None
     if os.path.isfile(HISTORY_FILE):
         backup = f"{HISTORY_FILE}.bak-{_mig_ts()}"
@@ -228,7 +235,10 @@ def backfill_output_asset_ids(apply: bool = False) -> dict:
         except OSError:
             pass
     after = HISTORY_FILE.read_text(encoding="utf-8").splitlines()
-    ok = len(after) == len(lines) and sum(1 for l in after if '"outputAssetIds"' in l) >= backfill
+    ok = (
+        len(after) == len(lines)
+        and sum(1 for l in after if '"outputAssetIds"' in l) >= backfill
+    )
     return {
         "action": "backfilled" if ok else "FAILED-VERIFY",
         "backfill": backfill,

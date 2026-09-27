@@ -4,6 +4,7 @@
 覆盖: 提交返回 taskId、轮询到终态、multipart 临时文件清理、
 非法 ref_paths 400、未知任务 404、取消（排队 / running / 未知）。
 """
+
 import json
 import os
 import sys
@@ -48,14 +49,20 @@ def wait_gone(path, timeout=2):
 
 
 def _make_upload(name: str, content: bytes = b"fake-png") -> UploadFile:
-    return UploadFile(filename=name, file=BytesIO(content), headers=Headers({"content-type": "image/png"}))
+    return UploadFile(
+        filename=name,
+        file=BytesIO(content),
+        headers=Headers({"content-type": "image/png"}),
+    )
 
 
 @pytest.fixture
 def no_api(monkeypatch, tmp_path):
     """挡掉真实 API 与副作用：generate_image 伪成功（落 dest 文件）、日志/记忆空"""
+
     def fake_generate_image(**kwargs):
         Path(kwargs["output_path"]).write_bytes(b"generated")
+
     monkeypatch.setattr("server.generate_image", fake_generate_image)
     monkeypatch.setattr("server.log_generation", lambda **kw: None)
     monkeypatch.setattr("server.save_last_output_dir", lambda p: None)
@@ -89,10 +96,14 @@ def test_generate_submit_returns_task_id(no_api):
     assert snap["status"] == "done"
     assert snap["results"][0]["status"] == "ok"
     assert snap["totalCost"] == 0.05
-    assert Path(snap["results"][0]["message"].split(": ")[-1]).exists() or True  # 结果文件已落盘（由 run_generation 生成）
+    assert (
+        Path(snap["results"][0]["message"].split(": ")[-1]).exists() or True
+    )  # 结果文件已落盘（由 run_generation 生成）
 
 
-def test_generate_multipart_temp_refs_registered_in_ledger(no_api, monkeypatch, asset_iso):
+def test_generate_multipart_temp_refs_registered_in_ledger(
+    no_api, monkeypatch, asset_iso
+):
     """multipart 兜底参考图也注册进账本 inputAssetIds（temp_bases 一并晋升进 .assets，
     历史里能显示该次生图参考了哪些图）。"""
     import tempfile as _tf
@@ -122,7 +133,9 @@ def test_generate_multipart_temp_refs_registered_in_ledger(no_api, monkeypatch, 
         )
         snap = wait_terminal(submitted["taskId"])
         assert snap["status"] == "done"
-        assert ledger.get("input_asset_ids"), "multipart 参考图未注册进账本 inputAssetIds"
+        assert ledger.get("input_asset_ids"), (
+            "multipart 参考图未注册进账本 inputAssetIds"
+        )
         assert ledger.get("output_asset_ids"), "结果图未注册进账本 outputAssetIds"
         assert ledger.get("mode") == "img2img"
         assert ledger.get("refs") == 1
@@ -176,12 +189,16 @@ def test_refs_registered_at_submit_survive_source_loss(no_api, monkeypatch, asse
         snap = wait_terminal(submitted["taskId"])
         assert snap["status"] == "done"
         # 源文件已删，账本仍带 inputAssetIds（提交时注册的 id 不依赖 persist 时文件还在）
-        assert ledger.get("input_asset_ids"), "参考图应提交时注册，源文件删除后账本仍完整"
+        assert ledger.get("input_asset_ids"), (
+            "参考图应提交时注册，源文件删除后账本仍完整"
+        )
         assert ledger.get("output_asset_ids")
         from core import registry
 
         entries = registry.load_registry()
-        assert any(e.get("kind") == "ref" for e in entries.values()), "提交时未注册 ref 资产"
+        assert any(e.get("kind") == "ref" for e in entries.values()), (
+            "提交时未注册 ref 资产"
+        )
     finally:
         upload.file.close()
         for name in recorded:
@@ -313,7 +330,7 @@ def test_cancel_running_via_api(no_api, one_slot_manager):
         quality="low",
         output_dir=str(no_api / "out"),
         ref_paths="",
-images=[],
+        images=[],
         win=0,
     )
     assert entered.wait(1), "任务未进入 running"
@@ -322,4 +339,3 @@ images=[],
     snap = wait_terminal(submitted["taskId"])
     assert snap["status"] == "cancelled"
     assert snap["cancelRequested"] is True
-

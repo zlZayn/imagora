@@ -3,6 +3,7 @@
 
 覆盖: 配置读取、底图路径解析、模块过滤、dry_run 预览（不调 API）。
 """
+
 import json
 from pathlib import Path
 
@@ -24,6 +25,7 @@ def make_jobs():
 
 # ---------- filter_jobs_by_module ----------
 
+
 def test_filter_no_filter_returns_all():
     """不过滤 -> 原列表"""
     jobs = make_jobs()
@@ -44,6 +46,7 @@ def test_filter_no_match_returns_empty():
 
 # ---------- resolve_base_image_paths ----------
 
+
 def test_resolve_relative_paths_join_config_dir(tmp_path):
     """相对路径 -> 拼接配置目录"""
     resolved = resolve_base_image_paths(tmp_path, {"a": "assets/x.png"})
@@ -63,6 +66,7 @@ def test_resolve_empty_mapping():
 
 # ---------- load_batch_config ----------
 
+
 def test_load_batch_config(tmp_path):
     """读取 JSON 配置"""
     cfg_file = tmp_path / "batch_prompts.json"
@@ -73,19 +77,28 @@ def test_load_batch_config(tmp_path):
 
 # ---------- run_batch_generation (dry_run, 不调 API) ----------
 
+
 def test_run_batch_dry_run_returns_empty(tmp_path):
     """dry_run 只预览，返回空失败列表且不抛异常"""
     cfg_file = tmp_path / "batch_prompts.json"
     cfg_file.write_text(
-        json.dumps({
-            "out_dir": "output",
-            "size": "1024x1024",
-            "tier_cost": 0.05,
-            "base_images": {},
-            "jobs": [
-                {"id": "1a", "module": "1_m", "name": "x", "image": None, "prompt": "p"},
-            ],
-        }),
+        json.dumps(
+            {
+                "out_dir": "output",
+                "size": "1024x1024",
+                "tier_cost": 0.05,
+                "base_images": {},
+                "jobs": [
+                    {
+                        "id": "1a",
+                        "module": "1_m",
+                        "name": "x",
+                        "image": None,
+                        "prompt": "p",
+                    },
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     assert run_batch_generation(cfg_file, dry_run=True) == []
@@ -95,15 +108,29 @@ def test_run_batch_dry_run_with_module_filter(tmp_path):
     """dry_run + 模块过滤：不匹配模块时任务数为 0，返回空"""
     cfg_file = tmp_path / "batch_prompts.json"
     cfg_file.write_text(
-        json.dumps({
-            "out_dir": "output",
-            "size": "1024x1024",
-            "base_images": {},
-            "jobs": [
-                {"id": "1a", "module": "1_m", "name": "x", "image": None, "prompt": "p"},
-                {"id": "2a", "module": "2_m", "name": "y", "image": None, "prompt": "p"},
-            ],
-        }),
+        json.dumps(
+            {
+                "out_dir": "output",
+                "size": "1024x1024",
+                "base_images": {},
+                "jobs": [
+                    {
+                        "id": "1a",
+                        "module": "1_m",
+                        "name": "x",
+                        "image": None,
+                        "prompt": "p",
+                    },
+                    {
+                        "id": "2a",
+                        "module": "2_m",
+                        "name": "y",
+                        "image": None,
+                        "prompt": "p",
+                    },
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     assert run_batch_generation(cfg_file, module_filter="9", dry_run=True) == []
@@ -113,18 +140,32 @@ def test_run_batch_uses_high_as_default_quality(tmp_path, monkeypatch):
     """批量入口和日志都必须使用统一的 high 默认质量。"""
     cfg_file = tmp_path / "batch_prompts.json"
     cfg_file.write_text(
-        json.dumps({
-            "out_dir": "output",
-            "size": "1024x1024",
-            "base_images": {},
-            "jobs": [{"id": "1a", "module": "1_m", "name": "x", "image": None, "prompt": "p"}],
-        }),
+        json.dumps(
+            {
+                "out_dir": "output",
+                "size": "1024x1024",
+                "base_images": {},
+                "jobs": [
+                    {
+                        "id": "1a",
+                        "module": "1_m",
+                        "name": "x",
+                        "image": None,
+                        "prompt": "p",
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     generated = []
     logged = []
-    monkeypatch.setattr("core.batch.generate_image", lambda **kwargs: generated.append(kwargs))
-    monkeypatch.setattr("core.batch.log_generation", lambda **kwargs: logged.append(kwargs))
+    monkeypatch.setattr(
+        "core.batch.generate_image", lambda **kwargs: generated.append(kwargs)
+    )
+    monkeypatch.setattr(
+        "core.batch.log_generation", lambda **kwargs: logged.append(kwargs)
+    )
     monkeypatch.setattr("core.batch.time.sleep", lambda _seconds: None)
 
     assert run_batch_generation(cfg_file) == []

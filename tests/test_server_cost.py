@@ -5,6 +5,7 @@
 /api/budget/check 预检、/api/generate 预算闸门（409 → 确认后放行）、
 /api/generate/batch 批量提交（逐条跳过非法项、超预算未确认不提交、空 items 400）。
 """
+
 import json
 import sys
 import time
@@ -29,11 +30,21 @@ TODAY = time.strftime("%Y-%m-%d")
 
 
 def _ledger_row(status="ok", cost_value=0.05, size="1024x1024", prompt="p", day=None):
-    return json.dumps({
-        "time": f"{day or TODAY} 09:00:00", "mode": "txt2img", "refs": 0, "prompt": prompt,
-        "size": size, "quality": "high", "status": status, "cost": cost_value,
-        "seconds": 12.0, "output": "",
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "time": f"{day or TODAY} 09:00:00",
+            "mode": "txt2img",
+            "refs": 0,
+            "prompt": prompt,
+            "size": size,
+            "quality": "high",
+            "status": status,
+            "cost": cost_value,
+            "seconds": 12.0,
+            "output": "",
+        },
+        ensure_ascii=False,
+    )
 
 
 @pytest.fixture
@@ -45,15 +56,19 @@ def ledger(cost_iso):
         _ledger_row(status="error", cost_value=0.0),
         _ledger_row(cost_value=0.20, day="2026-01-01"),
     ]
-    Path(cost_iso / "generation.jsonl").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    Path(cost_iso / "generation.jsonl").write_text(
+        "\n".join(rows) + "\n", encoding="utf-8"
+    )
     return cost_iso
 
 
 @pytest.fixture
 def no_api(monkeypatch, tmp_path):
     """挡掉真实 API 与副作用：generate_image 伪成功（落 dest 文件）、日志/记忆空"""
+
     def fake_generate_image(**kwargs):
         Path(kwargs["output_path"]).write_bytes(b"generated")
+
     monkeypatch.setattr("server.generate_image", fake_generate_image)
     monkeypatch.setattr("server.log_generation", lambda **kw: None)
     monkeypatch.setattr("server.save_last_output_dir", lambda p: None)
@@ -72,11 +87,12 @@ def _wait_terminal(task_id, timeout=5):
 
 # ---------------- /api/history/stats ----------------
 
+
 def test_history_stats_aggregates_raw_ledger(ledger):
     stats = history_stats()
     assert stats["total"] == 4
     assert stats["ok"] == 3 and stats["error"] == 1
-    assert stats["cost"] == 0.35            # 0.05 + 0.10 + 0.20（失败行 0）
+    assert stats["cost"] == 0.35  # 0.05 + 0.10 + 0.20（失败行 0）
     assert stats["todayCost"] == 0.15
     assert stats["budget"]["spentToday"] == 0.15
     assert stats["budget"]["dailyLimit"] == 0.0
@@ -95,9 +111,14 @@ def test_history_stats_empty_ledger(cost_iso):
 
 # ---------------- /api/budget ----------------
 
+
 def test_budget_default_unlimited(ledger):
-    assert get_budget() == {"dailyLimit": 0.0, "singleRunLimit": 0.0,
-                            "spentToday": 0.15, "remaining": 0.0}
+    assert get_budget() == {
+        "dailyLimit": 0.0,
+        "singleRunLimit": 0.0,
+        "spentToday": 0.15,
+        "remaining": 0.0,
+    }
 
 
 def test_budget_set_then_read(ledger):
@@ -109,9 +130,12 @@ def test_budget_set_then_read(ledger):
 
 # ---------------- /api/budget/check ----------------
 
+
 def test_budget_check_by_count(ledger):
     set_budget({"dailyLimit": 0.20})
-    result = check_budget_route({"count": 3, "size": "1024x1024"})   # 0.15，今日已花 0.15 → 0.30 > 0.20
+    result = check_budget_route(
+        {"count": 3, "size": "1024x1024"}
+    )  # 0.15，今日已花 0.15 → 0.30 > 0.20
     assert result["estimate"] == 0.15
     assert result["over"] is True and result["allowed"] is False
     assert "当日预算" in result["reason"]
@@ -119,27 +143,48 @@ def test_budget_check_by_count(ledger):
 
 def test_budget_check_by_items_allows_within_limit(ledger):
     set_budget({"dailyLimit": 1.0})
-    result = check_budget_route({"items": [{"size": "1024x1024"}, {"size": "1024x1024"}]})
-    assert result["estimate"] == 0.10 and result["over"] is False and result["allowed"] is True
+    result = check_budget_route(
+        {"items": [{"size": "1024x1024"}, {"size": "1024x1024"}]}
+    )
+    assert (
+        result["estimate"] == 0.10
+        and result["over"] is False
+        and result["allowed"] is True
+    )
 
 
 def test_budget_check_single_limit(ledger):
     set_budget({"singleRunLimit": 0.10})
-    assert check_budget_route({"count": 3, "size": "1024x1024"})["over"] is True   # 0.15 > 0.10
-    assert check_budget_route({"count": 2, "size": "1024x1024"})["over"] is False  # 0.10 == 0.10
+    assert (
+        check_budget_route({"count": 3, "size": "1024x1024"})["over"] is True
+    )  # 0.15 > 0.10
+    assert (
+        check_budget_route({"count": 2, "size": "1024x1024"})["over"] is False
+    )  # 0.10 == 0.10
 
 
 # ---------------- /api/generate 预算闸门 ----------------
 
+
 def _submit(**overrides):
     """按 HTTP 语义调用 generate()（FastAPI 的 Form 默认值只在框架内解析，直调必须显式传）"""
-    params = {"prompt": "hello", "size": "1024x1024", "quality": "high", "output_dir": "",
-              "ref_paths": "", "images": [], "win": 0, "allow_over_budget": False}
+    params = {
+        "prompt": "hello",
+        "size": "1024x1024",
+        "quality": "high",
+        "output_dir": "",
+        "ref_paths": "",
+        "images": [],
+        "win": 0,
+        "allow_over_budget": False,
+    }
     params.update(overrides)
     return generate(**params)
 
 
-def test_generate_blocked_over_budget_then_allowed_when_confirmed(no_api, asset_iso, ledger):
+def test_generate_blocked_over_budget_then_allowed_when_confirmed(
+    no_api, asset_iso, ledger
+):
     set_budget({"singleRunLimit": 0.01})
     with pytest.raises(HTTPException) as exc:
         _submit(output_dir=str(no_api / "out"))
@@ -154,13 +199,20 @@ def test_generate_blocked_over_budget_then_allowed_when_confirmed(no_api, asset_
 
 def test_generate_unlimited_budget_not_blocked(no_api, asset_iso, ledger):
     result = _submit(quality="low", output_dir=str(no_api / "out"))
-    assert server.task_manager.snapshot(result["taskId"])["status"] in ("queued", "running", "done")
+    assert server.task_manager.snapshot(result["taskId"])["status"] in (
+        "queued",
+        "running",
+        "done",
+    )
     _wait_terminal(result["taskId"])
 
 
 # ---------------- /api/generate/batch ----------------
 
-def test_generate_batch_submits_valid_and_skips_invalid(no_api, asset_iso, ledger, monkeypatch, tmp_path):
+
+def test_generate_batch_submits_valid_and_skips_invalid(
+    no_api, asset_iso, ledger, monkeypatch, tmp_path
+):
     refs = tmp_path / "refs"
     refs.mkdir()
     ref_file = refs / "ref_1.png"
@@ -169,9 +221,19 @@ def test_generate_batch_submits_valid_and_skips_invalid(no_api, asset_iso, ledge
 
     body = {
         "items": [
-            {"prompt": "a", "size": "1024x1024", "quality": "high", "refPaths": [str(ref_file)]},
+            {
+                "prompt": "a",
+                "size": "1024x1024",
+                "quality": "high",
+                "refPaths": [str(ref_file)],
+            },
             {"prompt": "   ", "size": "1024x1024", "quality": "high"},
-            {"prompt": "b", "size": "1024x1024", "quality": "high", "refPaths": [str(tmp_path / "missing.png")]},
+            {
+                "prompt": "b",
+                "size": "1024x1024",
+                "quality": "high",
+                "refPaths": [str(tmp_path / "missing.png")],
+            },
         ],
         "outputDir": str(no_api / "out"),
         "win": 3,
@@ -193,7 +255,9 @@ def test_generate_batch_empty_items_400():
 
 
 def test_generate_batch_all_invalid_submits_nothing(no_api, asset_iso, ledger):
-    result = generate_batch({"items": [{"prompt": ""}], "outputDir": str(no_api / "out")})
+    result = generate_batch(
+        {"items": [{"prompt": ""}], "outputDir": str(no_api / "out")}
+    )
     assert result["submitted"] == [] and result["estimate"] == 0.0
     assert result["skipped"] and result["budget"]["over"] is False
 
@@ -201,19 +265,25 @@ def test_generate_batch_all_invalid_submits_nothing(no_api, asset_iso, ledger):
 def test_generate_batch_budget_block_submits_nothing(no_api, asset_iso, ledger):
     set_budget({"singleRunLimit": 0.01})
     with pytest.raises(HTTPException) as exc:
-        generate_batch({"items": [{"prompt": "a", "size": "1024x1024", "quality": "high"}],
-                        "outputDir": str(no_api / "out")})
+        generate_batch(
+            {
+                "items": [{"prompt": "a", "size": "1024x1024", "quality": "high"}],
+                "outputDir": str(no_api / "out"),
+            }
+        )
     assert exc.value.status_code == 409
     assert "单次上限" in exc.value.detail["reason"]
 
 
 def test_generate_batch_budget_confirmed_submits(no_api, asset_iso, ledger):
     set_budget({"singleRunLimit": 0.01})
-    result = generate_batch({
-        "items": [{"prompt": "a", "size": "1024x1024", "quality": "high"}],
-        "outputDir": str(no_api / "out"),
-        "allowOverBudget": True,
-    })
+    result = generate_batch(
+        {
+            "items": [{"prompt": "a", "size": "1024x1024", "quality": "high"}],
+            "outputDir": str(no_api / "out"),
+            "allowOverBudget": True,
+        }
+    )
     assert len(result["submitted"]) == 1
     assert result["budget"]["allowed"] is True
     _wait_terminal(result["submitted"][0]["taskId"])

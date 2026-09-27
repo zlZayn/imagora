@@ -13,6 +13,7 @@
   python scripts/migrate.py --apply --rebuild-registry
   python scripts/migrate.py --apply --output-root 路径
 """
+
 import argparse
 import os
 import sys
@@ -25,69 +26,105 @@ from core import graphstore, history, registry
 
 def _milestone(rel, reg, am):
     out = []
-    if rel.get('action') == 'noop':
-        out.append('[目录] .assets 已是规范名')
-    elif rel.get('action') == 'nothing':
+    if rel.get("action") == "noop":
+        out.append("[目录] .assets 已是规范名")
+    elif rel.get("action") == "nothing":
         out.append(f"[目录] 无存量 .canvas（{rel.get('reason')}）")
-    elif rel.get('action') == 'ready':
-        out.append(f"[目录] 待迁 .canvas->.assets（{rel.get('files')} 文件，加 --apply）")
-    elif rel.get('action') == 'moved':
+    elif rel.get("action") == "ready":
+        out.append(
+            f"[目录] 待迁 .canvas->.assets（{rel.get('files')} 文件，加 --apply）"
+        )
+    elif rel.get("action") == "moved":
         out.append(f"[目录] 已迁 {rel.get('files')} 文件，备份: {rel.get('backup')}")
-    a = reg.get('action', '')
-    if a == 'none':
+    a = reg.get("action", "")
+    if a == "none":
         out.append(f"[注册表] {reg.get('registry', {}).get('state')} 无需迁移")
-    elif a == 'pending-relocate':
-        s = reg.get('registry', {})
-        out.append(f"[注册表] {s.get('state')} 待迁目录后升级（{s.get('count', 0)} 条，加 --apply）")
+    elif a == "pending-relocate":
+        s = reg.get("registry", {})
+        out.append(
+            f"[注册表] {s.get('state')} 待迁目录后升级（{s.get('count', 0)} 条，加 --apply）"
+        )
     elif a:
         out.append(f"[注册表] {a}（{reg.get('entries', '')} 条）")
-    if am.get('action') == 'noop':
-        out.append('[来源标签] 全部已带 kind')
-    elif am.get('action'):
+    if am.get("action") == "noop":
+        out.append("[来源标签] 全部已带 kind")
+    elif am.get("action"):
         out.append(f"[来源标签] {am.get('action')}（{am.get('backfilled', 0)} 条）")
-    return '\n'.join(out)
+    return "\n".join(out)
 
 
 def _print_report(report) -> None:
-    mode = '落地(apply，含备份与校验)' if report.get('apply') else '只报告（不写文件）'
-    print(f'模式：{mode}')
-    print(_milestone(report.get('relocate') or {}, report.get('registry') or {}, report.get('asset_meta') or {}))
-    s = report.get('summary') or {}
-    pending = s.get('ready', 0) + s.get('upgraded', 0)  # dry-run: ready；apply: upgraded
-    print(f"[工作流] 待升级/已升级 {pending} · 无需动 {s.get('noop', 0)} · 损坏跳过 {s.get('corrupt', 0)}")
-    h = report.get('history') or {}
-    if h.get('action') not in (None, 'nothing'):
-        print(f"[历史] {h.get('action')}：补 {h.get('backfill', 0)} 行 · 无法反查 {h.get('unable', 0)} · 已具备 {h.get('already', 0)}")
+    mode = "落地(apply，含备份与校验)" if report.get("apply") else "只报告（不写文件）"
+    print(f"模式：{mode}")
+    print(
+        _milestone(
+            report.get("relocate") or {},
+            report.get("registry") or {},
+            report.get("asset_meta") or {},
+        )
+    )
+    s = report.get("summary") or {}
+    pending = s.get("ready", 0) + s.get(
+        "upgraded", 0
+    )  # dry-run: ready；apply: upgraded
+    print(
+        f"[工作流] 待升级/已升级 {pending} · 无需动 {s.get('noop', 0)} · 损坏跳过 {s.get('corrupt', 0)}"
+    )
+    h = report.get("history") or {}
+    if h.get("action") not in (None, "nothing"):
+        print(
+            f"[历史] {h.get('action')}：补 {h.get('backfill', 0)} 行 · 无法反查 {h.get('unable', 0)} · 已具备 {h.get('already', 0)}"
+        )
 
 
 def main() -> int:
     # CI Windows runner 默认 stdout/stderr 为 cp1252，无法编码中文输出（如「模式：」）→ 强制 UTF-8
-    sys.stdout.reconfigure(encoding='utf-8')
-    sys.stderr.reconfigure(encoding='utf-8')
-    parser = argparse.ArgumentParser(description='Imagora 存储迁移：一步到最新（默认只报告，--apply 才落地备份校验）')
-    parser.add_argument('--apply', action='store_true', help='落地迁移（先备份 .bak-<时间戳>，校验通过才保留）')
-    parser.add_argument('--rebuild-registry', action='store_true', help='注册表缺失/损坏时按 .assets 图片文件重建')
-    parser.add_argument('--skip-meta-backfill', action='store_true', help='跳过来源标签(kind)回填')
-    parser.add_argument('--output-root', default=None, help='output 根目录（默认取配置 DEFAULT_OUTPUT_DIR）')
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+    parser = argparse.ArgumentParser(
+        description="Imagora 存储迁移：一步到最新（默认只报告，--apply 才落地备份校验）"
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="落地迁移（先备份 .bak-<时间戳>，校验通过才保留）",
+    )
+    parser.add_argument(
+        "--rebuild-registry",
+        action="store_true",
+        help="注册表缺失/损坏时按 .assets 图片文件重建",
+    )
+    parser.add_argument(
+        "--skip-meta-backfill", action="store_true", help="跳过来源标签(kind)回填"
+    )
+    parser.add_argument(
+        "--output-root",
+        default=None,
+        help="output 根目录（默认取配置 DEFAULT_OUTPUT_DIR）",
+    )
     args = parser.parse_args()
 
     if args.output_root:
         root = os.path.abspath(args.output_root)
         for mod in (registry, graphstore, canvas_mod):
             mod.DEFAULT_OUTPUT_DIR = root
-        registry.ASSET_DIR = os.path.join(root, '.assets')
-        registry.REGISTRY_FILE = os.path.join(registry.ASSET_DIR, 'registry.json')
-        registry.LEGACY_ASSET_DIR = os.path.join(root, '.canvas')
-        graphstore.WORKFLOWS_DIR = os.path.join(root, 'workflows')
-        graphstore.RECOVERY_DIR = os.path.join(graphstore.WORKFLOWS_DIR, '.recovery')
+        registry.ASSET_DIR = os.path.join(root, ".assets")
+        registry.REGISTRY_FILE = os.path.join(registry.ASSET_DIR, "registry.json")
+        registry.LEGACY_ASSET_DIR = os.path.join(root, ".canvas")
+        graphstore.WORKFLOWS_DIR = os.path.join(root, "workflows")
+        graphstore.RECOVERY_DIR = os.path.join(graphstore.WORKFLOWS_DIR, ".recovery")
 
-    reg_report = registry.migrate(apply=args.apply, rebuild=args.rebuild_registry, backfill=not args.skip_meta_backfill)
+    reg_report = registry.migrate(
+        apply=args.apply,
+        rebuild=args.rebuild_registry,
+        backfill=not args.skip_meta_backfill,
+    )
     wf_report = graphstore.migrate_workflows(apply=args.apply)
     hist_report = history.backfill_output_asset_ids(apply=args.apply)
-    combined = {**reg_report, **wf_report, 'history': hist_report, 'apply': args.apply}
+    combined = {**reg_report, **wf_report, "history": hist_report, "apply": args.apply}
     _print_report(combined)
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

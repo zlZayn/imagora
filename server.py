@@ -26,6 +26,7 @@ API:
   POST /api/canvas/recovery/save      创建恢复快照
   GET  /api/canvas/recovery/latest    读取最近恢复快照
 """
+
 import ctypes
 import itertools
 import json
@@ -85,6 +86,7 @@ def current_window_id() -> int:
     """当前已分配的最大窗口编号（只读，供状态展示）"""
     return _WIN_VALUE
 
+
 # 参考图文件名全局序号
 _REF_SEQ = itertools.count(1)
 # 参考图孤儿文件最长保留时长（前端删除失败 / 上传未用的情况兜底清理）
@@ -118,6 +120,7 @@ def save_last_output_dir(path: str) -> None:
 def safe_ref_path(path: str) -> str | None:
     """仅接受 REF_DIR 内的绝对路径（防路径穿越）；非法返回 None（委托 pathtrust 统一实现）"""
     from core.pathtrust import match_roots
+
     return match_roots(path, [REF_DIR])
 
 
@@ -142,6 +145,7 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-cache"
         return response
+
 
 BASE_DIR = (
     Path(sys.executable).resolve().parent.parent
@@ -215,7 +219,9 @@ def health_details():
     checks = {
         "apiKey": has_api_key(),
         "frontendBuilt": (DIST_DIR / "index.html").is_file(),
-        "outputWritable": _directory_writable(load_last_output_dir() or DEFAULT_OUTPUT_DIR),
+        "outputWritable": _directory_writable(
+            load_last_output_dir() or DEFAULT_OUTPUT_DIR
+        ),
     }
     issues = []
     if not checks["apiKey"]:
@@ -262,7 +268,9 @@ def server_status():
 
 
 @app.get("/api/history")
-def generation_history(limit: int = 60, offset: int = 0, query: str = "", status: str = ""):
+def generation_history(
+    limit: int = 60, offset: int = 0, query: str = "", status: str = ""
+):
     """读取本地生成历史（分页，滚动加载）。
 
     分页语义：offset 是**聚合后**记录的偏移（同参数只算一条），前端按已加载条数推进
@@ -275,7 +283,9 @@ def generation_history(limit: int = 60, offset: int = 0, query: str = "", status
     img2img 且 refs>0 但解析为空时置 inputRefMissing（参考图记录存在但图片找不回）。
     同参数记录已在读取层聚合（时间不算参数）：同一提示词卡片多次失败只显示最新一条。
     """
-    page = read_generation_history_paged(offset=offset, limit=limit, query=query, status=status)
+    page = read_generation_history_paged(
+        offset=offset, limit=limit, query=query, status=status
+    )
     records = page["items"]
     # 注册表一次读入复用：历史逐行 resolve_asset 每条都读盘会是卡顿主要来源
     entries = canvas.load_registry()
@@ -291,20 +301,28 @@ def generation_history(limit: int = 60, offset: int = 0, query: str = "", status
             for aid in raw_ids:
                 resolved = canvas.resolve_asset(str(aid), entries=entries)
                 if resolved and os.path.isfile(resolved["absPath"]):
-                    input_refs.append({"id": str(aid), "path": resolved["absPath"], "url": resolved["url"]})
+                    input_refs.append(
+                        {
+                            "id": str(aid),
+                            "path": resolved["absPath"],
+                            "url": resolved["url"],
+                        }
+                    )
         input_ref_missing = (
             record.get("mode") == "img2img"
             and int(record.get("refs") or 0) > 0
             and not input_refs
         )
-        items.append({
-            **record,
-            "exists": exists,
-            "path": abs_path if exists else "",
-            "url": canvas.image_url(abs_path) if exists else "",
-            "inputRefs": input_refs,
-            "inputRefMissing": input_ref_missing,
-        })
+        items.append(
+            {
+                **record,
+                "exists": exists,
+                "path": abs_path if exists else "",
+                "url": canvas.image_url(abs_path) if exists else "",
+                "inputRefs": input_refs,
+                "inputRefMissing": input_ref_missing,
+            }
+        )
     return {"items": items, "hasMore": offset + len(page["items"]) < page["total"]}
 
 
@@ -325,7 +343,8 @@ def history_stats(days: int = cost.DEFAULT_DAYS):
             "spentToday": spent_today,
             "remaining": (
                 round(max(0.0, budget["dailyLimit"] - spent_today), 2)
-                if budget["dailyLimit"] > 0 else 0.0
+                if budget["dailyLimit"] > 0
+                else 0.0
             ),
         },
     }
@@ -341,7 +360,8 @@ def get_budget():
         "spentToday": spent_today,
         "remaining": (
             round(max(0.0, budget["dailyLimit"] - spent_today), 2)
-            if budget["dailyLimit"] > 0 else 0.0
+            if budget["dailyLimit"] > 0
+            else 0.0
         ),
     }
 
@@ -358,14 +378,19 @@ def _budget_guard(estimate: float, confirmed: bool) -> dict:
     先算「今日已花」（读账本原始行）再校验：日预算比较的是「已花 + 本次预估」。
     """
     spent_today = cost.today_spent(read_raw_history())
-    result = cost.check_budget(estimate, cost.load_budget(), spent_today, confirmed=confirmed)
+    result = cost.check_budget(
+        estimate, cost.load_budget(), spent_today, confirmed=confirmed
+    )
     if not result["allowed"]:
-        raise HTTPException(status_code=409, detail={
-            "reason": result["reason"],
-            "estimate": result["estimate"],
-            "spentToday": result["spentToday"],
-            "settings": result["settings"],
-        })
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "reason": result["reason"],
+                "estimate": result["estimate"],
+                "spentToday": result["spentToday"],
+                "settings": result["settings"],
+            },
+        )
     return result
 
 
@@ -378,9 +403,18 @@ def check_budget_route(body: dict):
     """
     items = body.get("items")
     if isinstance(items, list):
-        estimate = round(sum(cost.estimate_cost(1, str(i.get("size") or "")) for i in items if isinstance(i, dict)), 2)
+        estimate = round(
+            sum(
+                cost.estimate_cost(1, str(i.get("size") or ""))
+                for i in items
+                if isinstance(i, dict)
+            ),
+            2,
+        )
     else:
-        estimate = cost.estimate_cost(int(body.get("count") or 0), str(body.get("size") or ""))
+        estimate = cost.estimate_cost(
+            int(body.get("count") or 0), str(body.get("size") or "")
+        )
     spent_today = cost.today_spent(read_raw_history())
     return {
         **cost.check_budget(estimate, cost.load_budget(), spent_today, confirmed=False),
@@ -409,7 +443,10 @@ def import_history_asset(body: dict):
         if raw and os.path.isfile(raw):
             recorded_paths.add(os.path.normcase(raw))
     if requested not in recorded_paths or not os.path.isfile(requested):
-        return {"imported": [], "skipped": [{"path": requested, "reason": "不是可用的历史输出"}]}
+        return {
+            "imported": [],
+            "skipped": [{"path": requested, "reason": "不是可用的历史输出"}],
+        }
     entry = canvas.register_asset(requested, os.path.basename(requested))
     return {
         "imported": [entry] if entry else [],
@@ -433,15 +470,17 @@ def upload_ref(images: list[UploadFile] = File(default=[])):
         dest = os.path.join(REF_DIR, name)
         with open(dest, "wb") as f:
             f.write(data)
-        refs.append({
-            "id": name,
-            "path": dest,
-            "url": canvas.image_url(dest),
-            "name": image.filename or name,
-            "size": len(data),
-            "ext": ext.lstrip("."),
-            "mime": image.content_type or "application/octet-stream",
-        })
+        refs.append(
+            {
+                "id": name,
+                "path": dest,
+                "url": canvas.image_url(dest),
+                "name": image.filename or name,
+                "size": len(data),
+                "ext": ext.lstrip("."),
+                "mime": image.content_type or "application/octet-stream",
+            }
+        )
     return {"refs": refs}
 
 
@@ -613,7 +652,9 @@ def run_generation(task: GenerationTask) -> None:
     失败写 task.error（TaskManager 据此置 failed）。临时兜底文件由 TaskManager 统一清理。
     保存路径统一以绝对路径进消息（前端动态显示本机路径 + 点击复制词条），不再相对化。
     """
-    out_dir = os.path.abspath((task.output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/"))
+    out_dir = os.path.abspath(
+        (task.output_dir.strip() or DEFAULT_OUTPUT_DIR).rstrip("\\/")
+    )
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     started_at = time.time()
@@ -632,15 +673,33 @@ def run_generation(task: GenerationTask) -> None:
         messages.append(f"图生图 · 参考图 {len(bases)} 张" if img2img else "文生图")
         if img2img:
             generate_image(
-                prompt=task.prompt, images=bases, size=task.size,
-                quality=task.quality, output_format="png", output_path=dest,
+                prompt=task.prompt,
+                images=bases,
+                size=task.size,
+                quality=task.quality,
+                output_format="png",
+                output_path=dest,
             )
         else:
             generate_image(
-                prompt=task.prompt, image_path=None, size=task.size,
-                quality=task.quality, output_format="png", output_path=dest,
+                prompt=task.prompt,
+                image_path=None,
+                size=task.size,
+                quality=task.quality,
+                output_format="png",
+                output_path=dest,
             )
-        results.append({"status": "ok", "message": f"已保存: {dest}", "url": canvas.image_url(dest), "size": task.size, "cost": cost, "fileSize": os.path.getsize(dest), "ext": Path(dest).suffix.lstrip(".")})
+        results.append(
+            {
+                "status": "ok",
+                "message": f"已保存: {dest}",
+                "url": canvas.image_url(dest),
+                "size": task.size,
+                "cost": cost,
+                "fileSize": os.path.getsize(dest),
+                "ext": Path(dest).suffix.lstrip("."),
+            }
+        )
         messages.append(f"已保存 · {dest}（{task.size}）")
         ok = True
     except Exception as e:
@@ -696,9 +755,11 @@ def _persist_submission(task: GenerationTask) -> dict | None:
       - 任何失败不抛（由调用方 try/except 兜底），成功与否不影响生成结果。
     返回 {"input_asset_ids": [...], "output_asset_ids": [...]} 供账本联动；无结果返回 None。
     """
+
     def _path_from_url(url: str) -> str:
         try:
             from urllib.parse import parse_qs, urlparse
+
             return parse_qs(urlparse(url).query).get("path", [""])[0] or ""
         except Exception:
             return ""
@@ -714,8 +775,12 @@ def _persist_submission(task: GenerationTask) -> dict | None:
 
     params = {"size": task.size, "quality": task.quality, "outputDir": task.output_dir}
     return graphstore.persist_submission_assets(
-        task.submission_id, task.prompt, params,
-        [*task.ref_bases, *task.temp_bases], result_paths, task.win,
+        task.submission_id,
+        task.prompt,
+        params,
+        [*task.ref_bases, *task.temp_bases],
+        result_paths,
+        task.win,
         input_asset_ids=task.input_asset_ids,
     )
 
@@ -725,12 +790,16 @@ task_manager = TaskManager(concurrency=MAX_CONCURRENCY, run_task=run_generation)
 
 
 @app.post("/api/generate")
-def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
-             quality: str = Form(DEFAULT_QUALITY), output_dir: str = Form(""),
-             images: list[UploadFile] = File(default=[]),
-             ref_paths: str = Form(""),
-             win: int = Form(0),
-             allow_over_budget: bool = Form(False)):
+def generate(
+    prompt: str = Form(...),
+    size: str = Form(DEFAULT_SIZE),
+    quality: str = Form(DEFAULT_QUALITY),
+    output_dir: str = Form(""),
+    images: list[UploadFile] = File(default=[]),
+    ref_paths: str = Form(""),
+    win: int = Form(0),
+    allow_over_budget: bool = Form(False),
+):
     """提交生成任务（文生图 / 图生图），立即返回 taskId 与初始状态。
 
     实际生成进入全局任务池排队执行（并发上限 10，经典表单与无限画布共用），
@@ -766,11 +835,19 @@ def generate(prompt: str = Form(...), size: str = Form(DEFAULT_SIZE),
     submission_id = graphstore.next_submission_id()
     # 提交时即注册参考图进 .assets（此刻文件刚校验 / 刚落盘，必然存在），消除排队期间
     # 文件被删导致 persist 时参考图静默漏记的窗口（曾实测 refs=5 全漏）；id 随任务进账本。
-    input_asset_ids = graphstore.register_input_assets(submission_id, [*ref_bases, *temp_bases])
+    input_asset_ids = graphstore.register_input_assets(
+        submission_id, [*ref_bases, *temp_bases]
+    )
 
     task = GenerationTask(
-        prompt=prompt, size=size, quality=quality, output_dir=output_dir, win=win,
-        ref_bases=ref_bases, temp_bases=temp_bases, submission_id=submission_id,
+        prompt=prompt,
+        size=size,
+        quality=quality,
+        output_dir=output_dir,
+        win=win,
+        ref_bases=ref_bases,
+        temp_bases=temp_bases,
+        submission_id=submission_id,
         input_asset_ids=input_asset_ids,
     )
     task_id = task_manager.submit(task)
@@ -809,7 +886,7 @@ def generate_batch(body: dict):
         quality = str(item.get("quality") or DEFAULT_QUALITY)
         ref_bases: list[str] = []
         bad_ref = ""
-        for raw_path in (item.get("refPaths") or []):
+        for raw_path in item.get("refPaths") or []:
             safe = safe_ref_path_allowlist(str(raw_path), [REF_DIR, canvas.ASSET_DIR])
             if not safe or not os.path.isfile(safe):
                 bad_ref = f"参考图不可用：{raw_path}"
@@ -818,12 +895,20 @@ def generate_batch(body: dict):
         if bad_ref:
             skipped.append({"index": index, "reason": bad_ref})
             continue
-        prepared.append({"prompt": prompt, "size": size, "quality": quality, "ref_bases": ref_bases})
+        prepared.append(
+            {"prompt": prompt, "size": size, "quality": quality, "ref_bases": ref_bases}
+        )
 
     estimate = round(sum(size_cost(item["size"]) for item in prepared), 2)
     if not prepared:
-        return {"submitted": [], "skipped": skipped, "estimate": 0.0,
-                "budget": cost.check_budget(0.0, cost.load_budget(), cost.today_spent(read_raw_history()))}
+        return {
+            "submitted": [],
+            "skipped": skipped,
+            "estimate": 0.0,
+            "budget": cost.check_budget(
+                0.0, cost.load_budget(), cost.today_spent(read_raw_history())
+            ),
+        }
 
     budget = _budget_guard(estimate, bool(body.get("allowOverBudget")))
 
@@ -831,19 +916,34 @@ def generate_batch(body: dict):
     for item in prepared:
         submission_id = graphstore.next_submission_id()
         # 与单条提交同源：提交阶段即注册参考图，排队期间源文件被删也不漏记
-        input_asset_ids = graphstore.register_input_assets(submission_id, item["ref_bases"])
-        task = GenerationTask(
-            prompt=item["prompt"], size=item["size"], quality=item["quality"],
-            output_dir=output_dir, win=win, ref_bases=item["ref_bases"], temp_bases=[],
-            submission_id=submission_id, input_asset_ids=input_asset_ids,
+        input_asset_ids = graphstore.register_input_assets(
+            submission_id, item["ref_bases"]
         )
-        submitted.append({
-            "taskId": task_manager.submit(task),
-            "prompt": item["prompt"],
-            "size": item["size"],
-            "cost": size_cost(item["size"]),
-        })
-    return {"submitted": submitted, "skipped": skipped, "estimate": estimate, "budget": budget}
+        task = GenerationTask(
+            prompt=item["prompt"],
+            size=item["size"],
+            quality=item["quality"],
+            output_dir=output_dir,
+            win=win,
+            ref_bases=item["ref_bases"],
+            temp_bases=[],
+            submission_id=submission_id,
+            input_asset_ids=input_asset_ids,
+        )
+        submitted.append(
+            {
+                "taskId": task_manager.submit(task),
+                "prompt": item["prompt"],
+                "size": item["size"],
+                "cost": size_cost(item["size"]),
+            }
+        )
+    return {
+        "submitted": submitted,
+        "skipped": skipped,
+        "estimate": estimate,
+        "budget": budget,
+    }
 
 
 @app.get("/api/tasks/{task_id}")
@@ -931,6 +1031,7 @@ def get_image(path: str):
 if (DIST_DIR / "index.html").exists():
     app.mount("/", StaticFiles(directory=str(DIST_DIR), html=True), name="frontend")
 else:
+
     @app.get("/", include_in_schema=False)
     def frontend_not_built():
         """前端未构建时的提示页（错误放 UI，不静默空白）"""
@@ -941,4 +1042,3 @@ else:
             "<p>构建完成后刷新本页。详见 README「快速开始」。</p>",
             status_code=503,
         )
-

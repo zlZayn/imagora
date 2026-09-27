@@ -14,6 +14,7 @@ API Key 读取优先级（跟随 ACTIVE_PROFILE 自动切换中转站）:
 
 铁律：密钥只允许出现在 .env / 环境变量；config.json 是公开配置（git 跟踪），绝不放密钥。
 """
+
 import json
 import os
 import sys
@@ -31,13 +32,13 @@ _DEFAULTS = {
         "edits": "/v1/images/edits",
     },
     "ratios": {
-        "1:1":  {"1K": "1024x1024", "2K": "2048x2048"},
-        "3:2":  {"2K": "1536x1024"},
-        "2:3":  {"2K": "1024x1536"},
+        "1:1": {"1K": "1024x1024", "2K": "2048x2048"},
+        "3:2": {"2K": "1536x1024"},
+        "2:3": {"2K": "1024x1536"},
         "16:9": {"2K": "2048x1152", "4K": "3840x2160"},
         "9:16": {"2K": "1152x2048", "4K": "2160x3840"},
-        "7:4":  {"2K": "1792x1024"},
-        "4:7":  {"2K": "1024x1792"},
+        "7:4": {"2K": "1792x1024"},
+        "4:7": {"2K": "1024x1792"},
     },
     "size_options": [
         {"value": "1024x1024", "label": "1024x1024 (1:1 1K)", "cost": 0.05},
@@ -70,7 +71,9 @@ def _load_config_file() -> dict:
         data = json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
         if isinstance(data, dict):
             return data
-        warnings.warn(f"config.json 格式错误（期望 object，实际 {type(data).__name__}），使用默认值")
+        warnings.warn(
+            f"config.json 格式错误（期望 object，实际 {type(data).__name__}），使用默认值"
+        )
     except (json.JSONDecodeError, OSError) as e:
         warnings.warn(f"config.json 读取失败：{e}，使用默认值")
     return {}
@@ -190,6 +193,8 @@ def cost_for_size(size: str) -> float:
         if option.get("value") == size:
             return float(option.get("cost", 0.0))
     return 0.0
+
+
 QUALITY_OPTIONS = _get("quality_options")
 DEFAULT_MODEL = _get("default_model")
 DEFAULT_QUALITY = _get("default_quality")

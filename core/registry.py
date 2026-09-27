@@ -3,6 +3,7 @@
 画布/生成结果/晋升参考图统一登记于此，按内容 sha1 去重，永不自动清理。
 原为 core/canvas.py 的一部分，现拆出以便职责单一。
 """
+
 import hashlib
 import json
 import os
@@ -27,6 +28,7 @@ _REGISTRY_LOCK = threading.Lock()
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
+
 def load_registry() -> dict[str, dict]:
     """读取注册表（id -> entry）。
 
@@ -46,6 +48,7 @@ def load_registry() -> dict[str, dict]:
             return data  # v1 裸 dict
     return {}
 
+
 def save_registry(entries: dict[str, dict]) -> None:
     """原子写注册表（tmp 文件 + os.replace，防并发读半文件）；按当前 schema 版本落盘 v2 包装"""
     os.makedirs(ASSET_DIR, exist_ok=True)
@@ -55,9 +58,14 @@ def save_registry(entries: dict[str, dict]) -> None:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     os.replace(tmp, REGISTRY_FILE)
 
+
 def _entry_from_src(
-    img_id: str, src_abs: str, original_name: str, dest_name: str,
-    kind: str = "canvas", source_key: str | None = None,
+    img_id: str,
+    src_abs: str,
+    original_name: str,
+    dest_name: str,
+    kind: str = "canvas",
+    source_key: str | None = None,
 ) -> dict:
     """由源文件构建注册表条目（id 为内容 sha1 前缀，relPath 相对 DEFAULT_OUTPUT_DIR 正斜杠）。
 
@@ -80,8 +88,11 @@ def _entry_from_src(
         entry["sourceKey"] = source_key
     dims = image_dimensions(src_abs)
     if dims:
-        entry.update({"width": dims["width"], "height": dims["height"], "format": dims["format"]})
+        entry.update(
+            {"width": dims["width"], "height": dims["height"], "format": dims["format"]}
+        )
     return entry
+
 
 def image_url(path: str) -> str:
     """构建图片可访问 URL（/api/image?path= 编码绝对路径）——全项目唯一入口
@@ -90,8 +101,12 @@ def image_url(path: str) -> str:
     """
     return f"/api/image?path={quote(path)}"
 
+
 def register_asset(
-    src_abs: str, original_name: str = "", kind: str = "canvas", source_key: str | None = None,
+    src_abs: str,
+    original_name: str = "",
+    kind: str = "canvas",
+    source_key: str | None = None,
 ) -> dict | None:
     """复制图片进注册表并登记；同内容（同 sha1）返回已有 entry（去重：一个文件一个节点）。
 
@@ -116,10 +131,13 @@ def register_asset(
         os.makedirs(ASSET_DIR, exist_ok=True)
         with open(dest_abs, "wb") as f:
             f.write(content)
-        entry = _entry_from_src(img_id, src_abs, original_name, dest_name, kind, source_key)
+        entry = _entry_from_src(
+            img_id, src_abs, original_name, dest_name, kind, source_key
+        )
         entries[img_id] = entry
         save_registry(entries)
         return {**entry, "absPath": dest_abs, "url": image_url(dest_abs)}
+
 
 def _collect_image_files(path: str) -> list[str]:
     """收集目录（递归）或单文件下的图片绝对路径；非图片返回空列表"""
@@ -134,6 +152,7 @@ def _collect_image_files(path: str) -> list[str]:
                     files.append(p)
         return files
     return []
+
 
 def import_assets(paths: list[str]) -> dict:
     """导入输出目录内的图片（目录递归 / 单文件）到画布注册表。
@@ -168,6 +187,7 @@ def import_assets(paths: list[str]) -> dict:
                 imported.append(entry)
     return {"imported": imported, "skipped": skipped}
 
+
 def delete_asset(img_id: str) -> bool:
     """删除画布图片：注册表移除 + 尽力删文件（文件不存在容忍）"""
     with _REGISTRY_LOCK:
@@ -181,6 +201,7 @@ def delete_asset(img_id: str) -> bool:
     except OSError:
         pass
     return True
+
 
 def list_assets(kind: str | None = None) -> list[dict]:
     """资产全量列表，每条附 absPath 与 url（生成时 ref_paths 引用 / 显示）。
@@ -203,6 +224,7 @@ def list_assets(kind: str | None = None) -> list[dict]:
             images.append(item)
         return images
 
+
 def resolve_asset(img_id: str, entries: dict | None = None) -> dict | None:
     """按 registryId 解析资产的绝对路径与 URL（单一事实来源）。
 
@@ -220,14 +242,16 @@ def resolve_asset(img_id: str, entries: dict | None = None) -> dict | None:
         return None
     return {"absPath": abs_path, "url": image_url(abs_path)}
 
+
 def safe_ref_path_allowlist(path: str, roots: list[str]) -> str | None:
     """路径白名单校验（委托 core.pathtrust.match_roots 统一实现）"""
     from core.pathtrust import match_roots
+
     return match_roots(path, roots)
 
 
-
 # ================= 注册表迁移（registry 自带，避免经由 shim 绕行） =================
+
 
 def _mig_ts() -> str:
     return time.strftime("%Y%m%d-%H%M%S")
@@ -271,13 +295,21 @@ def detect_registry(path: str | None = None) -> dict:
         return {"state": "corrupt", "count": 0, "kind_missing": 0}
     if isinstance(data.get("images"), dict):
         return {
-            "state": "v2", "count": len(data["images"]),
-            "kind_missing": sum(1 for e in data["images"].values() if not isinstance(e, dict) or "kind" not in e),
+            "state": "v2",
+            "count": len(data["images"]),
+            "kind_missing": sum(
+                1
+                for e in data["images"].values()
+                if not isinstance(e, dict) or "kind" not in e
+            ),
         }
     if "schemaVersion" not in data:
         return {
-            "state": "v1", "count": len(data),
-            "kind_missing": sum(1 for e in data.values() if not isinstance(e, dict) or "kind" not in e),
+            "state": "v1",
+            "count": len(data),
+            "kind_missing": sum(
+                1 for e in data.values() if not isinstance(e, dict) or "kind" not in e
+            ),
         }
     return {"state": "corrupt", "count": 0, "kind_missing": 0}
 
@@ -318,9 +350,16 @@ def upgrade_registry(apply: bool) -> dict:
         return {"registry": state, "action": "none", "backup": None}
     with _REGISTRY_LOCK:
         entries = load_registry()
-        upgraded = {i: _entry_with_dims(e, DEFAULT_OUTPUT_DIR) for i, e in entries.items()}
+        upgraded = {
+            i: _entry_with_dims(e, DEFAULT_OUTPUT_DIR) for i, e in entries.items()
+        }
     if not apply:
-        return {"registry": state, "action": "upgrade-to-v2", "backup": None, "entries": len(upgraded)}
+        return {
+            "registry": state,
+            "action": "upgrade-to-v2",
+            "backup": None,
+            "entries": len(upgraded),
+        }
     payload = {"schemaVersion": REGISTRY_SCHEMA_VERSION, "images": upgraded}
     backup = _backup_then_write(REGISTRY_FILE, payload)
     reloaded = load_registry()
@@ -338,19 +377,27 @@ def rebuild_registry(apply: bool) -> dict:
     candidates = []
     try:
         for name in sorted(os.listdir(ASSET_DIR)):
-            if not name.startswith("canv_") or not name.endswith(tuple(IMAGE_EXTENSIONS)):
+            if not name.startswith("canv_") or not name.endswith(
+                tuple(IMAGE_EXTENSIONS)
+            ):
                 continue
             stem, ext = os.path.splitext(name)
-            img_id = stem[len("canv_"):]
+            img_id = stem[len("canv_") :]
             abs_path = os.path.normpath(os.path.join(ASSET_DIR, name))
-            candidates.append({
-                "id": img_id,
-                "relPath": os.path.relpath(abs_path, DEFAULT_OUTPUT_DIR).replace("\\", "/"),
-                "name": name,
-                "size": os.path.getsize(abs_path),
-                "ext": ext.lstrip(".").lower(),
-                "createdAt": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(abs_path))),
-            })
+            candidates.append(
+                {
+                    "id": img_id,
+                    "relPath": os.path.relpath(abs_path, DEFAULT_OUTPUT_DIR).replace(
+                        "\\", "/"
+                    ),
+                    "name": name,
+                    "size": os.path.getsize(abs_path),
+                    "ext": ext.lstrip(".").lower(),
+                    "createdAt": time.strftime(
+                        "%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(abs_path))
+                    ),
+                }
+            )
     except OSError:
         candidates = []
     if not candidates:
@@ -360,7 +407,9 @@ def rebuild_registry(apply: bool) -> dict:
     entries = {}
     with _REGISTRY_LOCK:
         for c in candidates:
-            dims = image_dimensions(os.path.normpath(os.path.join(DEFAULT_OUTPUT_DIR, c["relPath"])))
+            dims = image_dimensions(
+                os.path.normpath(os.path.join(DEFAULT_OUTPUT_DIR, c["relPath"]))
+            )
             entries[c["id"]] = {**c, **(dims or {})}
         if os.path.isfile(REGISTRY_FILE):
             shutil.copy2(REGISTRY_FILE, f"{REGISTRY_FILE}.bak-{_mig_ts()}")
@@ -421,7 +470,11 @@ def relocate_asset_dir(apply: bool) -> dict:
     if os.path.isfile(reg):
         with open(reg, encoding="utf-8") as f:
             data = json.load(f)
-        entries = data.get("images") if isinstance(data, dict) and isinstance(data.get("images"), dict) else (data if isinstance(data, dict) else {})
+        entries = (
+            data.get("images")
+            if isinstance(data, dict) and isinstance(data.get("images"), dict)
+            else (data if isinstance(data, dict) else {})
+        )
         for e in entries.values():
             if isinstance(e, dict) and isinstance(e.get("relPath"), str):
                 e["relPath"] = e["relPath"].replace(".canvas/", ".assets/")
@@ -430,7 +483,12 @@ def relocate_asset_dir(apply: bool) -> dict:
             json.dump(payload, f, ensure_ascii=False, indent=2)
     os.replace(legacy, new)
     reloaded = load_registry()
-    return {"action": "moved", "files": len(files), "backup": bak, "entries": len(reloaded)}
+    return {
+        "action": "moved",
+        "files": len(files),
+        "backup": bak,
+        "entries": len(reloaded),
+    }
 
 
 def migrate(apply: bool = False, rebuild: bool = False, backfill: bool = True) -> dict:
@@ -443,5 +501,7 @@ def migrate(apply: bool = False, rebuild: bool = False, backfill: bool = True) -
         report["registry"] = rebuild_registry(apply)
     else:
         report["registry"] = upgrade_registry(apply)
-    report["asset_meta"] = backfill_asset_meta(apply) if backfill else {"action": "skipped"}
+    report["asset_meta"] = (
+        backfill_asset_meta(apply) if backfill else {"action": "skipped"}
+    )
     return report

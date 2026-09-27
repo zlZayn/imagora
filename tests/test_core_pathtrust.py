@@ -1,4 +1,5 @@
 """core/pathtrust.py 单元测试：路径白名单单一实现（跨盘/越界/多根）"""
+
 import os
 
 from core import pathtrust
@@ -18,6 +19,7 @@ def test_match_roots_inside_and_outside(tmp_path):
 def test_match_roots_cross_drive_isolated():
     """跨盘 root 单独捕获，不影响其他 root 匹配"""
     import platform
+
     if platform.system() != "Windows":
         return  # 非 Windows 无盘符概念，跳过
     root = os.path.abspath(os.curdir)

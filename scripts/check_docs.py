@@ -12,6 +12,7 @@ ARCHITECTURE / frontend/README 多处，人工同步易漏（曾出现 221→222
 从纪律变成可执行检查：后端数解 pytest 的 def test_，前端数解 vitest
 的 it()，再与各文档声明的数字逐处比对。
 """
+
 import argparse
 import pathlib
 import re
@@ -48,7 +49,9 @@ def check_links() -> list[str]:
             continue
         for m in LINK_RE.finditer(text):
             target = m.group(1).strip()
-            if not target or target.startswith(("http://", "https://", "mailto:", "#", "<")):
+            if not target or target.startswith(
+                ("http://", "https://", "mailto:", "#", "<")
+            ):
                 continue
             path_part = target.split("#", 1)[0].strip()
             if not path_part:
@@ -104,7 +107,9 @@ COUNT_PATTERNS: list[tuple[pathlib.Path, str, str]] = [
 TABLE_ROW_RE = re.compile(r"\|\s*\[`([^`]+)`\]\([^)]*\)\s*\|\s*(\d+)\s*\|")
 
 
-def check_counts(backend_total: int, per_file: dict[str, int], frontend_total: int) -> list[str]:
+def check_counts(
+    backend_total: int, per_file: dict[str, int], frontend_total: int
+) -> list[str]:
     """逐文件表格 + 各声明点计数与源码一致。"""
     problems: list[str] = []
     expected = {"backend": backend_total, "frontend": frontend_total}
@@ -118,7 +123,9 @@ def check_counts(backend_total: int, per_file: dict[str, int], frontend_total: i
             if actual is None:
                 problems.append(f"tests/README.md 表格含未知后端文件 {name}")
             elif actual != declared:
-                problems.append(f"tests/README.md 声称 {name}={declared}，实际 {actual}")
+                problems.append(
+                    f"tests/README.md 声称 {name}={declared}，实际 {actual}"
+                )
         elif name.endswith((".test.ts", ".test.tsx")):
             # 前端逐文件数不细拆（it 计数已算总数），只校验文件存在由链接检查兜底
             pass
@@ -132,7 +139,9 @@ def check_counts(backend_total: int, per_file: dict[str, int], frontend_total: i
             continue
         matches = re.findall(pattern, text)
         if not matches:
-            problems.append(f"{path.relative_to(ROOT)}: 未找到计数声明（模式 {pattern!r}）")
+            problems.append(
+                f"{path.relative_to(ROOT)}: 未找到计数声明（模式 {pattern!r}）"
+            )
             continue
         for value in matches:
             if int(value) != expected[kind]:
@@ -150,7 +159,9 @@ def main() -> int:
     except (AttributeError, OSError):
         pass
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--quiet", action="store_true", help="只输出问题，不输出通过摘要")
+    parser.add_argument(
+        "--quiet", action="store_true", help="只输出问题，不输出通过摘要"
+    )
     args = parser.parse_args()
 
     checked, link_problems = check_links()

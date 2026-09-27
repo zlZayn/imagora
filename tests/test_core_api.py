@@ -4,6 +4,7 @@
 覆盖: resolve_size_with_ratio、build_default_output_path、write_file_with_retry。
 纯函数测试（写文件走伪 open），不调用网络 / 不消耗 API 额度。
 """
+
 import re
 from pathlib import Path
 from typing import Self
@@ -19,6 +20,7 @@ from core.api import (
 )
 
 # ---------- format_error ----------
+
 
 def test_format_error_prefix_and_message():
     """异常 -> 类型 + 消息"""
@@ -36,6 +38,7 @@ def test_format_error_custom_limit():
 
 
 # ---------- resolve_size_with_ratio ----------
+
 
 def test_resolve_size_default_when_nothing_given():
     """size 与 ratio 都为空 -> 默认 1024x1024"""
@@ -74,6 +77,7 @@ def test_resolve_size_rejects_unavailable_tier():
 
 # ---------- build_default_output_path ----------
 
+
 def test_output_path_returns_given_path():
     """给了路径 -> 原样返回"""
     assert build_default_output_path("custom.png", "png") == "custom.png"
@@ -84,13 +88,14 @@ def test_output_path_generates_default_name():
     result = build_default_output_path(None, "png")
     path = Path(result)
     assert path.parent.name == "output"
-    assert re.fullmatch(r"ai_\d{8}_\d{6}_\d+\.png", path.name), f"文件名格式不符: {path.name}"
+    assert re.fullmatch(r"ai_\d{8}_\d{6}_\d+\.png", path.name), (
+        f"文件名格式不符: {path.name}"
+    )
 
 
 def test_output_path_unique_under_concurrency():
     """并发调用 -> 文件名全部唯一（多窗口同秒不覆盖）"""
     import threading
-
 
     n = 50
     names = []
@@ -118,6 +123,7 @@ def test_output_path_respects_format():
 
 
 # ---------- write_file_with_retry ----------
+
 
 class _FakeFile:
     """伪文件（context manager）：只记录写入内容，不碰磁盘（规避中文路径 tmp 坑）"""
@@ -162,7 +168,9 @@ def test_write_retry_succeeds_first_try(monkeypatch):
 def test_write_retry_survives_transient_locks(monkeypatch):
     """瞬时锁（前两次 PermissionError）-> 自动重试成功，内容完整"""
     fake, calls = _install_fake_open(monkeypatch, fail_times=2)
-    write_file_with_retry("out.png", b"raw-png", attempts=3, backoff=(0.001, 0.001, 0.001))
+    write_file_with_retry(
+        "out.png", b"raw-png", attempts=3, backoff=(0.001, 0.001, 0.001)
+    )
     assert calls["n"] == 3
     assert fake.written == b"raw-png"
 
@@ -171,12 +179,15 @@ def test_write_retry_exhausts_then_raises(monkeypatch):
     """重试耗尽仍失败 -> 最后一次 PermissionError 原样抛出"""
     _, calls = _install_fake_open(monkeypatch, fail_times=99)
     with pytest.raises(PermissionError):
-        write_file_with_retry("out.png", b"raw-png", attempts=3, backoff=(0.001, 0.001, 0.001))
+        write_file_with_retry(
+            "out.png", b"raw-png", attempts=3, backoff=(0.001, 0.001, 0.001)
+        )
     assert calls["n"] == 3
 
 
 def test_write_retry_non_permission_error_no_retry(monkeypatch):
     """非瞬时错误（如磁盘满 OSError）-> 不重试、立即抛出"""
+
     def fake_open(path, mode):
         raise OSError(28, "No space left on device", path)
 

@@ -4,10 +4,25 @@
 供注册表 v2 条目的 width/height/format 元数据与迁移工具使用；
 无法解析（非图片 / 文件损坏 / 缺读权限）一律返回 None，调用方按可选字段处理。
 """
+
 import struct
 
 # JPEG SOF（帧开始）标记：SOF0-SOF15，排除 DHT(C4)/JPG(C8)/DAC(CC)
-_JPEG_SOF_MARKERS = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+_JPEG_SOF_MARKERS = {
+    0xC0,
+    0xC1,
+    0xC2,
+    0xC3,
+    0xC5,
+    0xC6,
+    0xC7,
+    0xC9,
+    0xCA,
+    0xCB,
+    0xCD,
+    0xCE,
+    0xCF,
+}
 
 
 def _jpeg_dimensions(head: bytes) -> dict | None:
@@ -25,11 +40,11 @@ def _jpeg_dimensions(head: bytes) -> dict | None:
             continue
         if pos + 4 > len(head):
             return None
-        seg_len = struct.unpack(">H", head[pos + 2:pos + 4])[0]
+        seg_len = struct.unpack(">H", head[pos + 2 : pos + 4])[0]
         if seg_len < 2:
             return None
         if marker in _JPEG_SOF_MARKERS and seg_len >= 7:
-            height, width = struct.unpack(">HH", head[pos + 5:pos + 9])
+            height, width = struct.unpack(">HH", head[pos + 5 : pos + 9])
             return {"width": width, "height": height, "format": "jpeg"}
         pos += 2 + seg_len
     return None
@@ -38,11 +53,15 @@ def _jpeg_dimensions(head: bytes) -> dict | None:
 def _webp_dimensions(head: bytes) -> dict | None:
     """WebP：RIFF/WEBP 容器，按 VP8 / VP8L / VP8X 三种位流分别解析"""
     chunk = head[12:16]
-    if chunk == b"VP8 " and len(head) >= 30:  # 有损：帧头后 2 字节宽 + 2 字节高（14 位有效）
+    if (
+        chunk == b"VP8 " and len(head) >= 30
+    ):  # 有损：帧头后 2 字节宽 + 2 字节高（14 位有效）
         width = struct.unpack("<H", head[26:28])[0] & 0x3FFF
         height = struct.unpack("<H", head[28:30])[0] & 0x3FFF
         return {"width": width, "height": height, "format": "webp"}
-    if chunk == b"VP8L" and len(head) >= 25:  # 无损：签名 0x2F 后 4 字节内各 14 位宽高（均 -1）
+    if (
+        chunk == b"VP8L" and len(head) >= 25
+    ):  # 无损：签名 0x2F 后 4 字节内各 14 位宽高（均 -1）
         bits = struct.unpack("<I", head[21:25])[0]
         width = (bits & 0x3FFF) + 1
         height = ((bits >> 14) & 0x3FFF) + 1

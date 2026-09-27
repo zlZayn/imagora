@@ -12,6 +12,7 @@
 - `0`（或缺失）表示不限，默认不打扰用户；
 - 费用来源唯一：`core.config.cost_for_size`（config.json 的 size_options），不在此硬编码价格。
 """
+
 import json
 import os
 import time
@@ -88,7 +89,9 @@ def summarize_records(records: list[dict], days: int = DEFAULT_DAYS) -> dict:
         seconds += row_seconds
 
         day = _day_of(record) or "未知"
-        day_row = per_day.setdefault(day, {"date": day, "count": 0, "ok": 0, "error": 0, "cost": 0.0})
+        day_row = per_day.setdefault(
+            day, {"date": day, "count": 0, "ok": 0, "error": 0, "cost": 0.0}
+        )
         day_row["count"] += 1
         day_row["ok" if success else "error"] += 1
         if success:
@@ -106,7 +109,9 @@ def summarize_records(records: list[dict], days: int = DEFAULT_DAYS) -> dict:
         if success:
             mode_row["cost"] = round(mode_row["cost"] + row_cost, 2)
 
-    by_day = sorted(per_day.values(), key=lambda r: str(r["date"]), reverse=True)[:safe_days]
+    by_day = sorted(per_day.values(), key=lambda r: str(r["date"]), reverse=True)[
+        :safe_days
+    ]
     return {
         "total": total,
         "ok": ok,
@@ -117,8 +122,12 @@ def summarize_records(records: list[dict], days: int = DEFAULT_DAYS) -> dict:
         "avgSeconds": round(ok_seconds / ok, 1) if ok else 0.0,
         "todayCost": round(today_cost, 2),
         "byDay": by_day,
-        "bySize": sorted(per_size.values(), key=lambda r: (-r["count"], r["size"]))[:10],
-        "byMode": sorted(per_mode.values(), key=lambda r: (-r["count"], r["mode"]))[:10],
+        "bySize": sorted(per_size.values(), key=lambda r: (-r["count"], r["size"]))[
+            :10
+        ],
+        "byMode": sorted(per_mode.values(), key=lambda r: (-r["count"], r["mode"]))[
+            :10
+        ],
     }
 
 

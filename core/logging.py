@@ -4,6 +4,7 @@
 统一由 server（界面）、batch（批量）、main（CLI）调用，避免日志逻辑散落。
 每条记录一行 JSON，字段精简：时间 / 模式 / 参考图数 / 提示词 / 尺寸 / 质量 / 结果 / 费用 / 耗时 / 输出路径。
 """
+
 import json
 import threading
 import time
@@ -28,11 +29,21 @@ def _display_path(path: str) -> str:
         return path.replace("\\", "/")
 
 
-def log_generation(prompt: str, mode: str, refs: int, size: str, quality: str,
-                   status: str, output: str = "", cost: float = 0.0,
-                   seconds: float = 0.0, win: int | None = None,
-                   submission_id: str = "", input_asset_ids: list | None = None,
-                   output_asset_ids: list | None = None) -> None:
+def log_generation(
+    prompt: str,
+    mode: str,
+    refs: int,
+    size: str,
+    quality: str,
+    status: str,
+    output: str = "",
+    cost: float = 0.0,
+    seconds: float = 0.0,
+    win: int | None = None,
+    submission_id: str = "",
+    input_asset_ids: list | None = None,
+    output_asset_ids: list | None = None,
+) -> None:
     """记录一次生成结果。
 
     Args:

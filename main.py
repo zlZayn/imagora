@@ -15,6 +15,7 @@ CLI gen 子命令与 web 表单完全对等：尺寸/质量/参考图/输出路�
 生成成功后旁路注册资产 + 落提交快照 + 写全量账本（submission_id + asset_ids + cost_for_size），
 与 web 端产出的 logs/generation.jsonl 与 output/submissions/*.json 同源可互查。
 """
+
 import argparse
 import colorsys
 import os
@@ -76,11 +77,15 @@ def handle_ui_command(args):
 
 def handle_batch_command(args):
     """执行批量生图"""
-    config_path = Path(args.config) if args.config else (Path.cwd() / "batch_prompts.json")
+    config_path = (
+        Path(args.config) if args.config else (Path.cwd() / "batch_prompts.json")
+    )
     if not config_path.exists():
         print_error(f"未找到配置文件: {config_path}，请用 --config 指定项目配置路径")
         sys.exit(1)
-    failed = run_batch_generation(config_path, module_filter=args.only, dry_run=args.dry_run)
+    failed = run_batch_generation(
+        config_path, module_filter=args.only, dry_run=args.dry_run
+    )
     if failed:
         print_error(f"批量结束 · {len(failed)} 张失败")
         sys.exit(1)
@@ -107,7 +112,9 @@ def _validate_gen_args(args) -> None:
     if missing:
         print_error("缺少必填参数：" + " · ".join(missing))
         print_info("运行 `python -m main config` 查看当前 profile 支持的尺寸/比例/质量")
-        print_info("示例：python -m main gen \"提示词\" --size 1024x1024 --quality high -o out.png")
+        print_info(
+            '示例：python -m main gen "提示词" --size 1024x1024 --quality high -o out.png'
+        )
         sys.exit(2)
     if args.size and args.ratio:
         print_error("--size 与 --ratio 不能同时使用，二选一")
@@ -116,9 +123,13 @@ def _validate_gen_args(args) -> None:
         print_error(f"不支持的比例 {args.ratio}，可用: {', '.join(RATIOS.keys())}")
         sys.exit(2)
     if args.ratio and args.tier not in RATIOS[args.ratio]:
-        print_error(f"比例 {args.ratio} 没有 {args.tier} 档，可用档位: {', '.join(RATIOS[args.ratio].keys())}")
+        print_error(
+            f"比例 {args.ratio} 没有 {args.tier} 档，可用档位: {', '.join(RATIOS[args.ratio].keys())}"
+        )
         sys.exit(2)
-    quality_values = [q.get("value") if isinstance(q, dict) else str(q) for q in QUALITY_OPTIONS]
+    quality_values = [
+        q.get("value") if isinstance(q, dict) else str(q) for q in QUALITY_OPTIONS
+    ]
     if args.quality not in quality_values:
         print_error(f"不支持的质量 {args.quality}，可用: {', '.join(quality_values)}")
         sys.exit(2)
@@ -184,16 +195,26 @@ def handle_gen_command(args):
             # 图生图：多张参考图一次请求提交（与 web 表单 images 字段等价）
             print_info(f"图生图 · 参考图 {len(ref_paths)} 张")
             generate_image(
-                prompt=args.prompt, images=ref_paths, size=size,
-                quality=args.quality, model=args.model, n=args.n,
-                output_format=output_format, output_path=dest,
+                prompt=args.prompt,
+                images=ref_paths,
+                size=size,
+                quality=args.quality,
+                model=args.model,
+                n=args.n,
+                output_format=output_format,
+                output_path=dest,
             )
         else:
             print_info("文生图")
             generate_image(
-                prompt=args.prompt, image_path=None, size=size,
-                quality=args.quality, model=args.model, n=args.n,
-                output_format=output_format, output_path=dest,
+                prompt=args.prompt,
+                image_path=None,
+                size=size,
+                quality=args.quality,
+                model=args.model,
+                n=args.n,
+                output_format=output_format,
+                output_path=dest,
             )
         ok = True
         print_success(f"已保存: {dest}（{size}）· 费用 {cost:.2f} 元")
@@ -207,7 +228,12 @@ def handle_gen_command(args):
         try:
             params = {"size": size, "quality": args.quality, "outputDir": output_dir}
             submission_meta = graphstore.persist_submission_assets(
-                submission_id, args.prompt, params, ref_paths, [dest], 0,
+                submission_id,
+                args.prompt,
+                params,
+                ref_paths,
+                [dest],
+                0,
             )
         except Exception:
             submission_meta = None
@@ -242,8 +268,12 @@ def handle_config_command(args):
     """
     from core.config import ACTIVE_PROFILE, BASE_URL
 
-    console.print(f"[bold]当前 profile[/bold]: {ACTIVE_PROFILE}  ·  模型: {DEFAULT_MODEL}  ·  端点: {BASE_URL}")
-    console.print(f"[bold]默认尺寸[/bold]: {DEFAULT_SIZE}  ·  默认质量: {DEFAULT_QUALITY}  ·  默认档位: {DEFAULT_TIER}")
+    console.print(
+        f"[bold]当前 profile[/bold]: {ACTIVE_PROFILE}  ·  模型: {DEFAULT_MODEL}  ·  端点: {BASE_URL}"
+    )
+    console.print(
+        f"[bold]默认尺寸[/bold]: {DEFAULT_SIZE}  ·  默认质量: {DEFAULT_QUALITY}  ·  默认档位: {DEFAULT_TIER}"
+    )
     console.print(f"[bold]默认输出目录[/bold]: {DEFAULT_OUTPUT_DIR}")
 
     # 尺寸表（含费用）
@@ -271,8 +301,12 @@ def handle_config_command(args):
             label = ""
         console.print(f"  {val:<10}  {label}")
 
-    console.print("\n[#6b7280]提示：gen 子命令所有参数值必须取自上表，否则报错退出。[/#6b7280]")
-    console.print("[#6b7280]示例：python -m main gen \"提示词\" --size 1024x1024 --quality high -o out.png[/#6b7280]")
+    console.print(
+        "\n[#6b7280]提示：gen 子命令所有参数值必须取自上表，否则报错退出。[/#6b7280]"
+    )
+    console.print(
+        '[#6b7280]示例：python -m main gen "提示词" --size 1024x1024 --quality high -o out.png[/#6b7280]'
+    )
 
 
 def find_port_pid(port: int) -> int | None:
@@ -299,7 +333,11 @@ def find_port_pids(port: int) -> list[int]:
         # netstat 输出按控制台代码页（中文 Windows 为 GBK），只解析其中的 ASCII 行；
         # errors="replace" 让本地化表头（"活动连接"等）不会把整次探测打断
         out = subprocess.run(
-            ["netstat", "-ano"], capture_output=True, text=True, check=False, errors="replace",
+            ["netstat", "-ano"],
+            capture_output=True,
+            text=True,
+            check=False,
+            errors="replace",
         ).stdout
         for line in out.splitlines():
             if f":{port}" in line and "LISTENING" in line.upper():
@@ -343,9 +381,19 @@ def _process_ancestors(pid: int) -> list[int]:
                 "if ($p) { $p.ParentProcessId }"
             )
             out = subprocess.run(
-                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                capture_output=True, text=True, check=False,
-                timeout=_ANCESTOR_QUERY_TIMEOUT, encoding="utf-8", errors="replace",
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    command,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_ANCESTOR_QUERY_TIMEOUT,
+                encoding="utf-8",
+                errors="replace",
             ).stdout
         except (OSError, subprocess.TimeoutExpired):
             break
@@ -382,7 +430,9 @@ def stop_port_services(port: int) -> None:
                 kill_set.append(ancestor)
     # 先杀最顶层祖先（uv），其 taskkill /t 会连带杀掉整棵子树
     for pid in kill_set:
-        subprocess.run(["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True, check=False)
+        subprocess.run(
+            ["taskkill", "/pid", str(pid), "/f", "/t"], capture_output=True, check=False
+        )
     print_success(f"服务已全部停止（PID {', '.join(str(p) for p in pids)}）")
 
 
@@ -422,7 +472,9 @@ def handle_menu_command(args):
                     try:
                         import ctypes
 
-                        ctypes.windll.kernel32.SetConsoleCtrlHandler(handler_ref["fn"], False)
+                        ctypes.windll.kernel32.SetConsoleCtrlHandler(
+                            handler_ref["fn"], False
+                        )
                     except Exception:
                         pass  # 进程即将退出，卸载 handler 失败无害
         return False
@@ -457,7 +509,9 @@ def handle_menu_command(args):
         table.add_column(style="bold", justify="right", width=10)
         table.add_column(style="white")
         table.add_row("服务地址", f"[bold {accent}]{url}[/bold {accent}]")
-        table.add_row("服务进程", f"PID {pid}" if running else "[#d97706]未运行[/#d97706]")
+        table.add_row(
+            "服务进程", f"PID {pid}" if running else "[#d97706]未运行[/#d97706]"
+        )
         table.add_row("已开窗口", f"编号已分配至 #{win_count}" if win_count else "暂无")
         return Panel(
             table,
@@ -483,7 +537,9 @@ def handle_menu_command(args):
                 webbrowser.open(f"{url}/?win={win}")
                 # "已打开窗口 #N" 用该窗口主题色（与 accent.ts / cmd 首窗同算法），[OK] 标签保持绿色
                 win_accent = accent_for_window(win)
-                console.print(f"[bold green][OK][/bold green] [bold {win_accent}]已打开窗口 #{win}[/bold {win_accent}]")
+                console.print(
+                    f"[bold green][OK][/bold green] [bold {win_accent}]已打开窗口 #{win}[/bold {win_accent}]"
+                )
             except Exception as e:
                 print_error(f"开新窗口失败: {e}")
                 time.sleep(2)
@@ -500,7 +556,9 @@ def handle_menu_command(args):
                     try:
                         import ctypes
 
-                        ctypes.windll.kernel32.SetConsoleCtrlHandler(handler_ref["fn"], False)
+                        ctypes.windll.kernel32.SetConsoleCtrlHandler(
+                            handler_ref["fn"], False
+                        )
                     except Exception:
                         pass  # 进程即将退出，卸载 handler 失败无害
 
@@ -512,46 +570,89 @@ def build_argument_parser():
 
     sub_ui = subparsers.add_parser("ui", help="启动网页界面")
     sub_ui.add_argument("--port", type=int, default=7860, help="监听端口（默认 7860）")
-    sub_ui.add_argument("--no-browser", action="store_true", help="不自动打开浏览器（由外部脚本控制开窗）")
+    sub_ui.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="不自动打开浏览器（由外部脚本控制开窗）",
+    )
     sub_ui.set_defaults(handler=handle_ui_command)
 
-    sub_menu = subparsers.add_parser("menu", help="交互菜单（启动脚本用）：N 开新窗口 / Q 退出")
-    sub_menu.add_argument("--port", type=int, default=7860, help="监听端口（默认 7860）")
+    sub_menu = subparsers.add_parser(
+        "menu", help="交互菜单（启动脚本用）：N 开新窗口 / Q 退出"
+    )
+    sub_menu.add_argument(
+        "--port", type=int, default=7860, help="监听端口（默认 7860）"
+    )
     sub_menu.set_defaults(handler=handle_menu_command)
 
     sub_batch = subparsers.add_parser("batch", help="批量生图")
-    sub_batch.add_argument("--config", help="项目配置文件 batch_prompts.json 路径（默认找当前目录）")
+    sub_batch.add_argument(
+        "--config", help="项目配置文件 batch_prompts.json 路径（默认找当前目录）"
+    )
     sub_batch.add_argument("--only", help="只跑指定模块号，逗号分隔，如 2,4")
-    sub_batch.add_argument("--dry-run", action="store_true", help="只预览配置与成本，不调用 API")
+    sub_batch.add_argument(
+        "--dry-run", action="store_true", help="只预览配置与成本，不调用 API"
+    )
     sub_batch.set_defaults(handler=handle_batch_command)
 
     sub_gen = subparsers.add_parser(
         "gen",
         help="单张生图（与 web 表单完全对等：尺寸/质量/参考图/输出路径无损透传，"
-             "成功后注册资产 + 落提交快照 + 写全量账本）",
+        "成功后注册资产 + 落提交快照 + 写全量账本）",
     )
     sub_gen.add_argument("prompt", help="提示词（英文优先）")
-    sub_gen.add_argument("-i", "--image", action="append", default=None,
-                         help="参考图路径，可多次传 -i 实现多张参考图（传了=图生图）")
-    sub_gen.add_argument("-o", "--output", default=None,
-                         help="输出路径（必填）：文件路径直接用，目录则自动生成文件名")
-    sub_gen.add_argument("--size", default=None,
-                         help="分辨率（与 --ratio 二选一必填，取值见 `python -m main config`）")
-    sub_gen.add_argument("--ratio", default=None,
-                         help="宽高比（与 --size 二选一必填，取值见 `python -m main config`）")
-    sub_gen.add_argument("--tier", default=DEFAULT_TIER, choices=["1K", "2K", "4K"],
-                         help="配合 --ratio 的档位，默认 2K")
-    sub_gen.add_argument("--quality", default=None,
-                         help="质量（必填，取值见 `python -m main config`）")
-    sub_gen.add_argument("--model", default=DEFAULT_MODEL, help="模型名，默认取当前 profile")
+    sub_gen.add_argument(
+        "-i",
+        "--image",
+        action="append",
+        default=None,
+        help="参考图路径，可多次传 -i 实现多张参考图（传了=图生图）",
+    )
+    sub_gen.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="输出路径（必填）：文件路径直接用，目录则自动生成文件名",
+    )
+    sub_gen.add_argument(
+        "--size",
+        default=None,
+        help="分辨率（与 --ratio 二选一必填，取值见 `python -m main config`）",
+    )
+    sub_gen.add_argument(
+        "--ratio",
+        default=None,
+        help="宽高比（与 --size 二选一必填，取值见 `python -m main config`）",
+    )
+    sub_gen.add_argument(
+        "--tier",
+        default=DEFAULT_TIER,
+        choices=["1K", "2K", "4K"],
+        help="配合 --ratio 的档位，默认 2K",
+    )
+    sub_gen.add_argument(
+        "--quality", default=None, help="质量（必填，取值见 `python -m main config`）"
+    )
+    sub_gen.add_argument(
+        "--model", default=DEFAULT_MODEL, help="模型名，默认取当前 profile"
+    )
     sub_gen.add_argument("--n", type=int, default=1, help="生成张数，默认 1")
-    sub_gen.add_argument("--format", default="png", choices=["png", "jpg", "webp"],
-                         help="输出格式，默认 png")
-    sub_gen.add_argument("--no-asset", action="store_true",
-                         help="跳过资产注册 + 提交快照（纯生成模式，不进画布/账本无 asset_ids）")
+    sub_gen.add_argument(
+        "--format",
+        default="png",
+        choices=["png", "jpg", "webp"],
+        help="输出格式，默认 png",
+    )
+    sub_gen.add_argument(
+        "--no-asset",
+        action="store_true",
+        help="跳过资产注册 + 提交快照（纯生成模式，不进画布/账本无 asset_ids）",
+    )
     sub_gen.set_defaults(handler=handle_gen_command)
 
-    sub_config = subparsers.add_parser("config", help="显示当前 profile 支持的尺寸/比例/质量/默认值")
+    sub_config = subparsers.add_parser(
+        "config", help="显示当前 profile 支持的尺寸/比例/质量/默认值"
+    )
     sub_config.set_defaults(handler=handle_config_command)
 
     return parser

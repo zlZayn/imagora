@@ -1,4 +1,5 @@
 """core/imageinfo.py 单元测试：图片头解析（宽高/格式），零依赖零网络"""
+
 import struct
 
 from core.imageinfo import image_dimensions
@@ -19,7 +20,14 @@ def _gif(w=100, h=200):
 
 
 def _bmp(w=100, h=200):
-    return b"BM" + b"\x00" * 8 + b"\x00\x00\x00\x00" + b"\x28\x00\x00\x00" + struct.pack("<ii", w, h) + b"\x00" * 32
+    return (
+        b"BM"
+        + b"\x00" * 8
+        + b"\x00\x00\x00\x00"
+        + b"\x28\x00\x00\x00"
+        + struct.pack("<ii", w, h)
+        + b"\x00" * 32
+    )
 
 
 def _jpeg(w=100, h=200):
@@ -38,7 +46,8 @@ def _webp_vp8(w=100, h=200):
         b"RIFF\x00\x00\x00\x00WEBP"
         + b"VP8 \x00\x00\x00\x00"
         + b"\x00\x00\x00\x9d\x01\x2a"
-        + struct.pack("<H", w) + struct.pack("<H", h)
+        + struct.pack("<H", w)
+        + struct.pack("<H", h)
         + b"\x00" * 8
     )
 
@@ -59,7 +68,8 @@ def _webp_vp8x(w=100, h=200):
         b"RIFF\x00\x00\x00\x00WEBP"
         + b"VP8X\x00\x00\x00\x00"
         + b"\x00\x00\x00\x00"
-        + (w - 1).to_bytes(3, "little") + (h - 1).to_bytes(3, "little")
+        + (w - 1).to_bytes(3, "little")
+        + (h - 1).to_bytes(3, "little")
         + b"\x00" * 8
     )
 
@@ -71,31 +81,59 @@ def _write(tmp_path, name, data):
 
 
 def test_png(tmp_path):
-    assert image_dimensions(_write(tmp_path, "a.png", _png())) == {"width": 100, "height": 200, "format": "png"}
+    assert image_dimensions(_write(tmp_path, "a.png", _png())) == {
+        "width": 100,
+        "height": 200,
+        "format": "png",
+    }
 
 
 def test_gif(tmp_path):
-    assert image_dimensions(_write(tmp_path, "a.gif", _gif())) == {"width": 100, "height": 200, "format": "gif"}
+    assert image_dimensions(_write(tmp_path, "a.gif", _gif())) == {
+        "width": 100,
+        "height": 200,
+        "format": "gif",
+    }
 
 
 def test_bmp(tmp_path):
-    assert image_dimensions(_write(tmp_path, "a.bmp", _bmp())) == {"width": 100, "height": 200, "format": "bmp"}
+    assert image_dimensions(_write(tmp_path, "a.bmp", _bmp())) == {
+        "width": 100,
+        "height": 200,
+        "format": "bmp",
+    }
 
 
 def test_jpeg(tmp_path):
-    assert image_dimensions(_write(tmp_path, "a.jpg", _jpeg())) == {"width": 100, "height": 200, "format": "jpeg"}
+    assert image_dimensions(_write(tmp_path, "a.jpg", _jpeg())) == {
+        "width": 100,
+        "height": 200,
+        "format": "jpeg",
+    }
 
 
 def test_webp_vp8(tmp_path):
-    assert image_dimensions(_write(tmp_path, "a.webp", _webp_vp8())) == {"width": 100, "height": 200, "format": "webp"}
+    assert image_dimensions(_write(tmp_path, "a.webp", _webp_vp8())) == {
+        "width": 100,
+        "height": 200,
+        "format": "webp",
+    }
 
 
 def test_webp_vp8l(tmp_path):
-    assert image_dimensions(_write(tmp_path, "a.webp", _webp_vp8l())) == {"width": 100, "height": 200, "format": "webp"}
+    assert image_dimensions(_write(tmp_path, "a.webp", _webp_vp8l())) == {
+        "width": 100,
+        "height": 200,
+        "format": "webp",
+    }
 
 
 def test_webp_vp8x(tmp_path):
-    assert image_dimensions(_write(tmp_path, "a.webp", _webp_vp8x())) == {"width": 100, "height": 200, "format": "webp"}
+    assert image_dimensions(_write(tmp_path, "a.webp", _webp_vp8x())) == {
+        "width": 100,
+        "height": 200,
+        "format": "webp",
+    }
 
 
 def test_garbage_returns_none(tmp_path):
@@ -103,7 +141,10 @@ def test_garbage_returns_none(tmp_path):
 
 
 def test_truncated_png_returns_none(tmp_path):
-    assert image_dimensions(_write(tmp_path, "t.png", b"\x89PNG\r\n\x1a\n" + b"\x00")) is None
+    assert (
+        image_dimensions(_write(tmp_path, "t.png", b"\x89PNG\r\n\x1a\n" + b"\x00"))
+        is None
+    )
 
 
 def test_missing_file_returns_none(tmp_path):

@@ -3,6 +3,7 @@
 迁移逻辑已各归其位：注册表迁移在 core.registry（registry.migrate 协调 relocate+upgrade/rebuild+backfill），
 工作流迁移在 core.graphstore（migrate_workflows）。脚本 scripts/migrate.py 只做协调与打印。
 """
+
 import json
 import os
 import struct
@@ -45,6 +46,7 @@ def _wc(name="w.json"):
 
 # ---------- 注册表：detect ----------
 
+
 def test_detect_registry_missing(canvas_env):
     assert registry.detect_registry()["state"] == "missing"
 
@@ -57,7 +59,10 @@ def test_detect_registry_v2(canvas_env):
 def test_detect_registry_v1_and_corrupt(canvas_env):
     (canvas_env / ".canvas").mkdir(parents=True, exist_ok=True)
     reg = canvas_env / ".canvas" / "registry.json"
-    reg.write_text(json.dumps({"old-entry": {"id": "old-entry", "name": "x.png"}}), encoding="utf-8")
+    reg.write_text(
+        json.dumps({"old-entry": {"id": "old-entry", "name": "x.png"}}),
+        encoding="utf-8",
+    )
     assert registry.detect_registry()["state"] == "v1"
     reg.write_text("{broken", encoding="utf-8")
     assert registry.detect_registry()["state"] == "corrupt"
@@ -65,10 +70,17 @@ def test_detect_registry_v1_and_corrupt(canvas_env):
 
 # ---------- 注册表：升级 v1->v2 ----------
 
+
 def test_upgrade_registry_plan_only_is_non_destructive(canvas_env):
     entry = _register_png(canvas_env)
     (canvas_env / ".canvas" / "registry.json").write_text(
-        json.dumps({entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}),
+        json.dumps(
+            {
+                entry["id"]: {
+                    k: v for k, v in entry.items() if k not in ("absPath", "url")
+                }
+            }
+        ),
         encoding="utf-8",
     )
     report = registry.migrate()
@@ -80,13 +92,21 @@ def test_upgrade_registry_plan_only_is_non_destructive(canvas_env):
 def test_upgrade_registry_apply_backs_up_and_verifies(canvas_env):
     entry = _register_png(canvas_env)
     (canvas_env / ".canvas" / "registry.json").write_text(
-        json.dumps({entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}),
+        json.dumps(
+            {
+                entry["id"]: {
+                    k: v for k, v in entry.items() if k not in ("absPath", "url")
+                }
+            }
+        ),
         encoding="utf-8",
     )
     report = registry.migrate(apply=True)
     assert report["registry"]["action"] == "upgraded-to-v2"
     assert report["registry"]["backup"] and os.path.isfile(report["registry"]["backup"])
-    raw = json.loads((canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8"))
+    raw = json.loads(
+        (canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8")
+    )
     assert raw["schemaVersion"] == 2
     assert canvas.load_registry()[entry["id"]]["id"] == entry["id"]
 
@@ -94,7 +114,13 @@ def test_upgrade_registry_apply_backs_up_and_verifies(canvas_env):
 def test_upgrade_registry_idempotent(canvas_env):
     entry = _register_png(canvas_env)
     (canvas_env / ".canvas" / "registry.json").write_text(
-        json.dumps({entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}),
+        json.dumps(
+            {
+                entry["id"]: {
+                    k: v for k, v in entry.items() if k not in ("absPath", "url")
+                }
+            }
+        ),
         encoding="utf-8",
     )
     registry.migrate(apply=True)
@@ -139,16 +165,23 @@ def _write_legacy_v1(env, img_id="abc123"):
     legacy.mkdir(parents=True, exist_ok=True)
     png = PNG_BYTES + img_id.encode()
     (legacy / f"canv_{img_id}.png").write_bytes(png)
-    (legacy / "registry.json").write_text(json.dumps({
-        img_id: {
-            "id": img_id,
-            "relPath": f".canvas/canv_{img_id}.png",
-            "name": f"canv_{img_id}.png",
-            "size": len(png),
-            "ext": "png",
-            "createdAt": "2026-08-19 22:30:00",
-        }
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    (legacy / "registry.json").write_text(
+        json.dumps(
+            {
+                img_id: {
+                    "id": img_id,
+                    "relPath": f".canvas/canv_{img_id}.png",
+                    "name": f"canv_{img_id}.png",
+                    "size": len(png),
+                    "ext": "png",
+                    "createdAt": "2026-08-19 22:30:00",
+                }
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return img_id
 
 
@@ -165,7 +198,11 @@ def test_upgrade_reports_pending_relocate_when_legacy_has_v1(canvas_env, monkeyp
     assert report["entries"] == 1
     # dry-run 不写任何文件
     assert not (canvas_env / ".assets").exists()
-    assert (canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8").startswith("{")
+    assert (
+        (canvas_env / ".canvas" / "registry.json")
+        .read_text(encoding="utf-8")
+        .startswith("{")
+    )
 
 
 def test_upgrade_pending_relocate_clears_after_apply(canvas_env, monkeypatch):
@@ -176,15 +213,21 @@ def test_upgrade_pending_relocate_clears_after_apply(canvas_env, monkeypatch):
     # 一步 apply（relocate 把 .canvas 搬到 .assets，legacy 下的清单随之就位）
     registry.migrate(apply=True)
     assert registry.upgrade_registry(apply=False)["action"] == "none"
-    raw = json.loads((canvas_env / ".assets" / "registry.json").read_text(encoding="utf-8"))
+    raw = json.loads(
+        (canvas_env / ".assets" / "registry.json").read_text(encoding="utf-8")
+    )
     assert raw["schemaVersion"] == 2 and raw["images"][img_id]["kind"] == "canvas"
 
 
 # ---------- 工作流：升级 v1->v2 ----------
 
+
 def test_workflow_upgrade_plan_and_apply(canvas_env):
     wf = _wc("old.json")
-    wf.write_text(json.dumps({"version": 1, "name": "old", "nodes": [{"id": "n1"}], "edges": []}), encoding="utf-8")
+    wf.write_text(
+        json.dumps({"version": 1, "name": "old", "nodes": [{"id": "n1"}], "edges": []}),
+        encoding="utf-8",
+    )
     report = graphstore.migrate_workflows()
     assert report["workflows"][0]["action"] == "upgrade-ready"
     # dry-run summary 同时报 ready，让 scripts/migrate.py 能在 dry-run 时显示"待升级 N"
@@ -212,10 +255,18 @@ def test_workflow_corrupt_skipped(canvas_env):
 def test_plan_never_writes_any_file(canvas_env):
     entry = _register_png(canvas_env)
     (canvas_env / ".canvas" / "registry.json").write_text(
-        json.dumps({entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}),
+        json.dumps(
+            {
+                entry["id"]: {
+                    k: v for k, v in entry.items() if k not in ("absPath", "url")
+                }
+            }
+        ),
         encoding="utf-8",
     )
-    _wc("w.json").write_text(json.dumps({"version": 1, "nodes": [], "edges": []}), encoding="utf-8")
+    _wc("w.json").write_text(
+        json.dumps({"version": 1, "nodes": [], "edges": []}), encoding="utf-8"
+    )
     before = {p.name: p.read_bytes() for p in canvas_env.rglob("*") if p.is_file()}
     registry.migrate(rebuild=True)
     graphstore.migrate_workflows()
@@ -225,11 +276,14 @@ def test_plan_never_writes_any_file(canvas_env):
 
 # ---------- 来源标签回填 ----------
 
+
 def _strip_kind_registry(env, entry):
     (env / ".canvas").mkdir(parents=True, exist_ok=True)
     stripped = {k: v for k, v in entry.items() if k not in ("absPath", "url", "kind")}
     payload = {"schemaVersion": 2, "images": {entry["id"]: stripped}}
-    (env / ".canvas" / "registry.json").write_text(json.dumps(payload), encoding="utf-8")
+    (env / ".canvas" / "registry.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
 
 
 def test_detect_registry_reports_kind_missing(canvas_env):
@@ -254,7 +308,9 @@ def test_backfill_apply_idempotent_with_backup(canvas_env):
     report = registry.backfill_asset_meta(apply=True)
     assert report["action"] == "backfilled" and report["backfilled"] == 1
     assert os.path.isfile(report["backup"])
-    raw = json.loads((canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8"))
+    raw = json.loads(
+        (canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8")
+    )
     assert raw["images"][entry["id"]]["kind"] == "canvas"
     assert registry.detect_registry()["kind_missing"] == 0
 
@@ -270,12 +326,21 @@ def test_backfill_skipped_flag(canvas_env):
 
 # ---------- 目录改名 .canvas -> .assets ----------
 
+
 def test_relocate_asset_dir_moves_and_rewrites_relpath(tmp_path, monkeypatch):
     legacy = tmp_path / ".canvas"
     new = tmp_path / ".assets"
     legacy.mkdir(parents=True, exist_ok=True)
     (legacy / "canv_aabb.png").write_bytes(b"img")
-    (legacy / "registry.json").write_text(json.dumps({"schemaVersion": 2, "images": {"aabb": {"relPath": ".canvas/canv_aabb.png"}}}), encoding="utf-8")
+    (legacy / "registry.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "images": {"aabb": {"relPath": ".canvas/canv_aabb.png"}},
+            }
+        ),
+        encoding="utf-8",
+    )
     for mod in (registry, canvas):
         monkeypatch.setattr(mod, "ASSET_DIR", str(new))
         monkeypatch.setattr(mod, "REGISTRY_FILE", str(new / "registry.json"))
@@ -294,16 +359,32 @@ def test_relocate_asset_dir_moves_and_rewrites_relpath(tmp_path, monkeypatch):
 
 # ---------- 一步到最新综合 ----------
 
+
 def test_migrate_one_shot_full_upgrade(tmp_path, monkeypatch):
-    legacy = tmp_path / ".canvas"; legacy.mkdir(parents=True, exist_ok=True)
+    legacy = tmp_path / ".canvas"
+    legacy.mkdir(parents=True, exist_ok=True)
     (legacy / "canv_abc123.png").write_bytes(b"img")
-    (legacy / "registry.json").write_text(json.dumps({"schemaVersion": 2, "images": {"abc123": {"relPath": ".canvas/canv_abc123.png"}}}), encoding="utf-8")
-    wf = tmp_path / "workflows"; wf.mkdir(parents=True, exist_ok=True)
-    (wf / "old.json").write_text(json.dumps({"version": 1, "name": "old", "nodes": [], "edges": []}), encoding="utf-8")
+    (legacy / "registry.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "images": {"abc123": {"relPath": ".canvas/canv_abc123.png"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    wf = tmp_path / "workflows"
+    wf.mkdir(parents=True, exist_ok=True)
+    (wf / "old.json").write_text(
+        json.dumps({"version": 1, "name": "old", "nodes": [], "edges": []}),
+        encoding="utf-8",
+    )
     for mod in (registry, canvas):
         monkeypatch.setattr(mod, "DEFAULT_OUTPUT_DIR", str(tmp_path))
         monkeypatch.setattr(mod, "ASSET_DIR", str(tmp_path / ".assets"))
-        monkeypatch.setattr(mod, "REGISTRY_FILE", str(tmp_path / ".assets" / "registry.json"))
+        monkeypatch.setattr(
+            mod, "REGISTRY_FILE", str(tmp_path / ".assets" / "registry.json")
+        )
         monkeypatch.setattr(mod, "LEGACY_ASSET_DIR", str(legacy), raising=False)
     for mod in (graphstore, canvas):
         monkeypatch.setattr(mod, "DEFAULT_OUTPUT_DIR", str(tmp_path))
@@ -317,7 +398,9 @@ def test_migrate_one_shot_full_upgrade(tmp_path, monkeypatch):
     rr = registry.migrate(apply=True)
     assert rr["relocate"]["action"] == "moved"
     assert (tmp_path / ".assets").is_dir() and not legacy.exists()
-    reg = json.loads((tmp_path / ".assets" / "registry.json").read_text(encoding="utf-8"))
+    reg = json.loads(
+        (tmp_path / ".assets" / "registry.json").read_text(encoding="utf-8")
+    )
     assert reg["images"]["abc123"]["relPath"] == ".assets/canv_abc123.png"
     assert registry.resolve_asset("abc123") is not None
     gr = graphstore.migrate_workflows(apply=True)
@@ -327,20 +410,42 @@ def test_migrate_one_shot_full_upgrade(tmp_path, monkeypatch):
 
 def test_migrate_script_cli_output_root_end_to_end(tmp_path):
     root = tmp_path
-    legacy = root / ".canvas"; legacy.mkdir(parents=True, exist_ok=True)
+    legacy = root / ".canvas"
+    legacy.mkdir(parents=True, exist_ok=True)
     (legacy / "canv_cli123.png").write_bytes(b"img")
-    (legacy / "registry.json").write_text(json.dumps({"schemaVersion": 2, "images": {"cli123": {"relPath": ".canvas/canv_cli123.png"}}}), encoding="utf-8")
-    wf = root / "workflows"; wf.mkdir(parents=True, exist_ok=True)
-    (wf / "old.json").write_text(json.dumps({"version": 1, "name": "old"}), encoding="utf-8")
+    (legacy / "registry.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "images": {"cli123": {"relPath": ".canvas/canv_cli123.png"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    wf = root / "workflows"
+    wf.mkdir(parents=True, exist_ok=True)
+    (wf / "old.json").write_text(
+        json.dumps({"version": 1, "name": "old"}), encoding="utf-8"
+    )
     script = str(Path(__file__).resolve().parent.parent / "scripts" / "migrate.py")
-    r0 = subprocess.run([sys.executable, script, "--output-root", str(root)],
-                        capture_output=True, text=True, check=False,
-                        encoding="utf-8", errors="replace")
+    r0 = subprocess.run(
+        [sys.executable, script, "--output-root", str(root)],
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+        errors="replace",
+    )
     assert r0.returncode == 0, r0.stderr
     assert not (root / ".assets").exists()
-    r1 = subprocess.run([sys.executable, script, "--output-root", str(root), "--apply"],
-                        capture_output=True, text=True, check=False,
-                        encoding="utf-8", errors="replace")
+    r1 = subprocess.run(
+        [sys.executable, script, "--output-root", str(root), "--apply"],
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+        errors="replace",
+    )
     assert r1.returncode == 0, r1.stderr
     assert (root / ".assets" / "canv_cli123.png").exists()
     reg = json.loads((root / ".assets" / "registry.json").read_text(encoding="utf-8"))

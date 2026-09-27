@@ -5,6 +5,7 @@
 避免两处各写一套 commonpath 校验（此前 safe_ref_path_allowlist 与
 server.safe_ref_path 就是两份近似重复）。
 """
+
 import os
 
 

@@ -5,6 +5,7 @@ CLI（main / batch / api）共用输出入口。标签统一英文（[OK]/[ERROR
 颜色为标准终端语义色（成功绿 / 失败红 / 警告琥珀 / 信息蓝 / 次要灰）。
 批量进度用 Progress、任务分组用 Panel。无业务依赖，可被任意模块引用。
 """
+
 from rich.console import Console
 from rich.panel import Panel
 

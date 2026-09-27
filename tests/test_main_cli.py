@@ -7,6 +7,7 @@
   - handle_config_command：从 config.json 实时读取并打印当前 profile 的尺寸/比例/质量
   - build_argument_parser：gen / config 子命令挂接
 """
+
 import argparse
 import json
 import os
@@ -22,6 +23,7 @@ from core import logging as log_module
 
 # ---------- 共享夹具 ----------
 
+
 @pytest.fixture
 def gen_env(asset_iso, monkeypatch, tmp_path):
     """统一隔离：资产/工作流/提交/日志目录全部指向 tmp_path，generate_image 替身无网络。
@@ -35,9 +37,17 @@ def gen_env(asset_iso, monkeypatch, tmp_path):
     return tmp_path
 
 
-def _fake_generate_image(prompt, image_path=None, images=None, size="1024x1024",
-                         quality="low", model="gpt-image-2", n=1,
-                         output_format="png", output_path=None):
+def _fake_generate_image(
+    prompt,
+    image_path=None,
+    images=None,
+    size="1024x1024",
+    quality="low",
+    model="gpt-image-2",
+    n=1,
+    output_format="png",
+    output_path=None,
+):
     """generate_image 桩：写一段假 PNG 字节到 output_path，模拟成功落盘。"""
     if output_path is None:
         raise RuntimeError("test must always pass output_path explicitly")
@@ -66,6 +76,7 @@ def _ns_gen(**overrides):
 
 
 # ---------- _validate_gen_args ----------
+
 
 class TestValidateGenArgs:
     def test_missing_size_and_ratio_exits(self, gen_env):
@@ -118,6 +129,7 @@ class TestValidateGenArgs:
 
 # ---------- _resolve_output ----------
 
+
 class TestResolveOutput:
     def test_file_path_used_directly(self, gen_env):
         out = str(gen_env / "deeper" / "out.png")
@@ -159,6 +171,7 @@ class TestResolveOutput:
 
 # ---------- handle_gen_command 端到端 ----------
 
+
 class TestHandleGenCommand:
     def test_txt2img_logs_and_persists_submission(self, gen_env, monkeypatch):
         out = str(gen_env / "out.png")
@@ -188,9 +201,12 @@ class TestHandleGenCommand:
         r2.write_bytes(b"ref2-fake")
         out = str(gen_env / "out.png")
 
-        main.handle_gen_command(_ns_gen(
-            image=[str(r1), str(r2)], output=out,
-        ))
+        main.handle_gen_command(
+            _ns_gen(
+                image=[str(r1), str(r2)],
+                output=out,
+            )
+        )
 
         log_path = gen_env / "logs" / "generation.jsonl"
         record = json.loads(log_path.read_text(encoding="utf-8"))
@@ -201,14 +217,18 @@ class TestHandleGenCommand:
 
     def test_missing_ref_image_exits_with_code_2(self, gen_env):
         with pytest.raises(SystemExit) as exc:
-            main.handle_gen_command(_ns_gen(
-                image=[str(gen_env / "nope.png")], output=str(gen_env / "out.png"),
-            ))
+            main.handle_gen_command(
+                _ns_gen(
+                    image=[str(gen_env / "nope.png")],
+                    output=str(gen_env / "out.png"),
+                )
+            )
         assert exc.value.code == 2
 
     def test_generate_failure_logs_error_and_exits_1(self, gen_env, monkeypatch):
         def _raise(*a, **kw):
             raise RuntimeError("api boom")
+
         monkeypatch.setattr(main, "generate_image", _raise)
 
         with pytest.raises(SystemExit) as exc:
@@ -233,13 +253,20 @@ class TestHandleGenCommand:
         assert "submissionId" not in record
         assert "outputAssetIds" not in record
         # 提交快照不落盘
-        assert not (gen_env / "submissions").exists() or not list((gen_env / "submissions").glob("*.json"))
+        assert not (gen_env / "submissions").exists() or not list(
+            (gen_env / "submissions").glob("*.json")
+        )
 
     def test_ratio_tier_path_resolves_size(self, gen_env):
         out = str(gen_env / "out.png")
-        main.handle_gen_command(_ns_gen(
-            size=None, ratio="9:16", tier="2K", output=out,
-        ))
+        main.handle_gen_command(
+            _ns_gen(
+                size=None,
+                ratio="9:16",
+                tier="2K",
+                output=out,
+            )
+        )
         log_path = gen_env / "logs" / "generation.jsonl"
         record = json.loads(log_path.read_text(encoding="utf-8"))
         # 9:16 2K 档对应 1152x2048
@@ -247,6 +274,7 @@ class TestHandleGenCommand:
 
 
 # ---------- handle_config_command ----------
+
 
 class TestHandleConfigCommand:
     def test_config_command_prints_active_profile(self, gen_env, capsys):
@@ -264,12 +292,14 @@ class TestHandleConfigCommand:
 
 # ---------- build_argument_parser ----------
 
+
 class TestBuildArgumentParser:
     def test_gen_subcommand_required_args(self, gen_env):
         parser = main.build_argument_parser()
         # gen 子命令必须有 prompt 位置参数
-        args = parser.parse_args(["gen", "hello", "--size", "1024x1024",
-                                  "--quality", "high", "-o", "x.png"])
+        args = parser.parse_args(
+            ["gen", "hello", "--size", "1024x1024", "--quality", "high", "-o", "x.png"]
+        )
         assert args.command == "gen"
         assert args.prompt == "hello"
         assert args.size == "1024x1024"
@@ -285,8 +315,20 @@ class TestBuildArgumentParser:
 
     def test_gen_supports_multiple_image_flags(self, gen_env):
         parser = main.build_argument_parser()
-        args = parser.parse_args([
-            "gen", "p", "-i", "a.png", "-i", "b.png",
-            "--size", "1024x1024", "--quality", "high", "-o", "o.png",
-        ])
+        args = parser.parse_args(
+            [
+                "gen",
+                "p",
+                "-i",
+                "a.png",
+                "-i",
+                "b.png",
+                "--size",
+                "1024x1024",
+                "--quality",
+                "high",
+                "-o",
+                "o.png",
+            ]
+        )
         assert args.image == ["a.png", "b.png"]

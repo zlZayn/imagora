@@ -13,6 +13,7 @@
 - 取消为「逻辑取消」：排队中（未开始）的任务取消后不执行；已 running 的任务
   无法中断上游 API（requests 同步阻塞），会跑完当前请求再丢弃结果、释放执行槽。
 """
+
 import os
 import threading
 import time
@@ -109,7 +110,11 @@ class TaskManager:
             task = self._tasks.get(task_id)
             if task is None:
                 return None
-            if task.terminal and time.time() - (task.finished_at or task.created_at) > self._terminal_ttl:
+            if (
+                task.terminal
+                and time.time() - (task.finished_at or task.created_at)
+                > self._terminal_ttl
+            ):
                 del self._tasks[task_id]
                 return None
             return {

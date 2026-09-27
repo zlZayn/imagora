@@ -6,17 +6,35 @@ from core import history
 
 def _write_history(tmp_path, records):
     path = tmp_path / "generation.jsonl"
-    lines = [json.dumps(record, ensure_ascii=False) if isinstance(record, dict) else record for record in records]
+    lines = [
+        json.dumps(record, ensure_ascii=False) if isinstance(record, dict) else record
+        for record in records
+    ]
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
 
-def test_read_history_skips_corrupt_lines_and_returns_newest_first(tmp_path, monkeypatch):
-    path = _write_history(tmp_path, [
-        {"time": "2026-08-09 10:00:00", "prompt": "first", "status": "ok", "output": "a.png"},
-        "{broken",
-        {"time": "2026-08-09 11:00:00", "prompt": "second", "status": "error", "output": ""},
-    ])
+def test_read_history_skips_corrupt_lines_and_returns_newest_first(
+    tmp_path, monkeypatch
+):
+    path = _write_history(
+        tmp_path,
+        [
+            {
+                "time": "2026-08-09 10:00:00",
+                "prompt": "first",
+                "status": "ok",
+                "output": "a.png",
+            },
+            "{broken",
+            {
+                "time": "2026-08-09 11:00:00",
+                "prompt": "second",
+                "status": "error",
+                "output": "",
+            },
+        ],
+    )
     monkeypatch.setattr(history, "HISTORY_FILE", path)
 
     result = history.read_generation_history()
@@ -25,11 +43,14 @@ def test_read_history_skips_corrupt_lines_and_returns_newest_first(tmp_path, mon
 
 
 def test_read_history_filters_query_status_and_limit(tmp_path, monkeypatch):
-    path = _write_history(tmp_path, [
-        {"time": "1", "prompt": "red shoes", "quality": "high", "status": "ok"},
-        {"time": "2", "prompt": "blue bag", "quality": "low", "status": "error"},
-        {"time": "3", "prompt": "red bag", "quality": "high", "status": "ok"},
-    ])
+    path = _write_history(
+        tmp_path,
+        [
+            {"time": "1", "prompt": "red shoes", "quality": "high", "status": "ok"},
+            {"time": "2", "prompt": "blue bag", "quality": "low", "status": "error"},
+            {"time": "3", "prompt": "red bag", "quality": "high", "status": "ok"},
+        ],
+    )
     monkeypatch.setattr(history, "HISTORY_FILE", path)
 
     result = history.read_generation_history(limit=1, query="RED", status="ok")
@@ -41,9 +62,12 @@ def test_read_history_filters_query_status_and_limit(tmp_path, monkeypatch):
 def test_read_history_search_normalizes_newlines(tmp_path, monkeypatch):
     """搜索对换行鲁棒：账本 prompt 存 CRLF（表单提交 %0D%0A），用户把完整提示词粘进单行
     搜索框时浏览器把换行归一为 LF / 移除——两侧空白折叠后仍能命中，不再整串错位搜不到。"""
-    path = _write_history(tmp_path, [
-        {"time": "1", "prompt": "第一行\r\n第二行", "status": "ok"},
-    ])
+    path = _write_history(
+        tmp_path,
+        [
+            {"time": "1", "prompt": "第一行\r\n第二行", "status": "ok"},
+        ],
+    )
     monkeypatch.setattr(history, "HISTORY_FILE", path)
 
     # 原样 CRLF（复制按钮复制的完整 prompt）
@@ -54,13 +78,24 @@ def test_read_history_search_normalizes_newlines(tmp_path, monkeypatch):
     assert history.read_generation_history(query="第一行 第二行")
     # 只搜片段、含连续空格也折叠命中
     assert history.read_generation_history(query="第二行")
+
+
 def test_read_history_roundtrips_submission_fields(tmp_path, monkeypatch):
     """账本新字段（submissionId/inputAssetIds/outputAssetIds）随记录透传（读端容错缺字段）"""
-    path = _write_history(tmp_path, [
-        {"time": "1", "prompt": "p", "status": "ok",
-         "submissionId": "sub-9", "inputAssetIds": ["a"], "outputAssetIds": ["b", "c"]},
-        {"time": "0", "prompt": "old", "status": "ok"},  # 无新字段的旧行
-    ])
+    path = _write_history(
+        tmp_path,
+        [
+            {
+                "time": "1",
+                "prompt": "p",
+                "status": "ok",
+                "submissionId": "sub-9",
+                "inputAssetIds": ["a"],
+                "outputAssetIds": ["b", "c"],
+            },
+            {"time": "0", "prompt": "old", "status": "ok"},  # 无新字段的旧行
+        ],
+    )
     monkeypatch.setattr(history, "HISTORY_FILE", path)
     items = history.read_generation_history()
     first = next(i for i in items if i.get("submissionId"))
@@ -73,13 +108,41 @@ def test_read_history_roundtrips_submission_fields(tmp_path, monkeypatch):
 
 # ================= 同参数记录聚合（时间不算参数：失败不刷屏） =================
 
+
 def test_dedupe_collapses_same_params_to_newest(tmp_path, monkeypatch):
     """同一提示词卡片多次失败 → 只显示最新一条。"""
-    path = _write_history(tmp_path, [
-        {"time": "1", "prompt": "p", "size": "1024x1024", "quality": "high", "mode": "txt2img", "refs": 0, "status": "error"},
-        {"time": "2", "prompt": "p", "size": "1024x1024", "quality": "high", "mode": "txt2img", "refs": 0, "status": "error"},
-        {"time": "3", "prompt": "p", "size": "1024x1024", "quality": "high", "mode": "txt2img", "refs": 0, "status": "error"},
-    ])
+    path = _write_history(
+        tmp_path,
+        [
+            {
+                "time": "1",
+                "prompt": "p",
+                "size": "1024x1024",
+                "quality": "high",
+                "mode": "txt2img",
+                "refs": 0,
+                "status": "error",
+            },
+            {
+                "time": "2",
+                "prompt": "p",
+                "size": "1024x1024",
+                "quality": "high",
+                "mode": "txt2img",
+                "refs": 0,
+                "status": "error",
+            },
+            {
+                "time": "3",
+                "prompt": "p",
+                "size": "1024x1024",
+                "quality": "high",
+                "mode": "txt2img",
+                "refs": 0,
+                "status": "error",
+            },
+        ],
+    )
     monkeypatch.setattr(history, "HISTORY_FILE", path)
     result = history.read_generation_history()
     assert len(result) == 1
@@ -113,8 +176,22 @@ def test_dedupe_any_param_difference_keeps_separate():
         {"prompt": "p", "size": "1024x1024", "quality": "low", "status": "error"},
         {"prompt": "q", "size": "1024x1024", "quality": "high", "status": "error"},
         {"prompt": "p", "size": "512x512", "quality": "high", "status": "error"},
-        {"prompt": "p", "size": "1024x1024", "quality": "high", "mode": "img2img", "refs": 1, "status": "error"},
-        {"prompt": "p", "size": "1024x1024", "quality": "high", "mode": "img2img", "refs": 2, "status": "error"},
+        {
+            "prompt": "p",
+            "size": "1024x1024",
+            "quality": "high",
+            "mode": "img2img",
+            "refs": 1,
+            "status": "error",
+        },
+        {
+            "prompt": "p",
+            "size": "1024x1024",
+            "quality": "high",
+            "mode": "img2img",
+            "refs": 2,
+            "status": "error",
+        },
     ]
     assert len(history.dedupe_generation_history(items)) == 6
 
@@ -122,9 +199,27 @@ def test_dedupe_any_param_difference_keeps_separate():
 def test_dedupe_input_asset_ids_participate():
     """参考图（inputAssetIds）是参数：不同参考图不合并，相同参考图成功吸收失败。"""
     items = [
-        {"prompt": "p", "mode": "img2img", "refs": 1, "inputAssetIds": ["a"], "status": "ok"},
-        {"prompt": "p", "mode": "img2img", "refs": 1, "inputAssetIds": ["a"], "status": "error"},
-        {"prompt": "p", "mode": "img2img", "refs": 1, "inputAssetIds": ["b"], "status": "error"},
+        {
+            "prompt": "p",
+            "mode": "img2img",
+            "refs": 1,
+            "inputAssetIds": ["a"],
+            "status": "ok",
+        },
+        {
+            "prompt": "p",
+            "mode": "img2img",
+            "refs": 1,
+            "inputAssetIds": ["a"],
+            "status": "error",
+        },
+        {
+            "prompt": "p",
+            "mode": "img2img",
+            "refs": 1,
+            "inputAssetIds": ["b"],
+            "status": "error",
+        },
     ]
     out = history.dedupe_generation_history(items)
     assert len(out) == 2
@@ -135,7 +230,11 @@ def test_dedupe_input_asset_ids_participate():
 def test_dedupe_missing_fields_tolerated():
     """旧行缺字段不炸：缺失字段按空值参与判定，同参聚合、异参保留。"""
     items = [
-        {"time": "2", "prompt": "p", "status": "error"},   # 无 size/quality/mode/refs/inputAssetIds
+        {
+            "time": "2",
+            "prompt": "p",
+            "status": "error",
+        },  # 无 size/quality/mode/refs/inputAssetIds
         {"time": "1", "prompt": "p", "status": "error"},
         {"time": "0", "prompt": "q", "status": "ok"},
     ]
@@ -145,18 +244,21 @@ def test_dedupe_missing_fields_tolerated():
 
 def test_read_history_paged_slices_after_dedupe(tmp_path, monkeypatch):
     """分页在聚合后切片：同参数多次失败先合并，offset 推进展示不同参数记录。"""
-    path = _write_history(tmp_path, [
-        {"time": "1", "prompt": "a", "status": "error"},
-        {"time": "2", "prompt": "a", "status": "error"},   # 与上一条参数相同 → 合并
-        {"time": "3", "prompt": "b", "status": "ok"},
-        {"time": "4", "prompt": "c", "status": "ok"},
-        {"time": "5", "prompt": "d", "status": "ok"},
-        {"time": "6", "prompt": "e", "status": "ok"},
-    ])
+    path = _write_history(
+        tmp_path,
+        [
+            {"time": "1", "prompt": "a", "status": "error"},
+            {"time": "2", "prompt": "a", "status": "error"},  # 与上一条参数相同 → 合并
+            {"time": "3", "prompt": "b", "status": "ok"},
+            {"time": "4", "prompt": "c", "status": "ok"},
+            {"time": "5", "prompt": "d", "status": "ok"},
+            {"time": "6", "prompt": "e", "status": "ok"},
+        ],
+    )
     monkeypatch.setattr(history, "HISTORY_FILE", path)
 
     page1 = history.read_generation_history_paged(offset=0, limit=2)
-    assert page1["total"] == 5                # 6 原始行聚合 → 5（a 只算最新一条）
+    assert page1["total"] == 5  # 6 原始行聚合 → 5（a 只算最新一条）
     assert [p["prompt"] for p in page1["items"]] == ["e", "d"]
 
     page2 = history.read_generation_history_paged(offset=2, limit=2)
@@ -167,16 +269,23 @@ def test_read_history_paged_slices_after_dedupe(tmp_path, monkeypatch):
     assert tail["total"] == 5
 
 
-def test_read_history_paged_respects_query_status_and_offset_overflow(tmp_path, monkeypatch):
+def test_read_history_paged_respects_query_status_and_offset_overflow(
+    tmp_path, monkeypatch
+):
     """分页与搜索/状态筛选一致（筛选在聚合前）；offset 越界返回空页且 total 不变。"""
-    path = _write_history(tmp_path, [
-        {"time": "1", "prompt": "red shoes", "quality": "high", "status": "ok"},
-        {"time": "2", "prompt": "blue bag", "quality": "low", "status": "error"},
-        {"time": "3", "prompt": "red bag", "quality": "high", "status": "ok"},
-    ])
+    path = _write_history(
+        tmp_path,
+        [
+            {"time": "1", "prompt": "red shoes", "quality": "high", "status": "ok"},
+            {"time": "2", "prompt": "blue bag", "quality": "low", "status": "error"},
+            {"time": "3", "prompt": "red bag", "quality": "high", "status": "ok"},
+        ],
+    )
     monkeypatch.setattr(history, "HISTORY_FILE", path)
 
-    page = history.read_generation_history_paged(offset=0, limit=10, query="red", status="ok")
+    page = history.read_generation_history_paged(
+        offset=0, limit=10, query="red", status="ok"
+    )
     assert page["total"] == 2
     assert [p["prompt"] for p in page["items"]] == ["red bag", "red shoes"]
 
@@ -186,13 +295,19 @@ def test_read_history_paged_respects_query_status_and_offset_overflow(tmp_path, 
 
 def _write_hist(tmp_path, records):
     p = tmp_path / "generation.jsonl"
-    p.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n", encoding="utf-8")
+    p.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
+        encoding="utf-8",
+    )
     return p
 
 
-def test_backfill_output_asset_ids_report_only_does_not_write(asset_iso, tmp_path, monkeypatch):
+def test_backfill_output_asset_ids_report_only_does_not_write(
+    asset_iso, tmp_path, monkeypatch
+):
     """历史旧行补齐：默认只报告，不写文件。"""
     from core import registry
+
     src = asset_iso / "probe.png"
     src.write_bytes(b"asset-content")
     registry.register_asset(str(src), "probe.png")
@@ -204,9 +319,12 @@ def test_backfill_output_asset_ids_report_only_does_not_write(asset_iso, tmp_pat
     assert hist.read_bytes() == before
 
 
-def test_backfill_output_asset_ids_apply_backs_up_and_idempotent(asset_iso, tmp_path, monkeypatch):
+def test_backfill_output_asset_ids_apply_backs_up_and_idempotent(
+    asset_iso, tmp_path, monkeypatch
+):
     """apply：补齐 + 备份 + 行数不变 + 幂等（二次跑 backfill=0）。"""
     from core import registry
+
     src = asset_iso / "probe.png"
     src.write_bytes(b"asset-content-2")
     entry = registry.register_asset(str(src), "probe.png")
@@ -224,18 +342,24 @@ def test_backfill_output_asset_ids_apply_backs_up_and_idempotent(asset_iso, tmp_
     assert second["backfill"] == 0 and second["already"] == 1
 
 
-def test_backfill_output_asset_ids_skips_missing_file_and_unregistered(asset_iso, tmp_path, monkeypatch):
+def test_backfill_output_asset_ids_skips_missing_file_and_unregistered(
+    asset_iso, tmp_path, monkeypatch
+):
     """无法反查的行（文件缺失 / 注册表无该内容）跳过且计数，不被伪造。"""
     from core import registry
+
     src = asset_iso / "probe.png"
     src.write_bytes(b"content-missing")
     registry.register_asset(str(src), "probe.png")
     missing = tmp_path / "gone.png"
     missing.write_bytes(b"never-registered")
-    hist = _write_hist(tmp_path, [
-        {"prompt": "gone", "output": str(missing)},
-        {"prompt": "deleted", "output": str(tmp_path / "nonexistent.png")},
-    ])
+    hist = _write_hist(
+        tmp_path,
+        [
+            {"prompt": "gone", "output": str(missing)},
+            {"prompt": "deleted", "output": str(tmp_path / "nonexistent.png")},
+        ],
+    )
     monkeypatch.setattr(history, "HISTORY_FILE", hist)
     report = history.backfill_output_asset_ids(apply=True)
     assert report["action"] == "backfilled" and report["backfill"] == 0
@@ -244,18 +368,23 @@ def test_backfill_output_asset_ids_skips_missing_file_and_unregistered(asset_iso
         assert "outputAssetIds" not in json.loads(line)
 
 
-def test_backfill_output_asset_ids_keeps_corrupt_lines(asset_iso, tmp_path, monkeypatch):
+def test_backfill_output_asset_ids_keeps_corrupt_lines(
+    asset_iso, tmp_path, monkeypatch
+):
     """坏行原样保留、行数不变；好行照常补。"""
     from core import registry
+
     src = asset_iso / "probe.png"
     src.write_bytes(b"badline-content")
     registry.register_asset(str(src), "probe.png")
     hist = tmp_path / "generation.jsonl"
-    hist.write_text("{broken\n" + json.dumps({"prompt": "ok", "output": str(src)}) + "\n", encoding="utf-8")
+    hist.write_text(
+        "{broken\n" + json.dumps({"prompt": "ok", "output": str(src)}) + "\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(history, "HISTORY_FILE", hist)
     before_lines = len(hist.read_text(encoding="utf-8").splitlines())
     history.backfill_output_asset_ids(apply=True)
     after_lines = hist.read_text(encoding="utf-8").splitlines()
     assert len(after_lines) == before_lines
     assert after_lines[0] == "{broken"
-

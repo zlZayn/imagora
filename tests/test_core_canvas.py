@@ -1,4 +1,5 @@
 """core/canvas.py 单元测试：注册表读写/去重/导入校验/删除/列表/白名单（tmp 目录注入，零网络零计费）"""
+
 import json
 import os
 import sys
@@ -62,8 +63,12 @@ def test_register_dedup_same_content(canvas_env):
 
 
 def test_register_different_content(canvas_env):
-    e1 = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"one")), "a.png"))
-    e2 = _must(canvas.register_asset(str(_write_png(canvas_env / "b.png", b"two")), "b.png"))
+    e1 = _must(
+        canvas.register_asset(str(_write_png(canvas_env / "a.png", b"one")), "a.png")
+    )
+    e2 = _must(
+        canvas.register_asset(str(_write_png(canvas_env / "b.png", b"two")), "b.png")
+    )
     assert e1["id"] != e2["id"]
     assert len(list((canvas_env / ".canvas").glob("canv_*"))) == 2
 
@@ -74,20 +79,35 @@ def test_register_nonexistent(canvas_env):
 
 def test_registry_corrupt_returns_empty(canvas_env):
     (canvas_env / ".canvas").mkdir(parents=True)
-    (canvas_env / ".canvas" / "registry.json").write_text("{broken json", encoding="utf-8")
+    (canvas_env / ".canvas" / "registry.json").write_text(
+        "{broken json", encoding="utf-8"
+    )
     assert canvas.load_registry() == {}
 
 
 def test_registry_writes_v2_wrapper_and_loads_v1_bare(canvas_env):
     """v2 落盘是 {schemaVersion, images} 包装；v1 裸 dict 老清单仍可读（兼容升级前数据）"""
-    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"v2-wrap")), "a.png"))
-    raw = json.loads((canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8"))
+    entry = _must(
+        canvas.register_asset(
+            str(_write_png(canvas_env / "a.png", b"v2-wrap")), "a.png"
+        )
+    )
+    raw = json.loads(
+        (canvas_env / ".canvas" / "registry.json").read_text(encoding="utf-8")
+    )
     assert raw["schemaVersion"] == 2
-    assert isinstance(raw["images"], dict) and raw["images"][entry["id"]]["name"] == "a.png"
+    assert (
+        isinstance(raw["images"], dict)
+        and raw["images"][entry["id"]]["name"] == "a.png"
+    )
 
     # 模拟旧版裸 dict 清单（无 schemaVersion）：照常读取
-    bare = {entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}}
-    (canvas_env / ".canvas" / "registry.json").write_text(json.dumps(bare), encoding="utf-8")
+    bare = {
+        entry["id"]: {k: v for k, v in entry.items() if k not in ("absPath", "url")}
+    }
+    (canvas_env / ".canvas" / "registry.json").write_text(
+        json.dumps(bare), encoding="utf-8"
+    )
     assert canvas.load_registry() == bare
 
 
@@ -162,15 +182,30 @@ def test_safe_ref_path_allowlist(canvas_env):
     (canvas_env / ".refs").mkdir()
     ref_file = canvas_env / ".refs" / "r.png"
     _write_png(ref_file)
-    assert canvas.safe_ref_path_allowlist(str(ref_file), [ref_root, canv_root]) == str(ref_file)
-    assert canvas.safe_ref_path_allowlist(str(ref_file), [canv_root]) is None  # 白名单外拒绝
-    assert canvas.safe_ref_path_allowlist(str(canvas_env / ".." / "escape.png"), [ref_root]) is None  # 穿越拒绝
-    assert canvas.safe_ref_path_allowlist(str(canvas_env / "nope.png"), [ref_root]) is None  # 不存在也按路径校验
+    assert canvas.safe_ref_path_allowlist(str(ref_file), [ref_root, canv_root]) == str(
+        ref_file
+    )
+    assert (
+        canvas.safe_ref_path_allowlist(str(ref_file), [canv_root]) is None
+    )  # 白名单外拒绝
+    assert (
+        canvas.safe_ref_path_allowlist(
+            str(canvas_env / ".." / "escape.png"), [ref_root]
+        )
+        is None
+    )  # 穿越拒绝
+    assert (
+        canvas.safe_ref_path_allowlist(str(canvas_env / "nope.png"), [ref_root]) is None
+    )  # 不存在也按路径校验
 
 
 def test_workflow_save_strips_derived_image_paths(canvas_env):
     """工作流落盘时图片节点只存 registryId + 元数据，剥离派生路径 url/absPath（不修改入参）"""
-    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"wf-strip")), "a.png"))
+    entry = _must(
+        canvas.register_asset(
+            str(_write_png(canvas_env / "a.png", b"wf-strip")), "a.png"
+        )
+    )
     node = {
         "id": f"img-{entry['id']}",
         "type": "image",
@@ -200,7 +235,11 @@ def test_workflow_save_strips_derived_image_paths(canvas_env):
 
 def test_workflow_load_resolves_paths_from_registry(canvas_env):
     """旧格式存档（含过期绝对路径）加载时按 registryId 实时重建 url/absPath，自愈"""
-    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"wf-resolve")), "a.png"))
+    entry = _must(
+        canvas.register_asset(
+            str(_write_png(canvas_env / "a.png", b"wf-resolve")), "a.png"
+        )
+    )
     old_node = {
         "id": f"img-{entry['id']}",
         "type": "image",
@@ -233,7 +272,11 @@ def test_workflow_load_resolves_paths_from_registry(canvas_env):
 
 def test_recovery_save_normalizes_image_nodes(canvas_env):
     """恢复快照与手动工作流同规则：图片节点不落派生路径"""
-    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"rec-strip")), "a.png"))
+    entry = _must(
+        canvas.register_asset(
+            str(_write_png(canvas_env / "a.png", b"rec-strip")), "a.png"
+        )
+    )
     node = {
         "id": f"img-{entry['id']}",
         "type": "image",
@@ -249,7 +292,9 @@ def test_recovery_save_normalizes_image_nodes(canvas_env):
         },
     }
     saved = canvas.recovery_save([node], [])
-    stored = json.loads(Path(saved["path"]).read_text(encoding="utf-8"))["nodes"][0]["data"]
+    stored = json.loads(Path(saved["path"]).read_text(encoding="utf-8"))["nodes"][0][
+        "data"
+    ]
     assert stored["registryId"] == entry["id"]
     assert "url" not in stored
     assert "absPath" not in stored
@@ -279,6 +324,7 @@ def test_recovery_snapshots_never_overwrite_named_workflow(canvas_env):
 def test_recovery_snapshots_rotate_and_latest_skips_corrupt(canvas_env, monkeypatch):
     """恢复目录只保留上限数量，最新文件损坏时回退到最近可读快照。"""
     from core import graphstore
+
     monkeypatch.setattr(graphstore, "RECOVERY_LIMIT", 2, raising=False)
     first = canvas.recovery_save([{"id": "first"}], [])
     canvas.recovery_save([{"id": "second"}], [])
@@ -292,13 +338,21 @@ def test_recovery_snapshots_rotate_and_latest_skips_corrupt(canvas_env, monkeypa
     recovered = canvas.recovery_latest()
     assert recovered["nodes"] == [{"id": "second"}]
 
+
 def test_register_kind_source_key(canvas_env):
     """新注册条目携带可选来源标签 kind/sourceKey；缺省 kind='canvas'"""
-    e1 = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"kind-d")), "a.png"))
+    e1 = _must(
+        canvas.register_asset(str(_write_png(canvas_env / "a.png", b"kind-d")), "a.png")
+    )
     assert e1["kind"] == "canvas"
-    e2 = _must(canvas.register_asset(
-        str(_write_png(canvas_env / "b.png", b"kind-r")), "b.png", kind="result", source_key="sub-1",
-    ))
+    e2 = _must(
+        canvas.register_asset(
+            str(_write_png(canvas_env / "b.png", b"kind-r")),
+            "b.png",
+            kind="result",
+            source_key="sub-1",
+        )
+    )
     assert e2["kind"] == "result"
     assert e2["sourceKey"] == "sub-1"
     stored = canvas.load_registry()[e2["id"]]
@@ -312,7 +366,9 @@ def test_register_dedup_keeps_first_kind(canvas_env):
     src1 = _write_png(canvas_env / "a.png", content)
     src2 = _write_png(canvas_env / "b.png", content)
     e1 = _must(canvas.register_asset(str(src1), "a.png", kind="canvas"))
-    e2 = _must(canvas.register_asset(str(src2), "b.png", kind="result", source_key="sub-2"))
+    e2 = _must(
+        canvas.register_asset(str(src2), "b.png", kind="result", source_key="sub-2")
+    )
     assert e1["id"] == e2["id"]
     stored = canvas.load_registry()[e1["id"]]
     assert stored["kind"] == "canvas"  # 首次来源保留
@@ -320,7 +376,11 @@ def test_register_dedup_keeps_first_kind(canvas_env):
 
 
 def test_resolve_asset(canvas_env):
-    entry = _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"resolve")), "a.png"))
+    entry = _must(
+        canvas.register_asset(
+            str(_write_png(canvas_env / "a.png", b"resolve")), "a.png"
+        )
+    )
     got = canvas.resolve_asset(entry["id"])
     assert got is not None
     assert got["absPath"] == str(canvas_env / ".canvas" / f"canv_{entry['id']}.png")
@@ -331,27 +391,54 @@ def test_resolve_asset(canvas_env):
 
 
 def test_list_assets_kind_filter(canvas_env):
-    _must(canvas.register_asset(str(_write_png(canvas_env / "a.png", b"fi-c")), "a.png", kind="canvas"))
-    _must(canvas.register_asset(str(_write_png(canvas_env / "b.png", b"fi-r")), "b.png", kind="result"))
+    _must(
+        canvas.register_asset(
+            str(_write_png(canvas_env / "a.png", b"fi-c")), "a.png", kind="canvas"
+        )
+    )
+    _must(
+        canvas.register_asset(
+            str(_write_png(canvas_env / "b.png", b"fi-r")), "b.png", kind="result"
+        )
+    )
     assert len(canvas.list_assets()) == 2
     assert {i["kind"] for i in canvas.list_assets(kind="canvas")} == {"canvas"}
     assert {i["kind"] for i in canvas.list_assets(kind="result")} == {"result"}
     # 缺 kind 的旧条目在精确过滤时被排除
     (canvas_env / ".canvas" / "registry.json").write_text(
-        json.dumps({"schemaVersion": 2, "images": {"old": {"id": "old", "relPath": ".canvas/x.png"}}}),
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "images": {"old": {"id": "old", "relPath": ".canvas/x.png"}},
+            }
+        ),
         encoding="utf-8",
     )
     assert all(i["id"] != "old" for i in canvas.list_assets(kind="canvas"))
 
+
 def _register_asset(env, name, content, kind="canvas", source_key=None):
-    return _must(canvas.register_asset(str(_write_png(env / name, content)), name,
-                                        kind=kind, source_key=source_key))
+    return _must(
+        canvas.register_asset(
+            str(_write_png(env / name, content)), name, kind=kind, source_key=source_key
+        )
+    )
 
 
 def test_submission_save_load_roundtrip(canvas_env):
-    inp = _register_asset(canvas_env, "inp.png", b"sub-in", kind="ref", source_key="sub-1")
-    res = _register_asset(canvas_env, "res.png", b"sub-out", kind="result", source_key="sub-1")
-    saved = canvas.submission_save("sub-1", "a red apple", {"size": "1024x1024", "quality": "high", "outputDir": "out"}, [inp], [res])
+    inp = _register_asset(
+        canvas_env, "inp.png", b"sub-in", kind="ref", source_key="sub-1"
+    )
+    res = _register_asset(
+        canvas_env, "res.png", b"sub-out", kind="result", source_key="sub-1"
+    )
+    saved = canvas.submission_save(
+        "sub-1",
+        "a red apple",
+        {"size": "1024x1024", "quality": "high", "outputDir": "out"},
+        [inp],
+        [res],
+    )
     assert saved["ok"] is True
     path = Path(saved["path"])
     assert path.exists()
@@ -369,9 +456,9 @@ def test_submission_save_load_roundtrip(canvas_env):
     edges = raw["edges"]
     prompt_id = next(n["id"] for n in raw["nodes"] if n["type"] == "prompt")
     group_id = next(n["id"] for n in raw["nodes"] if n["type"] == "group")
-    assert any(e["target"] == prompt_id for e in edges)          # 组→提示词
-    assert any(e["source"] == prompt_id for e in edges)         # 提示词→结果
-    assert any(e["source"] == group_id for e in edges)           # 组出边
+    assert any(e["target"] == prompt_id for e in edges)  # 组→提示词
+    assert any(e["source"] == prompt_id for e in edges)  # 提示词→结果
+    assert any(e["source"] == group_id for e in edges)  # 组出边
 
     loaded = canvas.submission_load("sub-1")
     assert loaded["ok"] is True
@@ -383,8 +470,12 @@ def test_submission_save_load_roundtrip(canvas_env):
 
 
 def test_submission_load_missing_asset(canvas_env):
-    inp = _register_asset(canvas_env, "inp.png", b"sub-miss", kind="ref", source_key="sub-2")
-    canvas.submission_save("sub-2", "p", {"size": "1", "quality": "h", "outputDir": "o"}, [inp], [])
+    inp = _register_asset(
+        canvas_env, "inp.png", b"sub-miss", kind="ref", source_key="sub-2"
+    )
+    canvas.submission_save(
+        "sub-2", "p", {"size": "1", "quality": "h", "outputDir": "o"}, [inp], []
+    )
     os.remove(canvas_env / inp["relPath"])  # 资产文件丢失
     loaded = canvas.submission_load("sub-2")
     assert loaded["ok"] is True
@@ -398,13 +489,18 @@ def test_submission_invalid_id_rejected(canvas_env):
 
 # ---------- persist_submission_assets（server / CLI 共用的资产旁路公共函数）----------
 
+
 def test_persist_submission_assets_registers_refs_and_results(canvas_env):
     """正常路径：参考图 + 结果图全部注册，提交快照落盘，返回 input/output asset_ids。"""
     ref = _write_png(canvas_env / "ref.png", b"ref-bytes")
     res = _write_png(canvas_env / "result.png", b"result-bytes")
     meta = canvas.persist_submission_assets(
-        "sub-persist-1", "prompt", {"size": "1024x1024", "quality": "high"},
-        [str(ref)], [str(res)], win=0,
+        "sub-persist-1",
+        "prompt",
+        {"size": "1024x1024", "quality": "high"},
+        [str(ref)],
+        [str(res)],
+        win=0,
     )
     assert meta is not None
     assert len(meta["input_asset_ids"]) == 1
@@ -420,7 +516,11 @@ def test_persist_submission_assets_dedups_repeated_refs(canvas_env):
     ref = _write_png(canvas_env / "dup.png", b"dup-bytes")
     res = _write_png(canvas_env / "r.png", b"r-bytes")
     meta = canvas.persist_submission_assets(
-        "sub-dup", "p", {}, [str(ref), str(ref), str(ref)], [str(res)],
+        "sub-dup",
+        "p",
+        {},
+        [str(ref), str(ref), str(ref)],
+        [str(res)],
     )
     assert meta is not None
     assert len(meta["input_asset_ids"]) == 1
@@ -430,7 +530,11 @@ def test_persist_submission_assets_no_result_returns_none(canvas_env):
     """无结果图 → 返回 None，不落提交快照（不污染 submissions 目录）。"""
     ref = _write_png(canvas_env / "ref.png", b"r")
     meta = canvas.persist_submission_assets(
-        "sub-no-result", "p", {}, [str(ref)], [],
+        "sub-no-result",
+        "p",
+        {},
+        [str(ref)],
+        [],
     )
     assert meta is None
     assert canvas.submission_load("sub-no-result")["ok"] is False
@@ -440,7 +544,11 @@ def test_persist_submission_assets_nonexistent_result_returns_none(canvas_env):
     """结果路径不存在 → 注册全部失败 → 返回 None，不落提交快照。"""
     ref = _write_png(canvas_env / "ref.png", b"r")
     meta = canvas.persist_submission_assets(
-        "sub-no-file", "p", {}, [str(ref)], [str(canvas_env / "nope.png")],
+        "sub-no-file",
+        "p",
+        {},
+        [str(ref)],
+        [str(canvas_env / "nope.png")],
     )
     assert meta is None
     assert canvas.submission_load("sub-no-file")["ok"] is False
@@ -451,11 +559,12 @@ def test_persist_submission_assets_skips_nonexistent_refs(canvas_env):
     ref = _write_png(canvas_env / "ref.png", b"r")
     res = _write_png(canvas_env / "result.png", b"r")
     meta = canvas.persist_submission_assets(
-        "sub-partial-refs", "p", {},
-        [str(ref), str(canvas_env / "missing.png")], [str(res)],
+        "sub-partial-refs",
+        "p",
+        {},
+        [str(ref), str(canvas_env / "missing.png")],
+        [str(res)],
     )
     assert meta is not None
     assert len(meta["input_asset_ids"]) == 1  # 只有一张参考图注册成功
     assert len(meta["output_asset_ids"]) == 1
-
-

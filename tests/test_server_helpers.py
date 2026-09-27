@@ -4,6 +4,7 @@
 覆盖: 尺寸费用查询、参考图服务端化（路径校验/上传/删除）。
 不启动服务、不调 API。
 """
+
 import os
 from io import BytesIO
 
@@ -47,7 +48,9 @@ def test_safe_ref_path_rejects_cross_drive_without_raising():
     assert safe_ref_path(r"Z:\foreign\image.png") is None
 
 
-def test_resolve_history_output_path_uses_work_root_for_relative_logs(tmp_path, monkeypatch):
+def test_resolve_history_output_path_uses_work_root_for_relative_logs(
+    tmp_path, monkeypatch
+):
     """历史日志里的相对输出路径必须以项目工作根解析，而不是进程当前目录。"""
     from server import resolve_history_output_path
 
@@ -61,7 +64,11 @@ def test_upload_ref_returns_metadata_and_persists():
     """上传参考图 -> 返回 id/path/url/name/size/ext/mime，文件落盘 REF_DIR"""
     from server import REF_DIR, upload_ref
 
-    upload = UploadFile(filename="a.png", file=BytesIO(b"fake-png-bytes"), headers=Headers({"content-type": "image/png"}))
+    upload = UploadFile(
+        filename="a.png",
+        file=BytesIO(b"fake-png-bytes"),
+        headers=Headers({"content-type": "image/png"}),
+    )
     try:
         refs = upload_ref(images=[upload])["refs"]
         assert len(refs) == 1
@@ -145,13 +152,20 @@ def test_generation_history_route_adds_existing_image_url(monkeypatch, tmp_path)
 
     image = tmp_path / "result.png"
     image.write_bytes(b"png")
-    monkeypatch.setattr("server.read_generation_history_paged", lambda **_kwargs: {
-        "items": [
-            {"prompt": "ok", "status": "ok", "output": str(image)},
-            {"prompt": "missing", "status": "ok", "output": str(tmp_path / "missing.png")},
-        ],
-        "total": 2,
-    })
+    monkeypatch.setattr(
+        "server.read_generation_history_paged",
+        lambda **_kwargs: {
+            "items": [
+                {"prompt": "ok", "status": "ok", "output": str(image)},
+                {
+                    "prompt": "missing",
+                    "status": "ok",
+                    "output": str(tmp_path / "missing.png"),
+                },
+            ],
+            "total": 2,
+        },
+    )
 
     result = generation_history(limit=20, query="", status="")
 
@@ -172,7 +186,7 @@ def test_generation_history_paginates_with_has_more(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "server.read_generation_history_paged",
         lambda offset=0, limit=60, **_kwargs: {
-            "items": records[offset:offset + limit],
+            "items": records[offset : offset + limit],
             "total": len(records),
         },
     )
@@ -194,12 +208,20 @@ def test_history_import_only_accepts_recorded_existing_output(monkeypatch, tmp_p
     recorded.write_bytes(b"png")
     outside = tmp_path / "outside.png"
     outside.write_bytes(b"png")
-    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
-        {"output": str(recorded)},
-    ])
-    monkeypatch.setattr("server.canvas.register_asset", lambda path, name: {
-        "id": "abc", "absPath": path, "name": name,
-    })
+    monkeypatch.setattr(
+        "server.read_generation_history",
+        lambda **_kwargs: [
+            {"output": str(recorded)},
+        ],
+    )
+    monkeypatch.setattr(
+        "server.canvas.register_asset",
+        lambda path, name: {
+            "id": "abc",
+            "absPath": path,
+            "name": name,
+        },
+    )
 
     accepted = import_history_asset({"path": str(recorded)})
     rejected = import_history_asset({"path": str(outside)})
@@ -207,6 +229,7 @@ def test_history_import_only_accepts_recorded_existing_output(monkeypatch, tmp_p
     assert accepted["imported"][0]["id"] == "abc"
     assert rejected["imported"] == []
     assert rejected["skipped"]
+
 
 def test_history_import_accepts_registry_copy_path(monkeypatch, tmp_path):
     """导入与展示同源：账本带 outputAssetIds 时，注册表副本路径可导入（原 output 文件已删仍可）。"""
@@ -216,13 +239,23 @@ def test_history_import_accepts_registry_copy_path(monkeypatch, tmp_path):
     src.write_bytes(b"png")
     copy = tmp_path / "registry_copy.png"
     copy.write_bytes(b"png")
-    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
-        {"output": str(src), "outputAssetIds": ["abc123"]},
-    ])
-    monkeypatch.setattr("server.canvas.resolve_asset", lambda *_a, **_k: {"absPath": str(copy)})
-    monkeypatch.setattr("server.canvas.register_asset", lambda path, name: {
-        "id": "xyz", "absPath": path, "name": name,
-    })
+    monkeypatch.setattr(
+        "server.read_generation_history",
+        lambda **_kwargs: [
+            {"output": str(src), "outputAssetIds": ["abc123"]},
+        ],
+    )
+    monkeypatch.setattr(
+        "server.canvas.resolve_asset", lambda *_a, **_k: {"absPath": str(copy)}
+    )
+    monkeypatch.setattr(
+        "server.canvas.register_asset",
+        lambda path, name: {
+            "id": "xyz",
+            "absPath": path,
+            "name": name,
+        },
+    )
 
     accepted = import_history_asset({"path": str(copy)})
     assert accepted["imported"][0]["id"] == "xyz"
@@ -231,6 +264,7 @@ def test_history_import_accepts_registry_copy_path(monkeypatch, tmp_path):
     rejected = import_history_asset({"path": str(tmp_path / "outside.png")})
     assert rejected["imported"] == []
     assert rejected["skipped"]
+
 
 def test_history_import_accepts_raw_output_path_with_asset_ids(monkeypatch, tmp_path):
     """画布回流回归：账本带 outputAssetIds 时，账本 output 原路径（任务结果 URL 反解）仍可导入。
@@ -244,13 +278,23 @@ def test_history_import_accepts_raw_output_path_with_asset_ids(monkeypatch, tmp_
     src.write_bytes(b"png")
     copy = tmp_path / "registry_copy.png"
     copy.write_bytes(b"png")
-    monkeypatch.setattr("server.read_generation_history", lambda **_kwargs: [
-        {"output": str(src), "outputAssetIds": ["abc123"]},
-    ])
-    monkeypatch.setattr("server.canvas.resolve_asset", lambda *_a, **_k: {"absPath": str(copy)})
-    monkeypatch.setattr("server.canvas.register_asset", lambda path, name: {
-        "id": "raw-ok", "absPath": path, "name": name,
-    })
+    monkeypatch.setattr(
+        "server.read_generation_history",
+        lambda **_kwargs: [
+            {"output": str(src), "outputAssetIds": ["abc123"]},
+        ],
+    )
+    monkeypatch.setattr(
+        "server.canvas.resolve_asset", lambda *_a, **_k: {"absPath": str(copy)}
+    )
+    monkeypatch.setattr(
+        "server.canvas.register_asset",
+        lambda path, name: {
+            "id": "raw-ok",
+            "absPath": path,
+            "name": name,
+        },
+    )
 
     accepted = import_history_asset({"path": str(src)})
     assert accepted["imported"][0]["id"] == "raw-ok"
@@ -260,7 +304,10 @@ def test_history_import_accepts_raw_output_path_with_asset_ids(monkeypatch, tmp_
     assert rejected["imported"] == []
     assert rejected["skipped"]
 
-def test_generation_history_resolves_via_registry_when_output_moved(monkeypatch, tmp_path):
+
+def test_generation_history_resolves_via_registry_when_output_moved(
+    monkeypatch, tmp_path
+):
     """历史以注册表为准：账本带 outputAssetIds 时，原 output 文件被移动/删除仍显示（注册表副本在）。"""
     from core import registry
     from server import generation_history
@@ -271,18 +318,25 @@ def test_generation_history_resolves_via_registry_when_output_moved(monkeypatch,
     entry = registry.register_asset(str(src), "moved_away.png")
     os.unlink(src)  # 模拟用户把原文件挪走/删掉
 
-    monkeypatch.setattr("server.read_generation_history_paged", lambda **_kwargs: {
-        "items": [
-            {"prompt": "registry-backed", "status": "ok", "output": str(src),
-             "outputAssetIds": [entry["id"]]},
-        ],
-        "total": 1,
-    })
+    monkeypatch.setattr(
+        "server.read_generation_history_paged",
+        lambda **_kwargs: {
+            "items": [
+                {
+                    "prompt": "registry-backed",
+                    "status": "ok",
+                    "output": str(src),
+                    "outputAssetIds": [entry["id"]],
+                },
+            ],
+            "total": 1,
+        },
+    )
     result = generation_history(limit=20, query="", status="")
     item = result["items"][0]
-    assert item["exists"] is True                          # 注册表副本仍在
+    assert item["exists"] is True  # 注册表副本仍在
     assert item["url"].startswith("/api/image?path=")
-    assert os.path.isfile(item["path"])                     # path 指向注册表副本
+    assert os.path.isfile(item["path"])  # path 指向注册表副本
 
 
 def test_health_details_reports_actionable_checks(monkeypatch, tmp_path):
@@ -346,7 +400,9 @@ def test_persist_submission_includes_temp_bases(monkeypatch, tmp_path):
     from server import _persist_submission
 
     task = GenerationTask(
-        prompt="p", size="1024x1024", quality="low",
+        prompt="p",
+        size="1024x1024",
+        quality="low",
         output_dir=str(tmp_path / "out"),
         submission_id="sub-temp-bases",
         ref_bases=[str(tmp_path / "a.png")],
@@ -357,9 +413,10 @@ def test_persist_submission_includes_temp_bases(monkeypatch, tmp_path):
     captured: dict = {}
     monkeypatch.setattr(
         "server.graphstore.persist_submission_assets",
-        lambda _sid, _prompt, _params, ref_paths, _result_paths, _win, input_asset_ids: captured.update(
-            ref_paths=ref_paths, input_asset_ids=input_asset_ids
-        ) or {"input_asset_ids": ["x"], "output_asset_ids": ["y"]},
+        lambda _sid, _prompt, _params, ref_paths, _result_paths, _win, input_asset_ids: (
+            captured.update(ref_paths=ref_paths, input_asset_ids=input_asset_ids)
+            or {"input_asset_ids": ["x"], "output_asset_ids": ["y"]}
+        ),
     )
 
     meta = _persist_submission(task)
@@ -378,25 +435,55 @@ def test_generation_history_resolves_input_refs_and_missing(monkeypatch, tmp_pat
 
     ref_copy = tmp_path / "ref_copy.png"
     ref_copy.write_bytes(b"png")
-    monkeypatch.setattr("server.read_generation_history_paged", lambda **_kwargs: {
-        "items": [
-            {"prompt": "ref ok", "status": "ok", "mode": "img2img", "refs": 1,
-             "output": str(tmp_path / "r1.png"), "inputAssetIds": ["ref-abc"]},
-            {"prompt": "ref lost", "status": "ok", "mode": "img2img", "refs": 2,
-             "output": str(tmp_path / "r2.png"), "inputAssetIds": ["ghost"]},
-            {"prompt": "txt", "status": "ok", "mode": "txt2img", "refs": 0,
-             "output": str(tmp_path / "r3.png")},
-        ],
-        "total": 3,
-    })
-    monkeypatch.setattr("server.canvas.resolve_asset", lambda img_id, **_k: (
-        {"absPath": str(ref_copy), "url": "/api/image?path=ref_copy"} if img_id == "ref-abc" else None
-    ))
-    monkeypatch.setattr("server.resolve_history_asset_path", lambda record, **_k: record.get("output", ""))
+    monkeypatch.setattr(
+        "server.read_generation_history_paged",
+        lambda **_kwargs: {
+            "items": [
+                {
+                    "prompt": "ref ok",
+                    "status": "ok",
+                    "mode": "img2img",
+                    "refs": 1,
+                    "output": str(tmp_path / "r1.png"),
+                    "inputAssetIds": ["ref-abc"],
+                },
+                {
+                    "prompt": "ref lost",
+                    "status": "ok",
+                    "mode": "img2img",
+                    "refs": 2,
+                    "output": str(tmp_path / "r2.png"),
+                    "inputAssetIds": ["ghost"],
+                },
+                {
+                    "prompt": "txt",
+                    "status": "ok",
+                    "mode": "txt2img",
+                    "refs": 0,
+                    "output": str(tmp_path / "r3.png"),
+                },
+            ],
+            "total": 3,
+        },
+    )
+    monkeypatch.setattr(
+        "server.canvas.resolve_asset",
+        lambda img_id, **_k: (
+            {"absPath": str(ref_copy), "url": "/api/image?path=ref_copy"}
+            if img_id == "ref-abc"
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        "server.resolve_history_asset_path",
+        lambda record, **_k: record.get("output", ""),
+    )
     monkeypatch.setattr("server.canvas.image_url", lambda p: f"/api/image?path={p}")
 
     items = generation_history(limit=20, query="", status="")["items"]
-    assert items[0]["inputRefs"] == [{"id": "ref-abc", "path": str(ref_copy), "url": "/api/image?path=ref_copy"}]
+    assert items[0]["inputRefs"] == [
+        {"id": "ref-abc", "path": str(ref_copy), "url": "/api/image?path=ref_copy"}
+    ]
     assert items[0]["inputRefMissing"] is False
     assert items[1]["inputRefs"] == []
     assert items[1]["inputRefMissing"] is True

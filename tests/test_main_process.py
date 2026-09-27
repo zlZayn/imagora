@@ -18,8 +18,12 @@ def _parent_of(pid: int) -> int:
     )
     out = subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-        capture_output=True, text=True, check=False, timeout=main._ANCESTOR_QUERY_TIMEOUT,
-        encoding="utf-8", errors="replace",
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=main._ANCESTOR_QUERY_TIMEOUT,
+        encoding="utf-8",
+        errors="replace",
     ).stdout
     for line in out.splitlines():
         stripped = line.strip()
@@ -63,4 +67,7 @@ class TestProcessAncestors:
 
     def test_unknown_pid_returns_itself(self):
         # 65535 几乎不存在，作为兜底应至少返回 [pid] 本身
-        assert main._process_ancestors(65535) == [65535] or main._process_ancestors(65535) != []
+        assert (
+            main._process_ancestors(65535) == [65535]
+            or main._process_ancestors(65535) != []
+        )

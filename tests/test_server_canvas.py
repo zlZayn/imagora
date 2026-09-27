@@ -4,6 +4,7 @@
 覆盖: 画布上传/导入/列表/删除、工作流保存/加载（往返/缺失/版本）、
 /api/generate 的 ref_paths 放行 canvas 目录。
 """
+
 import json
 import os
 import sys
@@ -36,7 +37,11 @@ def canvas_env(asset_iso):
 
 
 def _make_upload(name: str, content: bytes = b"fake-canvas-png") -> UploadFile:
-    return UploadFile(filename=name, file=BytesIO(content), headers=Headers({"content-type": "image/png"}))
+    return UploadFile(
+        filename=name,
+        file=BytesIO(content),
+        headers=Headers({"content-type": "image/png"}),
+    )
 
 
 def test_canvas_upload_registers(canvas_env):
@@ -94,9 +99,24 @@ def test_canvas_image_delete(canvas_env):
 
 
 def test_workflow_save_writes_versioned_file(canvas_env):
-    nodes = [{"id": "n1", "type": "prompt", "position": {"x": 0, "y": 0}, "data": {"prompt": "hi", "size": "1024x1024", "quality": "low", "outputDir": str(canvas_env), "status": "idle"}}]
+    nodes = [
+        {
+            "id": "n1",
+            "type": "prompt",
+            "position": {"x": 0, "y": 0},
+            "data": {
+                "prompt": "hi",
+                "size": "1024x1024",
+                "quality": "low",
+                "outputDir": str(canvas_env),
+                "status": "idle",
+            },
+        }
+    ]
     edges = []
-    result = canvas_workflow_save({"name": "测试工作流", "nodes": nodes, "edges": edges})
+    result = canvas_workflow_save(
+        {"name": "测试工作流", "nodes": nodes, "edges": edges}
+    )
     assert result["ok"] is True
     assert result["path"].endswith(f"workflows{os.sep}测试工作流.json")
     data = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
@@ -135,7 +155,14 @@ def test_workflow_list_returns_saved(canvas_env):
 
 
 def test_workflow_load_roundtrip(canvas_env):
-    nodes = [{"id": "p1", "type": "prompt", "position": {"x": 1, "y": 2}, "data": {"prompt": "hi", "status": "idle"}}]
+    nodes = [
+        {
+            "id": "p1",
+            "type": "prompt",
+            "position": {"x": 1, "y": 2},
+            "data": {"prompt": "hi", "status": "idle"},
+        }
+    ]
     edges = [{"id": "e1", "source": "img1", "target": "p1"}]
     canvas_workflow_save({"name": "往返", "nodes": nodes, "edges": edges})
     result = canvas_workflow_load("往返")
@@ -146,7 +173,14 @@ def test_workflow_load_roundtrip(canvas_env):
 
 
 def test_workflow_load_missing_image(canvas_env):
-    nodes = [{"id": "img1", "type": "image", "position": {"x": 0, "y": 0}, "data": {"registryId": "nope123", "name": "丢失图"}}]
+    nodes = [
+        {
+            "id": "img1",
+            "type": "image",
+            "position": {"x": 0, "y": 0},
+            "data": {"registryId": "nope123", "name": "丢失图"},
+        }
+    ]
     canvas_workflow_save({"name": "缺图", "nodes": nodes, "edges": []})
     result = canvas_workflow_load("缺图")
     assert result["missing"] == ["nope123"]
@@ -157,7 +191,9 @@ def test_workflow_load_wrong_version(canvas_env):
     """未知版本（未来格式）明确拒绝，v1/v2 均可读（v2 见 roundtrip 测试）"""
     path = canvas_env / "workflows" / "v99.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"version": 99, "nodes": [], "edges": []}), encoding="utf-8")
+    path.write_text(
+        json.dumps({"version": 99, "nodes": [], "edges": []}), encoding="utf-8"
+    )
     with pytest.raises(Exception):
         canvas_workflow_load("v99")
 
@@ -198,11 +234,15 @@ def test_generate_ref_paths_accepts_canvas_dir(canvas_env, monkeypatch):
     from server import generate
 
     # 登记一个真实画布文件
-    img = canvas_upload(images=[_make_upload("ref.png", b"canvas-ref-content")])["images"][0]
+    img = canvas_upload(images=[_make_upload("ref.png", b"canvas-ref-content")])[
+        "images"
+    ][0]
+
     # 挡掉真实 API 与日志：generate_image 伪成功（创建 dest 文件）、log_generation 空
     # 注意：server 导入时已绑定名字，必须 monkeypatch server 命名空间
     def fake_generate_image(**kwargs):
         Path(kwargs["output_path"]).write_bytes(b"generated")
+
     monkeypatch.setattr("server.generate_image", fake_generate_image)
     monkeypatch.setattr("server.log_generation", lambda **kw: None)
     # 防止测试副作用污染真实 output/.last_output_dir（generate 成功后默认会写入）
@@ -223,17 +263,31 @@ def test_generate_ref_paths_accepts_canvas_dir(canvas_env, monkeypatch):
     assert snap["results"][0]["status"] == "ok"
     assert "参考图 1 张" in snap["messages"][0]
 
+
 def test_import_submission_whole_graph(canvas_env):
     """经典提交整图导入：返回按 registryId 实时解析节点的图，缺失资产进 missing。"""
     from core import canvas as canvas_mod
+
     src_in = canvas_env / "in.png"
     src_in.write_bytes(b"sub-in-route")
-    entry_in = canvas_mod.register_asset(str(src_in), "in.png", kind="ref", source_key="sub-x")
+    entry_in = canvas_mod.register_asset(
+        str(src_in), "in.png", kind="ref", source_key="sub-x"
+    )
     src_res = canvas_env / "res.png"
     src_res.write_bytes(b"sub-res-route")
-    entry_res = canvas_mod.register_asset(str(src_res), "res.png", kind="result", source_key="sub-x")
-    assert canvas_mod.submission_save("sub-x", "p", {"size": "1", "quality": "h", "outputDir": "o"},
-                                     [entry_in], [entry_res])["ok"] is True
+    entry_res = canvas_mod.register_asset(
+        str(src_res), "res.png", kind="result", source_key="sub-x"
+    )
+    assert (
+        canvas_mod.submission_save(
+            "sub-x",
+            "p",
+            {"size": "1", "quality": "h", "outputDir": "o"},
+            [entry_in],
+            [entry_res],
+        )["ok"]
+        is True
+    )
     got = canvas_import_submission({"submissionId": "sub-x"})
     assert got["missing"] == []
     assert len(got["nodes"]) >= 4  # prompt + group + 输入图 + 结果图
@@ -242,6 +296,7 @@ def test_import_submission_whole_graph(canvas_env):
             assert n["data"]["absPath"]
             assert n["data"]["url"].startswith("/api/image?path=")
     from fastapi import HTTPException
+
     try:
         canvas_import_submission({"submissionId": "nope"})
         raised = False

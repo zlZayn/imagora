@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """core/tasks.py 单元测试：全局任务池的并发上限、状态机、取消、快照与清理。"""
+
 import sys
 import threading
 import time

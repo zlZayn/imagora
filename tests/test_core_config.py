@@ -3,6 +3,7 @@
 
 覆盖: get_api_key（环境变量 / 跟随 profile / 缺失报错）、profile 解析（纯函数）、RATIOS 表结构合法性。
 """
+
 import re
 
 import pytest
@@ -45,9 +46,13 @@ def test_default_quality_is_high():
     """所有未显式指定质量的入口统一使用 high。"""
     assert config.DEFAULT_QUALITY == "high"
 
+
 def test_resolve_profile_prefers_env_active():
     """env 的 ACTIVE_PROFILE 优先于 config.json 的 default_profile"""
-    cfg = {"default_profile": "wanwu", "profiles": {"wanwu": {"base_url": "a"}, "other": {"base_url": "b"}}}
+    cfg = {
+        "default_profile": "wanwu",
+        "profiles": {"wanwu": {"base_url": "a"}, "other": {"base_url": "b"}},
+    }
     name, profile = config.resolve_profile_config(cfg, "other")
     assert name == "other"
     assert profile["base_url"] == "b"
@@ -129,6 +134,7 @@ def test_missing_key_message_lists_candidates(monkeypatch, tmp_path):
         config.get_api_key()
     msg = str(exc.value)
     assert "API_KEY_WANWU" in msg and "AIWANWU_API_KEY" in msg
+
 
 def test_cost_for_size_from_size_options():
     """计费唯一来自 size_options：已知档命中，未知档 0.0（不硬编码兜底价）"""

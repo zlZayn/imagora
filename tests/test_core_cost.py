@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """core/cost.py 单测：账本聚合统计 + 预算设置读写 + 超预算判定（纯逻辑，无网络无副作用）。"""
+
 import json
 import sys
 import time
@@ -13,7 +14,14 @@ TODAY = time.strftime("%Y-%m-%d")
 YESTERDAY = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
 
 
-def rec(status="ok", cost_value=0.05, seconds=10.0, size="1024x1024", mode="txt2img", day=None):
+def rec(
+    status="ok",
+    cost_value=0.05,
+    seconds=10.0,
+    size="1024x1024",
+    mode="txt2img",
+    day=None,
+):
     return {
         "time": f"{day or TODAY} 10:00:00",
         "status": status,
@@ -27,8 +35,13 @@ def rec(status="ok", cost_value=0.05, seconds=10.0, size="1024x1024", mode="txt2
 
 # ---------------- summarize_records ----------------
 
+
 def test_summarize_counts_and_cost():
-    records = [rec(), rec(cost_value=0.10, size="1152x2048"), rec(status="error", cost_value=0.0)]
+    records = [
+        rec(),
+        rec(cost_value=0.10, size="1152x2048"),
+        rec(status="error", cost_value=0.0),
+    ]
     stats = cost.summarize_records(records)
     assert stats["total"] == 3
     assert stats["ok"] == 2
@@ -46,7 +59,9 @@ def test_summarize_failed_rows_never_count_cost():
 
 
 def test_summarize_avg_seconds_only_success():
-    stats = cost.summarize_records([rec(seconds=100.0), rec(status="error", seconds=1.0), rec(seconds=200.0)])
+    stats = cost.summarize_records(
+        [rec(seconds=100.0), rec(status="error", seconds=1.0), rec(seconds=200.0)]
+    )
     assert stats["avgSeconds"] == 150.0
     assert stats["seconds"] == 301.0
 
@@ -79,7 +94,14 @@ def test_summarize_tolerates_bad_rows_and_types():
     """坏行 / 脏类型不抛异常（账本容错口径）：非 dict 直接忽略，脏字段按 0/未知处理"""
     records = [
         "not-a-dict",  # type: ignore[list-item]
-        {"status": "ok", "cost": "3张", "seconds": None, "time": None, "size": None, "mode": None},
+        {
+            "status": "ok",
+            "cost": "3张",
+            "seconds": None,
+            "time": None,
+            "size": None,
+            "mode": None,
+        },
         {"status": "ok", "cost": 0.05, "time": "2026-01-01 00:00:00"},
     ]
     stats = cost.summarize_records(records)
@@ -92,9 +114,17 @@ def test_summarize_tolerates_bad_rows_and_types():
 def test_summarize_empty():
     stats = cost.summarize_records([])
     assert stats == {
-        "total": 0, "ok": 0, "error": 0, "successRate": 0.0, "cost": 0.0,
-        "seconds": 0.0, "avgSeconds": 0.0, "todayCost": 0.0,
-        "byDay": [], "bySize": [], "byMode": [],
+        "total": 0,
+        "ok": 0,
+        "error": 0,
+        "successRate": 0.0,
+        "cost": 0.0,
+        "seconds": 0.0,
+        "avgSeconds": 0.0,
+        "todayCost": 0.0,
+        "byDay": [],
+        "bySize": [],
+        "byMode": [],
     }
 
 
@@ -105,6 +135,7 @@ def test_today_spent_only_success_and_today():
 
 
 # ---------------- estimate_cost ----------------
+
 
 def test_estimate_cost_known_size():
     """单价取 config.cost_for_size（1024x1024 = 0.05 元/张）"""
@@ -122,12 +153,17 @@ def test_estimate_cost_invalid_count():
 
 # ---------------- 预算设置读写 ----------------
 
+
 def test_normalize_budget_defaults_and_cleaning():
     assert cost.normalize_budget(None) == {"dailyLimit": 0.0, "singleRunLimit": 0.0}
     assert cost.normalize_budget({"dailyLimit": -5, "singleRunLimit": "2.5"}) == {
-        "dailyLimit": 0.0, "singleRunLimit": 2.5,
+        "dailyLimit": 0.0,
+        "singleRunLimit": 2.5,
     }
-    assert cost.normalize_budget({"unknown": 9}) == {"dailyLimit": 0.0, "singleRunLimit": 0.0}
+    assert cost.normalize_budget({"unknown": 9}) == {
+        "dailyLimit": 0.0,
+        "singleRunLimit": 0.0,
+    }
 
 
 def test_load_budget_missing_and_corrupt(cost_iso):
@@ -147,8 +183,11 @@ def test_save_load_budget_roundtrip(cost_iso):
 
 # ---------------- check_budget ----------------
 
+
 def test_check_budget_unlimited_always_allowed():
-    result = cost.check_budget(999.0, {"dailyLimit": 0, "singleRunLimit": 0}, spent_today=0.0)
+    result = cost.check_budget(
+        999.0, {"dailyLimit": 0, "singleRunLimit": 0}, spent_today=0.0
+    )
     assert result["allowed"] is True and result["over"] is False
 
 
@@ -156,7 +195,12 @@ def test_check_budget_single_limit_over_blocks_without_confirm():
     result = cost.check_budget(3.0, {"singleRunLimit": 2.0}, spent_today=0.0)
     assert result["over"] is True and result["allowed"] is False
     assert "单次上限" in result["reason"]
-    assert cost.check_budget(3.0, {"singleRunLimit": 2.0}, spent_today=0.0, confirmed=True)["allowed"] is True
+    assert (
+        cost.check_budget(
+            3.0, {"singleRunLimit": 2.0}, spent_today=0.0, confirmed=True
+        )["allowed"]
+        is True
+    )
 
 
 def test_check_budget_daily_limit_uses_spent_plus_estimate():
@@ -170,7 +214,9 @@ def test_check_budget_daily_limit_uses_spent_plus_estimate():
 
 
 def test_check_budget_reports_both_limits():
-    result = cost.check_budget(5.0, {"dailyLimit": 5.0, "singleRunLimit": 4.0}, spent_today=1.0)
+    result = cost.check_budget(
+        5.0, {"dailyLimit": 5.0, "singleRunLimit": 4.0}, spent_today=1.0
+    )
     assert result["over"] is True
     assert "单次上限" in result["reason"] and "当日预算" in result["reason"]
 
