@@ -22,11 +22,15 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 SVG = ROOT / "frontend" / "public" / "favicon.svg"
-OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent / "启动生图工作台.ico"
+OUT = (
+    Path(sys.argv[1])
+    if len(sys.argv) > 1
+    else Path(__file__).resolve().parent / "启动生图工作台.ico"
+)
 
 SOURCE_FILL = "#475569"  # favicon.svg 当前填充色（改动时这里会报错提醒）
-INK = "#17202b"          # 图标线条色：项目正文文字色，灰黑
-PAD_RATIO = 0.07         # 图形四周留白（相对图形最大边）
+INK = "#17202b"  # 图标线条色：项目正文文字色，灰黑
+PAD_RATIO = 0.07  # 图形四周留白（相对图形最大边）
 SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 
@@ -57,7 +61,9 @@ def build_ico(frames: list[tuple[int, bytes]]) -> bytes:
 def main() -> None:
     svg_source = SVG.read_text(encoding="utf-8")
     if SOURCE_FILL not in svg_source:
-        raise SystemExit(f"favicon.svg 中未找到 {SOURCE_FILL}，填充色可能已变，请人工确认")
+        raise SystemExit(
+            f"favicon.svg 中未找到 {SOURCE_FILL}，填充色可能已变，请人工确认"
+        )
 
     work = Path(tempfile.gettempdir()) / "imagora-icon-frames"
     work.mkdir(exist_ok=True)
