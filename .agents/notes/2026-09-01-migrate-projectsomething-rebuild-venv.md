@@ -12,7 +12,7 @@
 
 - 仓库原样迁移，远程 `github.com:zlZayn/imagora.git` 不变；本地提交，不推送
 - `.venv` 删除后 `uv sync` 重建（uv.lock 锁定 34 包，tuna 镜像）；`pyvenv.cfg` `prompt=imagora`，`python.exe` 与 `uv run python` 直跑均正常
-- 硬编码清零：`frontend/src/components/CopyChip.tsx` 注释移除示例绝对路径；根 `AGENTS.md` 移除 0xC0000135 工作区坑位（重建后不再成立）
+- 硬编码清零：`frontend/src/components/CopyChip.tsx` 注释移除示例绝对路径；根 [AGENTS.md](../../AGENTS.md) 移除 0xC0000135 工作区坑位（重建后不再成立）
 - 测试命令随迁简化：工作目录为纯 ASCII 路径，`--basetemp` 限定不再必需
 
 ## 替代方案（强制）

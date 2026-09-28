@@ -1,6 +1,13 @@
 # Imagora
 
+[![CI](https://github.com/zlZayn/imagora/actions/workflows/ci.yml/badge.svg)](https://github.com/zlZayn/imagora/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](.python-version)
+[![React 19](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=black)](frontend/package.json)
+
 AI 生图工作台：OpenAI 兼容接口，文生图 / 图生图一体。面向网店商品图、详情页图批量生成，支持无限画布工作流编排。
+
+> **数据边界**：生成请求直连你配置的 OpenAI 兼容接口；API Key 只存在本机 `.env` 或浏览器 localStorage，不经任何中转服务；产物与生成记录全部落在本地 `output/`。
 
 ## 背景与效果
 
@@ -12,20 +19,19 @@ AI 生图工作台：OpenAI 兼容接口，文生图 / 图生图一体。面向�
 批量出图 → 产出与费用记录」整条链路固化成工具，并用一份严格的输出规范
 加解析器约束模型输出。
 
-**效果**：单款商品出图由约 **1.5 小时降至 15 分钟**；累计产出 **286 个
-图像文件、556 条生成记录**，交接给同事后持续使用。
+**效果**：单款商品出图由约 1.5 小时降至 15 分钟；累计产出数百个图像文件、五百余条生成记录，交接给同事后持续使用。
 
 > 技术栈：Python + FastAPI（后端）· React 19 + TypeScript + Vite（前端）
 
 ## 预览 / Preview
 
-![无限画布工作流](screenshots/canvas-overview.png)
+![无限画布工作流](assets/canvas-overview.png)
 
 无限画布：图片 / 提示词节点、连线、结果回流。
 
 | 经典表单 | 多窗口并行 |
 | --- | --- |
-| ![经典表单页](screenshots/form-view.png) | ![多窗口并行菜单](screenshots/terminal-window.png) |
+| ![经典表单页](assets/form-view.png) | ![多窗口并行菜单](assets/terminal-window.png) |
 
 ## 它能做什么
 
@@ -74,7 +80,7 @@ uv run python -m main ui --port 8080         # 换端口启动
 cd Imagora/frontend; npm run dev             # 前端开发模式（热更新，需后端已启动）
 ```
 
-双击 `启动生图工作台.cmd` 也可：脚本自动检查前端构建 → 起服务 → 开窗 → 进交互菜单。
+双击根目录 `启动生图工作台.exe` 也可（图标已内嵌）：自动检查前端构建 → 起服务 → 开窗 → 进交互菜单。
 
 ### 3. 常用命令速查
 
@@ -214,3 +220,11 @@ uv run python -m main config
 
 - 技术细节、模块依赖、API 契约、关键决策：见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 维护交接、验证状态、待办、已知问题：见 [AGENTS.md](AGENTS.md)
+
+## 贡献
+
+个人项目，欢迎提 issue 与 PR。改动前先看 [AGENTS.md](AGENTS.md)（维护索引与变更路由），它写明了改一处要同步哪些文件和测试。
+
+## License
+
+[MIT](LICENSE) © 2026 陈盛泷 (Chen Shenglong), zlZayn (Zayn Liu)
