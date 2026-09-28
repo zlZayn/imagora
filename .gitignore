@@ -18,6 +18,13 @@ logs/
 # 运行产物：输出图片 / 参考图缓存 / 上次路径记录
 output/
 
+# 开发期 UI 审计截图（README 门面图在 assets/，这里只放本地排查用图，不入库）
+screenshots/
+
+# 本机快捷方式：可执行入口是根目录的「启动生图工作台.exe」，快捷方式只是个人便利，
+# 且 .lnk 格式必须记录绝对路径，换机器即失效——不随仓库分发
+*.lnk
+
 docs/superpowers/
 .superpowers/
 brainstorm-mockups/

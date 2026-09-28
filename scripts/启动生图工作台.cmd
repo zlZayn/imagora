@@ -1,7 +1,8 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-pushd "%~dp0" || exit /b 1
+REM 本脚本位于 scripts/：%~dp0 是 scripts/，先上跳一层回到项目根，后续相对路径（frontend\ 等）都基于项目根
+pushd "%~dp0.." || exit /b 1
 
 set "PORT=7860"
 set "URL=http://127.0.0.1:%PORT%"
@@ -109,9 +110,9 @@ if not defined WIN (
 start "" "%URL%/?win=!WIN!"
 
 REM ---- 首窗提示用该窗口主题色（与 frontend/src/accent.ts、main.py accent_for_window 同算法，
-REM       统一实现见 scripts\window_accent.ps1，勿复制算法进本脚本）----
+REM       统一实现见同目录的 window_accent.ps1，勿复制算法进本脚本）----
 set "AIG_WIN=!WIN!"
-set "ACCENT_PS=%~dp0scripts\window_accent.ps1"
+set "ACCENT_PS=%~dp0window_accent.ps1"
 for /f "tokens=1-3" %%a in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%ACCENT_PS%" -WindowId %AIG_WIN%') do (
     set "AR=%%a"
     set "AG=%%b"
