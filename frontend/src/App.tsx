@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { getConfig, getHealthDetails, openFolder, readPersonalApiPresets, readPersonalApiSettings, rememberOutputDir, savePersonalApiPresets, savePersonalApiSettings } from "./api";
 import { useGenerationTask } from "./useGenerationTask";
 import { accentForWindow } from "./accent";
-import type { AppConfig, GenerationTaskStatus, PersonalApiPreset, PersonalApiSettings, RefItem, ResultItem } from "./types";
+import type { AppConfig, ConfigProfileView, GenerationTaskStatus, PersonalApiPreset, PersonalApiSettings, RefItem, ResultItem } from "./types";
 import { errMessage, generatingLabel } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
 import { UploadZone } from "./components/UploadZone";
@@ -40,52 +40,328 @@ function openNewWindow() {
   window.open(url.pathname + url.search, "_blank");
 }
 
-function PersonalApiModal({ settings, onSave, onClose }: { settings: PersonalApiSettings | null; onSave: (settings: PersonalApiSettings | null) => void; onClose: () => void }) {
-  const [form, setForm] = useState<PersonalApiSettings>(settings ?? {
-      baseUrl: "https://www.aiwanwu.cc", apiKey: "", model: "", apiPath: "/v1/images/generations",
-  });
+/** 个人 API 设置弹窗。
+ *  默认值全部来自 /api/config（后端配置中心）——前端不硬编码中转站 / 模型 / 接口路径，
+ *  改 config.json 即全局生效（唯一真相源）；用户填过则用用户自己的配置覆盖。 */
+function PersonalApiModal({
+  settings,
+  defaults,
+  profileView,
+  onSave,
+  onClose,
+}: {
+  settings: PersonalApiSettings | null;
+  /** /api/config 当前 profile 派生：baseUrl / apiPath / model（个人配置为空时的默认值） */
+  defaults: PersonalApiSettings;
+  /** 配置来源视图：后端配置只读展示（值 + 来自哪一层），让人看清自己覆盖的是哪一层 */
+  profileView?: ConfigProfileView | undefined;
+  onSave: (settings: PersonalApiSettings | null) => void;
+  onClose: () => void;
+}) {
+  /** 页签职责：看（当前生效）/ 改（个人配置）/ 管（预设资产）——三件事互不干扰 */
+  const [tab, setTab] = useState<"active" | "edit" | "presets">("active");
+  const [form, setForm] = useState<PersonalApiSettings>(settings ?? defaults);
   const [presets, setPresets] = useState<PersonalApiPreset[]>(() => readPersonalApiPresets());
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [presetName, setPresetName] = useState("");
+
+  /** 内容区高度：量出当前页签面板的自然高度写进 --panel-h，
+   *  CSS 用它做显式像素端点 —— 只有两端都是像素，transition 才真的插值。
+   *  ResizeObserver 保证页签切换与页内内容变化（如新增预设）都能跟上。 */
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  /** 上一次量到的内容高度：判断这次是变高还是变矮；
+   *  必须存 ref 而非 effect 内局部变量——effect 跟随 [tab] 重建，局部量会归零，
+   *  于是「切到更高的一页」时判不出变高，滚动条照样闪。 */
+  const prevContentRef = useRef(0);
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    const panel = panelRef.current;
+    if (!body || !panel) return undefined;
+    let timer = 0;
+    const sync = () => {
+      // 用小数精度量内容高度：offsetHeight 会取整丢掉零头（实测面板是 304.5 / 366.5），
+      // 那不到 1px 的缺口会让 scrollHeight 比 clientHeight 大 1px ——
+      // 正是「几乎拖不动」的滚动条来源（个人配置 / 预设两页内容矮，最明显）。
+      const content = panel.getBoundingClientRect().height;
+      // 容器高度 = 向上取整 + 1px 余量：保证内容永远放得下，不产生 1px 溢出
+      const next = Math.ceil(content) + 1;
+      const grew = prevContentRef.current > 0 && content > prevContentRef.current + 0.5;
+      prevContentRef.current = content;
+      body.style.setProperty("--panel-h", `${next}px`);
+      // 变高的一瞬容器还装不下新内容，滚动条会闪出又消失 → 过渡窗口内先裁切
+      if (grew) {
+        body.dataset.growing = "true";
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          delete body.dataset.growing;
+        }, 260);
+      }
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(panel);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [tab]);
+
+  /** 当前真正生效的一份：个人配置优先，否则用后端 profile 派生的默认值 */
+  const usingPersonal = Boolean(settings);
+  const activeSettings = settings ?? defaults;
+
+  /** 载入预设 → 落到「个人配置」页，改了什么立刻看得见 */
+  const applyPreset = (preset: PersonalApiPreset) => {
+    setForm(preset.settings);
+    setPresetName(preset.name);
+    setSelectedPresetId(preset.id);
+    setTab("edit");
+  };
+  /** 保存预设：同名视为覆盖，避免存出一堆同名条目 */
   const savePreset = () => {
     const name = presetName.trim();
     if (!name || !form.baseUrl.trim() || !form.apiKey.trim()) return;
+    const existing = presets.find((item) => item.name === name);
     const preset: PersonalApiPreset = {
-      id: selectedPresetId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: existing?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name,
       settings: { ...form, baseUrl: form.baseUrl.trim().replace(/\/$/, "") },
     };
-    const next = selectedPresetId ? presets.map((item) => item.id === selectedPresetId ? preset : item) : [...presets, preset];
+    const next = existing
+      ? presets.map((item) => (item.id === existing.id ? preset : item))
+      : [...presets, preset];
     setPresets(next);
     savePersonalApiPresets(next);
     setSelectedPresetId(preset.id);
-    setPresetName(preset.name);
   };
-  const deletePreset = () => {
-    if (!selectedPresetId) return;
-    const next = presets.filter((item) => item.id !== selectedPresetId);
+  const removePreset = (id: string) => {
+    const next = presets.filter((item) => item.id !== id);
     setPresets(next);
     savePersonalApiPresets(next);
-    setSelectedPresetId("");
-    setPresetName("");
+    if (selectedPresetId === id) setSelectedPresetId("");
   };
+  const clearPersonal = () => {
+    savePersonalApiSettings(null);
+    onSave(null);
+    onClose();
+  };
+  const saveAndUse = () => {
+    const next = { ...form, baseUrl: form.baseUrl.trim().replace(/\/$/, "") };
+    savePersonalApiSettings(next);
+    onSave(next);
+    onClose();
+  };
+  /** 预设下拉项：空值 = 不使用预设（与经典表单同款 Select 组件） */
+  const presetOptions = [
+    { value: "", label: presets.length ? "不使用预设" : "暂无预设" },
+    ...presets.map((preset) => ({ value: preset.id, label: preset.name })),
+  ];
+  /** 后端各字段的「值 + 来源」（由 /api/config 的 profileView 提供，前端不自行推断分层规则） */
+  const backendField = (key: string) => profileView?.fields.find((field) => field.key === key);
+  /** 生效值逐项标注来源：个人配置优先，否则回落到后端那一层 */
+  const activeRows = [
+    { key: "接口地址", value: activeSettings.baseUrl, mono: true, source: usingPersonal ? "个人配置" : (backendField("baseUrl")?.source ?? "") },
+    { key: "接口路径", value: activeSettings.apiPath, mono: true, source: usingPersonal ? "个人配置" : (backendField("apiPath")?.source ?? "") },
+    { key: "模型", value: activeSettings.model, mono: false, source: usingPersonal ? "个人配置" : (backendField("model")?.source ?? "") },
+    {
+      key: "API Key",
+      value: usingPersonal
+        ? (activeSettings.apiKey ? "已保存（本机浏览器）" : "未填写")
+        : (backendField("apiKey")?.configured ? "已配置" : "未配置"),
+      mono: false,
+      source: usingPersonal ? "个人配置" : (backendField("apiKey")?.source ?? ""),
+    },
+  ];
+  /** 字段统一形态：label（.field-label）+ 控件（.field-control），与经典表单同源 */
+  const fields: { id: string; label: string; key: "baseUrl" | "apiKey" | "model" | "apiPath"; mono?: boolean; type?: string; placeholder?: string }[] = [
+    { id: "api-base-url", label: "接口地址", key: "baseUrl", placeholder: "https://api.example.com" },
+    { id: "api-key", label: "API Key", key: "apiKey", mono: true, type: "password", placeholder: "sk-..." },
+    { id: "api-model", label: "模型名称", key: "model" },
+    { id: "api-path", label: "图片接口路径", key: "apiPath", mono: true },
+  ];
   return (
     <div className="studio-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <section className="studio-modal api-settings-modal w-[min(520px,94vw)] p-5" onClick={(event) => event.stopPropagation()}>
-        <div className="mb-1 flex items-center justify-between"><h2 className="text-base font-semibold">生图 API 设置</h2><span className="api-local-badge">仅当前浏览器</span></div>
-          <p className="mb-4 text-xs text-neutral-500">填写 OpenAI 图片接口兼容服务后，经典表单和无限画布都会使用这套配置。Key 只保存在本机浏览器。<a className="ml-1 font-medium text-[var(--color-brand)] underline decoration-[var(--color-brand)]/30 underline-offset-2 hover:decoration-[var(--color-brand)]" href="https://www.aiwanwu.cc/" target="_blank" rel="noreferrer">获取 API ↗</a></p>
-        <div className="space-y-3">
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <label className="block text-xs font-medium text-neutral-600">API 预设<select className="field-control mt-1" value={selectedPresetId} onChange={(e) => { const id = e.target.value; setSelectedPresetId(id); const preset = presets.find((item) => item.id === id); if (preset) { setForm(preset.settings); setPresetName(preset.name); } }}><option value="">当前编辑配置</option>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>
-            <div className="flex items-end"><button type="button" className="btn-ghost !px-3 !py-2 text-xs" onClick={deletePreset} disabled={!selectedPresetId}>删除预设</button></div>
-          </div>
-          <label className="block text-xs font-medium text-neutral-600">接口地址<input className="field-control mt-1" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://api.example.com" /></label>
-          <label className="block text-xs font-medium text-neutral-600">API Key<input className="field-control mt-1 font-mono" type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder="sk-..." /></label>
-          <label className="block text-xs font-medium text-neutral-600">模型名称<input className="field-control mt-1" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="gpt-image-1" /></label>
-          <label className="block text-xs font-medium text-neutral-600">图片接口路径<input className="field-control mt-1 font-mono text-xs" value={form.apiPath} onChange={(e) => setForm({ ...form, apiPath: e.target.value })} /></label>
-          <div className="grid grid-cols-[1fr_auto] gap-2"><input className="field-control" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="预设名称" /><button type="button" className="btn-ghost !px-3 !py-2 text-xs" onClick={savePreset} disabled={!presetName.trim() || !form.apiKey.trim()}>保存为预设</button></div>
+      <section
+        className="studio-modal api-settings-modal corner-rings flex max-h-[min(86vh,720px)] w-[min(560px,94vw)] flex-col p-5"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-semibold">生图 API 设置</h2>
+          <span className="chip chip--sm chip--quiet">仅当前浏览器</span>
         </div>
-        <div className="mt-5 flex justify-between gap-2"><button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => { savePersonalApiSettings(null); onSave(null); onClose(); }}>清除个人配置</button><div className="flex gap-2"><button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={onClose}>取消</button><button type="button" className="btn-primary !px-4 !py-1 text-xs" disabled={!form.baseUrl.trim() || !form.apiKey.trim()} onClick={() => { const next = { ...form, baseUrl: form.baseUrl.trim().replace(/\/$/, "") }; savePersonalApiSettings(next); onSave(next); onClose(); }}>保存并使用</button></div></div>
+
+        {/* 分段控件：看 / 改 / 管 各占一页（与顶栏模式切换同一套视觉，尺寸走 --h-ctl） */}
+        <div className="tabs mb-4" role="tablist">
+          {([["active", "使用中"], ["edit", "个人配置"], ["presets", "预设"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              className="tabs__item"
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* 内容区：全模态只此一处滚动——页签内容再长也不会把操作栏顶出视口。
+            高度由内容决定（.modal-body 负责高度过渡与滚动条占位），不用 flex-1 撑满，
+            因此三页之间切换时模态高度是平滑变化的。 */}
+        <div ref={bodyRef} className="modal-body pr-1">
+          {tab === "active" && (
+            <div ref={panelRef} key="active" className="tab-panel space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`chip chip--sm ${usingPersonal ? "chip--brand" : "chip--quiet"}`}>
+                  {usingPersonal ? "个人配置生效中" : "后端配置生效中"}
+                </span>
+                <span className="text-[11px] text-neutral-400">
+                  {usingPersonal ? "优先级最高，仅本机浏览器" : "来自 config.json / .env"}
+                </span>
+              </div>
+
+              {/* 生效值：每行给出「值 + 它来自哪一层」（后端来源由 profileView 提供） */}
+              <dl className="spec-list">
+                {activeRows.map((row) => (
+                  <div key={row.key} className="spec-list__row">
+                    <dt className="spec-list__key">{row.key}</dt>
+                    <dd className={`spec-list__val ${row.mono ? "spec-list__val--mono" : ""}`}>
+                      <span className="block truncate">{row.value}</span>
+                      <span className="spec-list__src truncate">{row.source}</span>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+
+              {/* 后端 profile 诊断：谁提供的 profile、本机注册过哪些 */}
+              {profileView && (
+                <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-3 py-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="chip chip--sm chip--quiet">
+                      {profileView.name ? `profile · ${profileView.name}` : "未指定 profile"}
+                    </span>
+                    <span className="font-mono text-[10px] text-neutral-400">{profileView.nameSource}</span>
+                  </div>
+                  {profileView.registeredProfiles.length > 0 && (
+                    <p className="mt-2 text-[10px] text-neutral-400">
+                      本机 config.json 注册：{profileView.registeredProfiles.join(" · ")}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <p className="text-[11px] text-neutral-400">
+                任意 OpenAI 图片接口兼容服务均可。
+                <a className="link ml-1" href="https://www.aiwanwu.cc/" target="_blank" rel="noreferrer">获取 API ↗</a>
+              </p>
+            </div>
+          )}
+
+          {tab === "edit" && (
+            <div ref={panelRef} key="edit" className="tab-panel space-y-3">
+              <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+                <div>
+                  <label className="field-label text-xs" htmlFor="api-preset">从预设载入</label>
+                  <Select
+                    id="api-preset"
+                    className="mt-1"
+                    options={presetOptions}
+                    value={selectedPresetId}
+                    onChange={(id) => {
+                      setSelectedPresetId(id);
+                      const preset = presets.find((item) => item.id === id);
+                      if (preset) setForm(preset.settings);
+                    }}
+                  />
+                </div>
+                <button type="button" className="btn-ghost btn-sm" onClick={() => setTab("presets")}>管理预设</button>
+              </div>
+
+              {fields.map((field) => (
+                <div key={field.id}>
+                  <label className="field-label text-xs" htmlFor={field.id}>{field.label}</label>
+                  <input
+                    id={field.id}
+                    className={`field-control mt-1 ${field.mono ? "font-mono" : ""}`}
+                    type={field.type ?? "text"}
+                    value={form[field.key]}
+                    onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                    {...(field.placeholder ? { placeholder: field.placeholder } : {})}
+                  />
+                </div>
+              ))}
+
+              <p className="text-[11px] text-neutral-400">
+                默认值取自后端 profile（改 config.json 即全局生效）；保存后本机浏览器优先使用这里填的。
+              </p>
+            </div>
+          )}
+
+          {tab === "presets" && (
+            <div ref={panelRef} key="presets" className="tab-panel space-y-3">
+              {presets.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-neutral-200 px-3 py-6 text-center text-xs text-neutral-400">
+                  还没有预设。到「个人配置」页填好接口与 Key，再回到这里保存。
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {presets.map((preset) => (
+                    <li
+                      key={preset.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200/80 px-3 py-2"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-medium text-neutral-700">{preset.name}</span>
+                        <span className="block truncate font-mono text-[10px] text-neutral-400">
+                          {preset.settings.model || "未填模型"} · {preset.settings.baseUrl}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 gap-1">
+                        <button type="button" className="btn-ghost btn-xs" onClick={() => applyPreset(preset)}>载入</button>
+                        <button type="button" className="btn-ghost btn-xs btn-danger" onClick={() => removePreset(preset.id)}>删除</button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <input
+                  className="field-control"
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  placeholder="预设名称（同名覆盖）"
+                />
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={savePreset}
+                  disabled={!presetName.trim() || !form.baseUrl.trim() || !form.apiKey.trim()}
+                >
+                  保存当前配置
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 操作栏：跨页签常驻，与内容滚动解耦 */}
+        <div className="mt-4 flex items-center justify-between gap-2 border-t border-neutral-200/80 pt-4">
+          <button type="button" className="btn-ghost btn-sm" disabled={!settings} onClick={clearPersonal}>清除个人配置</button>
+          <div className="flex gap-2">
+            <button type="button" className="btn-ghost btn-sm" onClick={onClose}>取消</button>
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              disabled={!form.baseUrl.trim() || !form.apiKey.trim()}
+              onClick={saveAndUse}
+            >
+              保存并使用
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   );
@@ -95,7 +371,11 @@ function PersonalApiModal({ settings, onSave, onClose }: { settings: PersonalApi
  *  logo 与标题各自正面/深度配色，越深的层越接近深度色（progress^2 缓动 + color-mix）；
  *  logo 正面跟随窗口主题色（var(--color-brand)），标题正面沿用 body 文字色，均不硬编码。 */
 const BRAND_LAYERS = 10; // 挤出层数（越小越省 DOM，也越浅）
-const BRAND_DEPTH = 1.5; // 层间距 px，挤出总深 ≈ BRAND_LAYERS × BRAND_DEPTH（≈15px，克制偏浅）
+/* 层间距分两档：标题字面大，1.5px/层（10 层 ≈15px 厚度）撑得起立体感；
+ * logo 图标线条细，同深度会被挤成"红块"（细节糊掉）——压到 0.4px/层（≈4px），
+ * 靠层内反向 translateZ 补偿让两者在同一层里各走各的深度（见下方 svg 的 transform）。 */
+const TEXT_Z_STEP = 1.5;
+const LOGO_Z_STEP = 0.4;
 const LOGO_FACE = "var(--color-brand)"; // logo 正面基准色（跟随窗口主题色）
 const LOGO_DEPTH = "var(--color-brand-dark)"; // logo 挤出深色（主题色加深）
 const TEXT_FACE = "#262626"; // 标题正面基准色（与 body 文字色一致）
@@ -140,9 +420,10 @@ function TitleBar({
   personalApi: PersonalApiSettings | null;
 }) {
   /** 品牌区（logo + 标题整体）3D 指针跟随：借 React Bits DepthText 手法——
-   *  10 层挤出堆叠（见 BRAND_LAYERS / BRAND_DEPTH + .brand-swing__layer 样式）常驻 DOM，
-   *  默认平面（正面层盖住挤出层，无视觉变化）；鼠标接近时向光标方向倾斜，
-   *  挤出厚度随摆动显现、移动时平滑跟随、离开后回摆到平面。
+   *  10 层挤出堆叠（见 BRAND_LAYERS / TEXT_Z_STEP + .brand-swing__layer 样式）常驻 DOM，
+   *  但平面态整层透明（is-tilting 才淡入，见 index.css）：透视会让后台层边缘露出约 1px，
+   *  正面浅色与挤出深色的反差会变成肉眼可见的重影。
+   *  鼠标接近时向光标方向倾斜，挤出厚度随摆动显现、移动时平滑跟随、离开回摆到位后撤掉类。
    *  只在悬停期写 transform（不碰颜色/字号），纯 JS 驱动（不受全局 reduced-motion
    *  的 CSS 动画降级规则影响——指针跟随属直接操作型动效，非周边自动动画）。 */
   const brandRootRef = useRef<HTMLAnchorElement | null>(null);
@@ -172,8 +453,9 @@ function TitleBar({
       current.x += (target.x - current.x) * SMOOTHING;
       current.y += (target.y - current.y) * SMOOTHING;
       apply();
-      // 已回到静止位且不在悬停：停掉循环（省电，一轮 tick 即归位）
+      // 已回到静止位且不在悬停：撤掉 is-tilting（挤出层淡出、平面态零重影）并停循环（省电）
       if (!hovering && Math.abs(current.x - target.x) < 0.01 && Math.abs(current.y - target.y) < 0.01) {
+        stage.classList.remove("is-tilting");
         raf = 0;
         return;
       }
@@ -185,6 +467,7 @@ function TitleBar({
 
     const onEnter = () => {
       hovering = true;
+      stage.classList.add("is-tilting");
       ensureLoop();
     };
     const onMove = (e: PointerEvent) => {
@@ -212,11 +495,12 @@ function TitleBar({
       root.removeEventListener("pointerleave", onLeave);
       cancelAnimationFrame(raf);
       stage.style.transform = "";
+      stage.classList.remove("is-tilting");
     };
   }, []);
 
   return (
-    <header className="studio-header enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-200/70 pb-3">
+    <header className="studio-header enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
       <a
         href="https://github.com/zlZayn/imagora"
         target="_blank"
@@ -230,14 +514,18 @@ function TitleBar({
             <span
               key={index}
               className="brand-swing__layer"
-              style={{ transform: `translateZ(${-index * BRAND_DEPTH}px)` }}
+              style={{ transform: `translateZ(${-index * TEXT_Z_STEP}px)` }}
             >
               <svg
                 width="30"
                 height="30"
                 viewBox="0 0 1024 1024"
                 aria-hidden="true"
-                style={{ fill: brandLayerColor(LOGO_FACE, LOGO_DEPTH, index) }}
+                style={{
+                  fill: brandLayerColor(LOGO_FACE, LOGO_DEPTH, index),
+                  /* 反向补偿：抵消标题那档深度差 → 图标只按 LOGO_Z_STEP 后退，细节不被挤糊 */
+                  transform: `translateZ(${index * (TEXT_Z_STEP - LOGO_Z_STEP)}px)`,
+                }}
               >
                 <path d={BRAND_LOGO_PATH} />
               </svg>
@@ -262,27 +550,23 @@ function TitleBar({
           </span>
         </div>
       </a>
-      {windowId !== null && (
-        <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
-          窗口 #{windowId}
-        </span>
-      )}
+      {windowId !== null && <span className="chip chip--brand">窗口 #{windowId}</span>}
       {activeProfile && (
         <span
-          className="rounded-md bg-brand/10 px-2 py-0.5 font-mono text-[10px] font-medium text-brand/80"
+          className="chip chip--quiet"
           title={`当前配置：profile「${activeProfile}」${defaultModel ? ` · 默认模型 ${defaultModel}` : ""}`}
         >
           {activeProfile}
           {defaultModel ? ` · ${defaultModel}` : ""}
         </span>
       )}
-      {/* 模式切换：紧凑分段按钮，并入标题行右侧 */}
-      <div className="mode-switch flex overflow-hidden rounded-md border border-neutral-200">
+      {/* 模式切换：胶囊分段控件（高度/圆角/字号统一由 .mode-switch 提供，与顶栏其它控件等高） */}
+      <div className="mode-switch">
         <button
           type="button"
           onClick={() => onModeChange("classic")}
-          className={`mode-switch__item px-3 py-0.5 text-xs transition-colors ${
-            mode === "classic" ? "bg-brand/10 font-medium text-brand" : "text-neutral-500 hover:bg-neutral-50"
+          className={`mode-switch__item transition-colors ${
+            mode === "classic" ? "bg-brand/10 font-medium" : "hover:bg-neutral-50"
           }`}
         >
           经典表单
@@ -290,8 +574,8 @@ function TitleBar({
         <button
           type="button"
           onClick={() => onModeChange("canvas")}
-          className={`mode-switch__item px-3 py-0.5 text-xs transition-colors ${
-            mode === "canvas" ? "bg-brand/10 font-medium text-brand" : "text-neutral-500 hover:bg-neutral-50"
+          className={`mode-switch__item transition-colors ${
+            mode === "canvas" ? "bg-brand/10 font-medium" : "hover:bg-neutral-50"
           }`}
         >
           无限画布
@@ -300,12 +584,14 @@ function TitleBar({
       <span className="text-muted ml-auto hidden text-xs xl:block">
         文生图 / 图生图 · 不传参考图即文生图 · 生成约需 1-2 分钟
       </span>
-      <button type="button" onClick={onNewWindow} className="btn-ghost px-2 py-1 text-xs">
+      <button type="button" onClick={onNewWindow} className="btn-ghost">
         ＋ 新窗口
       </button>
-      <button type="button" onClick={onOpenApi} className={`api-settings-trigger btn-ghost px-2 py-1 text-xs ${personalApi ? "is-active" : ""}`}>
+      <button type="button" onClick={onOpenApi} className={`api-settings-trigger btn-ghost ${personalApi ? "is-active" : ""}`}>
         {personalApi ? "个人 API 已启用" : "生图 API"}
       </button>
+      {/* 右下镜像小字：与左栏/右栏眉标同一套排版（.eyebrow 家族），最低对比度 */}
+      <span className="corner-note">Image Workspace</span>
     </header>
   );
 }
@@ -534,6 +820,18 @@ useEffect(() => {
 
   const accent = accentForWindow(windowId);
 
+  /** 个人 API 的默认值 = 后端当前 profile（config.json / .env 合并结果）：
+   *  前端不硬编码中转站 / 模型 / 接口路径，改 config.json 即全局生效（唯一真相源）。 */
+  const apiDefaults = useMemo<PersonalApiSettings>(
+    () => ({
+      baseUrl: config?.baseUrl ?? "",
+      apiKey: "",
+      model: config?.defaultModel ?? "",
+      apiPath: config?.apiPath ?? "",
+    }),
+    [config],
+  );
+
   /** 新窗口：参考图已存服务端，只把元信息 + 参数写入 sessionStorage 后开窗（提示词不保留）。
    *  继承失败的提示随状态带到新窗口，显示在新窗口的日志区（而非原窗口）。 */
   const handleNewWindow = () => {
@@ -573,7 +871,15 @@ useEffect(() => {
         onOpenApi={() => setShowApiSettings(true)}
         personalApi={personalApi}
       />
-      {showApiSettings && <PersonalApiModal settings={personalApi} onSave={setPersonalApi} onClose={() => setShowApiSettings(false)} />}
+      {showApiSettings && (
+        <PersonalApiModal
+          settings={personalApi}
+          defaults={apiDefaults}
+          profileView={config?.profileView}
+          onSave={setPersonalApi}
+          onClose={() => setShowApiSettings(false)}
+        />
+      )}
 
       {visibleHealthIssues.length > 0 && (
         <div className="health-alert mb-3 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -599,100 +905,118 @@ useEffect(() => {
             : "classic-main grid grid-cols-[6fr_4fr] items-start gap-5"
         }
       >
-        {/* 左栏：输入面板 */}
-        <section className="classic-input-column space-y-4">
-          <div className="panel-card enter-up space-y-3">
-            <label className="field-label" htmlFor="prompt">
-              提示词
-            </label>
-            <textarea
-              id="prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              rows={4}
-              placeholder="英文优先，减少歧义。例如：a red apple on white background, product photo"
-              className="field-control resize-y"
-            />
-            <UploadZone refs={refs} onChange={setRefs} />
-          </div>
+        {/* 左栏：输入面板。两个水印都长在卡片内（左上分区词 + 右上编号，同一个裁切层）——
+            这样它们随卡片动画一起进退，且始终在内容层之下，不会叠到输入框上。 */}
+        <section className="classic-input-column">
+          <div className="space-y-4">
+            <div className="panel-card corner-deco enter-up space-y-3">
+              <span className="corner-deco__clip" aria-hidden="true">
+                <span className="corner-deco__tag">Input</span>
+                <span className="corner-deco__step">1</span>
+              </span>
+              <label className="field-label" htmlFor="prompt">
+                提示词
+              </label>
+              <textarea
+                id="prompt"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={4}
+                placeholder="英文优先，减少歧义。例如：a red apple on white background, product photo"
+                className="field-control resize-y"
+              />
+              <UploadZone refs={refs} onChange={setRefs} />
+            </div>
 
-          <div className="panel-card enter-up enter-delay-1 relative z-30">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="field-label" htmlFor="size-select">
-                  尺寸
-                </label>
-                <Select
-                  id="size-select"
-                  options={sizeOptions}
-                  value={size}
-                  onChange={setSize}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="quality-select">
-                  质量
-                </label>
-                <Select
-                  id="quality-select"
-                  options={qualityOptions}
-                  value={quality}
-                  onChange={setQuality}
-                  className="mt-1"
-                />
+            <div className="panel-card corner-deco enter-up enter-delay-1 relative z-30">
+              <span className="corner-deco__clip" aria-hidden="true">
+                <span className="corner-deco__step">2</span>
+              </span>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label" htmlFor="size-select">
+                    尺寸
+                  </label>
+                  <Select
+                    id="size-select"
+                    options={sizeOptions}
+                    value={size}
+                    onChange={setSize}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="quality-select">
+                    质量
+                  </label>
+                  <Select
+                    id="quality-select"
+                    options={qualityOptions}
+                    value={quality}
+                    onChange={setQuality}
+                    className="mt-1"
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="panel-card enter-up enter-delay-2 space-y-3">
-            <label className="field-label" htmlFor="output-dir">
-              输出路径
-            </label>
-            <FolderPicker value={outputDir} onChange={handleOutputDirChange} />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={busy}
-                className={`btn-primary flex-1 ${busy ? "btn-busy" : ""}`}
-              >
-                {busy ? (taskStatus === "queued" ? "排队中…" : generatingLabel(elapsed)) : "生成图片"}
-              </button>
-              <button
-                type="button"
-                onClick={handleOpenFolder}
-                disabled={busy}
-                className="btn-ghost"
-              >
-                打开文件夹
-              </button>
-            </div>
-            <div ref={logRef} className="log-box text-log max-h-40 overflow-auto">
-              {logs.map((line, i) => (
-                <LogLine key={i} text={line} />
-              ))}
+            <div className="panel-card corner-deco enter-up enter-delay-2 space-y-3">
+              <span className="corner-deco__clip" aria-hidden="true">
+                <span className="corner-deco__step">3</span>
+              </span>
+              <label className="field-label" htmlFor="output-dir">
+                输出路径
+              </label>
+              <FolderPicker value={outputDir} onChange={handleOutputDirChange} />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={busy}
+                  className={`btn-primary flex-1 ${busy ? "btn-busy" : ""}`}
+                >
+                  {busy ? (taskStatus === "queued" ? "排队中…" : generatingLabel(elapsed)) : "生成图片"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenFolder}
+                  disabled={busy}
+                  className="btn-ghost"
+                >
+                  打开文件夹
+                </button>
+              </div>
+              <div ref={logRef} className="log-box text-log max-h-40 overflow-auto">
+                {logs.map((line, i) => (
+                  <LogLine key={i} text={line} />
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
-        {/* 右栏：结果画廊 */}
-        <section className="classic-result-panel panel-card enter-up enter-delay-3 min-h-[560px]">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="field-label mb-0">生成结果</span>
-            {lastSubmissionId && (
-              <button type="button" onClick={handleImportToCanvas} className="btn-ghost text-xs">
-                导入画布
-              </button>
-            )}
-          </div>
-          <ResultPanel
-            status={taskStatus}
-            elapsed={elapsed}
-            meta={{ refCount: refs.length, size, quality, outputDir }}
-            error={taskError}
-            results={results}
-          />
+        {/* 右栏：结果画廊（分区词 + 弧环都长在面板内，与左栏同一套角落装饰） */}
+        <section className="classic-output-column">
+          <section className="classic-result-panel corner-rings corner-deco panel-card enter-up enter-delay-3 min-h-[560px]">
+            <span className="corner-deco__clip" aria-hidden="true">
+              <span className="corner-deco__tag">Output</span>
+            </span>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="field-label mb-0">生成结果</span>
+              {lastSubmissionId && (
+                <button type="button" onClick={handleImportToCanvas} className="btn-ghost text-xs">
+                  导入画布
+                </button>
+              )}
+            </div>
+            <ResultPanel
+              status={taskStatus}
+              elapsed={elapsed}
+              meta={{ refCount: refs.length, size, quality, outputDir }}
+              error={taskError}
+              results={results}
+            />
+          </section>
         </section>
       </main>
     </div>

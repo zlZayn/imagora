@@ -321,7 +321,7 @@ export function HistoryGallery({
   if (!open) return null;
   return (
     <div className="history-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <section className="history-modal flex h-[86vh] w-[min(1100px,96vw)] flex-col overflow-hidden rounded-lg bg-[#f7f7f5] shadow-2xl" onClick={(event) => event.stopPropagation()}>
+      <section className="history-modal corner-rings flex h-[86vh] w-[min(1100px,96vw)] flex-col overflow-hidden rounded-lg bg-[#f7f7f5] shadow-2xl" onClick={(event) => event.stopPropagation()}>
         <header className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-4 py-3">
           <h2 className="mr-2 text-sm font-semibold">生成历史</h2>
           <input

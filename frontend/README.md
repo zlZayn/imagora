@@ -36,6 +36,22 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 组件不改样式细节（引用类）；样式不写进组件文件（除了 Tailwind utility 类）
 - 纯函数模块（src 根 *.ts）必须配同名 `*.test.ts` 单测；新纯函数进纯函数模块，不进组件
 
+## 样式体系（src/index.css）
+
+一处定义、全站共用；改 UI 前先查这里，别在组件里另造一套。规则与约束见 [AGENTS.md](AGENTS.md)。
+
+| 层 | token / 类 | 用途 |
+| --- | --- | --- |
+| 尺寸阶梯 | `--h-ctl` · `--h-field` · `--h-cta` | 顶栏控件 28 · 表单控件 38 · 主行动 46 |
+| 圆角阶梯 | `--r-pill` · `--r-card` · `--r-control` | 胶囊 · 容器 16 · 控件 10 |
+| 表面 | `--surface-card` · `--surface-panel` | 同级容器同一套 150deg 微渐变，层次靠档位（卡片 < 面板） |
+| 角落装饰 | `.corner-deco` · `.corner-rings` · `.corner-note` | 分区词 / 编号 / 弧环 / 镜像小字 |
+| 行内角标 | `.chip`（`--sm` `--dot` `--brand` `--quiet` `--danger`） | 顶栏 28 · 小号 18 |
+| 分段控件 | `.tabs`（模态页签） · `.mode-switch`（顶栏模式） | 同源视觉，尺寸走 `--h-ctl` |
+| 模态内容区 | `.modal-body` | 高度过渡（`--panel-h` 驱动）+ 滚动条占位 + `[data-growing]` 变高裁切 |
+| 只读值表 | `.spec-list` + `__row` / `__key` / `__val` / `__src` | 「值 + 来源」两行式排版 |
+| 滚动条 | `--sb-size` · `--sb-thumb` · `--sb-track` | 全局统管；轨道 transparent = 跟随所在容器底色 |
+
 ## 文件索引
 
 ### 契约与 API（改动需双端同步）
@@ -80,7 +96,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 ### [promptImportFormat.ts](src/promptImportFormat.ts)
 - 职责：粘贴导入解析（`parsePromptImportFormat` 容错解析）、尺寸映射（`resolveCardSize`）、批量建卡（`buildPromptNodes`）
 - 被谁依赖：PromptImportModal、CanvasPage
-- 注意：格式规范见 ../docs/README.md；缺漏进 issues 标红，绝不静默猜测
+- 注意：格式规范见 [../docs/README.md](../docs/README.md)；缺漏进 issues 标红，绝不静默猜测
 
 ### [recovery.ts](src/recovery.ts)
 - 职责：恢复快照归一化（`buildRecoverySnapshot`，剥离动画类/运行期字段）
@@ -149,9 +165,9 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ### 根文件
 
-- [`App.tsx`](src/App.tsx) — 根组件：顶栏（品牌区 3D `brand-swing` 系、窗口徽章）、经典/画布模式切换。品牌区参数（`BRAND_LAYERS`/`BRAND_DEPTH`/`LOGO_FACE*`）与局部样式在 App.tsx 顶部
+- [`App.tsx`](src/App.tsx) — 根组件：顶栏（品牌区 3D `brand-swing` 系、`chip` 角标、`corner-note` 镜像小字）、经典/画布模式切换、**生图 API 设置弹窗**（两段式：① 后端配置只读来源视图 —— 值 + 来源由 `/api/config` 的 `profileView` 下发 ② 个人配置覆盖，默认值取自同一接口、前端不硬编码）。品牌区参数（`BRAND_LAYERS`/`TEXT_Z_STEP`/`LOGO_Z_STEP`/`LOGO_FACE*`）在 App.tsx 顶部——**标题与 logo 挤出深度分档**（logo 线条细，同深度会糊成红块）
 - [`main.tsx`](src/main.tsx) — 入口（挂载 + accent 主题注入）
-- [`index.css`](src/index.css) — **唯一样式层**：Tailwind v4 + `@layer components` 组件类（btn 体系/panel-card/动效类）+ 品牌区 3D + 落点示意等；改样式只改这里（含 `pulse-glow` 圆环呼吸 / `icon-breathe` 图标本体呼吸光）
+- [`index.css`](src/index.css) — **唯一样式层**：Tailwind v4 + `:root` 设计 token（`--h-ctl` 控件高 / `--r-card` 卡片圆角 / `--pad-card` 卡片内边距 / `--corner-x,y` 装饰锚点）+ `@layer components` 组件类（btn 体系/panel-card/动效类）+ **角落装饰**（`.corner-deco` = 左上分区词 `__tag` + 右上编号 `__step`，都长在容器内、故意压出边界由 `__clip` 裁切层截断，浓度统一走 `--mark-ink` / `.corner-rings` SVG 弧环 / `.corner-note` 镜像小字 / `.chip` 角标家族）+ **按钮尺寸档**（`.btn-sm` / `.btn-xs`，取代各处 `!px-* !py-* text-*` 内联覆盖）+ `.link` 文字链接+ 品牌区 3D + 落点示意等；改样式只改这里，组件里不写死尺寸与颜色
 - [`verify_canvas.py`](e2e/verify_canvas.py) — 画布交互 E2E（36 断言，Playwright headless）
 
 ## 上下游依赖

@@ -1361,7 +1361,7 @@ export function CanvasPage({
       {...dragHandlers}
     >
       {/* 工具栏：左侧创建，右侧工作流操作（按使用习惯分区） */}
-      <div className="studio-toolbar flex flex-wrap items-start gap-2">
+      <div className="studio-toolbar enter-up flex flex-wrap items-start gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className="btn-primary !px-3 !py-1 text-xs" onClick={() => fileInputRef.current?.click()}>
             上传图片
@@ -1417,7 +1417,7 @@ export function CanvasPage({
         </div>
       </div>
       {/* 操作帮助：单行小字，画布/节点/连线三类交互用分隔符紧凑展示（与 README「画布工作流」章节保持一致） */}
-      <div className="studio-help flex flex-wrap items-center gap-x-1 text-[10px] leading-tight text-neutral-400">
+      <div className="studio-help enter-up enter-delay-1 flex flex-wrap items-center gap-x-1 text-[10px] leading-tight text-neutral-400">
         <span className="font-medium text-neutral-500">画布</span>拖拽图片/按钮到画布放置（松开即落点新建） · 右键框选 · Ctrl+点击加选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · 左下角适应视图全览 · Ctrl+A 全选 · Ctrl+Z/Y 撤销恢复 · Delete 删除选中 · Ctrl+S 保存
         <span className="text-neutral-300">｜</span>
         <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 选中后右上角可运行/整理/连线/设路径/删除 · 双击图片放大预览 · 拖右下角拉伸
@@ -1426,7 +1426,7 @@ export function CanvasPage({
       </div>
 
       {/* 画布 */}
-      <div className="studio-canvas panel-card relative min-h-0 flex-1 overflow-hidden">
+      <div className="studio-canvas panel-card enter-up enter-delay-2 relative min-h-0 flex-1 overflow-hidden">
         {/* 选中操作栏：任意选中 ≥1 个节点即出现；「运行所选/设置输出路径」只作用于提示词卡片，
             图片与图片组自动忽略（混合选区不误伤）；「自动整理」局部重排选中节点；「自动连线」只补选中节点间的边；
             「删除所选」作用于全部。半透明毛玻璃面板 + 透明按钮（走 btn-ghost/btn-danger 两档体系，

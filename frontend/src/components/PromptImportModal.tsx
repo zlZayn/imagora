@@ -36,7 +36,7 @@ export function PromptImportModal({ sizes, onConfirm, onClose }: PromptImportMod
           placeholder={"=== 示例图1 ===\n```text\nratio: 1:1\n\n（提示词正文）\n```"}
           className="field-control nodrag nowheel resize-y font-mono text-xs leading-relaxed"
         />
-        <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-auto">
+        <div className="modal-body mt-2 space-y-1">
           <div className="text-xs text-neutral-500">
             识别 {cards.length} 张卡片
             {issues.length > 0 && <span className="ml-2 text-red-500">发现 {issues.length} 个问题</span>}

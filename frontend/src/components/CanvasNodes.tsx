@@ -86,7 +86,7 @@ export function ImageNode({
 }: NodeProps<ImageFlowNode> & ImageNodeExtraProps & { lod?: boolean | undefined }) {
   // lod / normal 两分支共用的三段片段（原为两份逐字相同的内联 JSX）
   const missingBadge = data.missing ? (
-    <span className="absolute right-1 top-1 z-20 rounded bg-red-500 px-1 py-0.5 text-[10px] font-medium text-white">
+    <span className="chip chip--sm chip--danger absolute right-1 top-1 z-20">
       文件缺失
     </span>
   ) : null;
@@ -180,7 +180,7 @@ export function GroupNode({
   const dup = data.duplicateCount ?? 0;
   const dupBadge = dup > 0 ? (
     <span
-      className="mt-1 inline-block rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-medium leading-none text-brand"
+      className="chip chip--sm chip--brand mt-1"
       title={`已去重 ${dup} 张重复图片`}
     >
       去重

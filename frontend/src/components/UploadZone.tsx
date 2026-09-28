@@ -167,7 +167,7 @@ export function UploadZone({ refs, onChange }: UploadZoneProps) {
                         e.stopPropagation();
                         removeFile(ref);
                       }}
-                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-700 text-[10px] leading-none text-white"
+                      className="chip chip--sm chip--dot absolute -right-1.5 -top-1.5 bg-neutral-700 text-white"
                       aria-label={`移除 ${ref.name}`}
                     >
                       x

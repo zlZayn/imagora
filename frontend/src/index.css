@@ -17,30 +17,207 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* ============ 滚动条：一处定义，全站统一（页面 / 模态 / 列表共用） ============
+ * 轨道一律 transparent：滚动条的「背景」就是它所在的容器底色——
+ * 页面级跟随 body 的渐变底、模态里跟随模态表面、列表里跟随列表底色，
+ * 不会在米色或渐变面上抠出一条白槽。
+ * 滑块中性半透明 + 内缩（border + background-clip）：细、圆，悬停加深。
+ * 需要隐藏滚动条的特例（如画布检查器）用自身更具体的选择器覆盖，见 .studio-inspector。 */
+:root {
+  --sb-size: 10px;
+  --sb-thumb: rgba(23, 32, 43, 0.16);
+  --sb-thumb-hover: rgba(23, 32, 43, 0.3);
+  --sb-track: transparent;
+}
+/* Firefox */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-thumb) var(--sb-track);
+}
+/* WebKit（Chrome / Edge / Safari）：逐滚动容器生效 */
+::-webkit-scrollbar { width: var(--sb-size); height: var(--sb-size); }
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner { background: var(--sb-track); }
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--sb-thumb);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sb-thumb-hover);
+  background-clip: content-box;
+}
+
+/* ============ 设计 token：高度 / 圆角 / 卡片内边距（统一管理，勿再散落魔法数字） ============
+ * 高度阶梯：顶栏控件 28 → 表单控件 38 → 主行动 46；
+ * 圆角阶梯：胶囊（顶栏控件）→ 卡片 16 → 输入控件 10。
+ * 顶栏内所有控件共用 --h-ctl，保证同一条水平基线上等高（层次靠底色/字重区分，不靠高度差）。 */
+:root {
+  --h-ctl: 28px;
+  --h-field: 38px;
+  --h-cta: 46px;
+  --r-pill: 999px;
+  --r-card: 16px;
+  --r-control: 10px;
+  --pad-card: 20px;
+}
+
+/* ============ 角落装饰体系（统一锚点，四层，每层一个类） ============
+ * 左上 .eyebrow       分区眉标（点阵 + 小字）：统一放容器「上外沿」左对齐 —— 跨栏跨卡片同在一条基线
+ * 右上 .corner-mark   粗大编号水印（读 attr(data-step)）：容器加类 + 写编号即生效，新增卡片零成本
+ * 右上 .corner-rings  SVG 同心弧环（mask 上色）：跟随窗口主题色，溢出角外被容器裁切
+ * 右下 .corner-note   镜像小字：与眉标同排版、对比度最低，只给大容器（顶栏 / 模态）
+ * 行内 .chip          角标家族：顶栏 28px / 小号 --sm 18px / --dot 正方 / 三色修饰
+ * 装饰一律 pointer-events:none，不参与交互、不影响布局。 */
+:root {
+  --mono: ui-monospace, SFMono-Regular, monospace;
+  /* 展示字体（眉标 / 编号 / 镜像小字共用）：系统 sans + 大字距。
+   * 不用等宽——等宽在中文界面里显机械小气，sans 大写加大字距才是「水印感」。 */
+  --font-display: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --corner-x: 16px;      /* 角落装饰水平内缩 */
+  --corner-y: 10px;      /* 角落装饰垂直内缩 */
+  --mark-size: 104px;    /* 右上编号水印字号 */
+  --tag-size: 104px;     /* 左上分区词水印字号（与编号同档，一对同权水印） */
+  --mark-ink: 8%;        /* 水印浓度（很低，隐隐约约）——三处水印共用同一个值 */
+  --chip-sm-h: 18px;     /* 小角标高度 */
+
+  /* —— 表面（容器底色）——同级容器共用同一套 150deg 微渐变：同角度、同色系、同强度量级，
+   * 层次只靠档位区分（卡片 --surface-card < 面板 --surface-panel），
+   * 不再出现「同排有的纯白、有的渐变」或角度各异（145deg / 160deg）的观感断层。
+   * 卡片用半透明（透出 body 底色，更轻）；面板用近实色（承载图与日志，需稳定底色）。 */
+  --surface-card: linear-gradient(150deg, rgba(255, 255, 255, 0.9), rgba(246, 244, 239, 0.68));
+  --surface-panel: linear-gradient(150deg, #fcfbf8, #f1eee7);
+}
+
+/* 字段标签统一块级：inline 时标签盒随父级基线漂移，左右两栏首行会错开数 px
+ * （实测左栏比右栏低 3px）；块级后标签顶部即内容起点，跨栏自然对齐。 */
+.field-label { display: block; }
+
+/* —— 角落水印（左上分区词 + 右上编号）：共用一层裁切层 ——
+ * 两个水印都故意压出容器边界，超出部分由裁切层截断（"从容器边缘切出来"的平面设计手法）。
+ * 裁切层是独立覆盖层、不作用于容器自身——所以容器内的下拉 / 浮层不会被误裁。 */
+.corner-deco { position: relative; }
+.corner-deco__clip {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  user-select: none;
+}
+/* 左上：分区词（INPUT / OUTPUT）——大号淡色 sans + 大字距 */
+.corner-deco__tag {
+  position: absolute;
+  top: -0.18em;   /* 顶部压出一点点，溢出处被裁掉 */
+  left: -0.06em;
+  /* 浓度取统一 token：水印只是背景底纹，不该压过正文 */
+  color: color-mix(in srgb, var(--color-brand) var(--mark-ink), transparent);
+  font-family: var(--font-display);
+  font-size: var(--tag-size);
+  font-weight: 800;
+  letter-spacing: 0.12em;   /* 字号变大后收紧字距，OUTPUT 才不会顶到容器右边界 */
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* 右上：编号——顶部与右侧都压出边界 */
+.corner-deco__step {
+  position: absolute;
+  top: -0.18em;    /* 顶部压出一点点（约字号的 18%），超出部分被裁 */
+  right: -0.08em;  /* 右侧压出量（保持） */
+  color: color-mix(in srgb, var(--color-brand) var(--mark-ink), transparent);
+  font-family: var(--font-display);
+  font-size: var(--mark-size);
+  font-weight: 800;
+  line-height: 0.82;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+/* 容器内容压在裁切层之上：水印退到最底层，输入框等不透明内容会自然盖住它（不干扰输入区） */
+.corner-deco > *:not(.corner-deco__clip) { position: relative; z-index: 1; }
+
+/* —— 右上：SVG 同心弧环（几何装饰；mask 上色 → 颜色始终跟随窗口主题色）—— */
+.corner-rings { position: relative; }
+/* 圆心贴住容器右上角（overflow:hidden 只留容器内的 1/4 弧）——
+ * 若把圆心推到容器外（如 top/right: -86px），穿过角落的那段弧已近似直线，看着像划痕。 */
+.corner-rings::after {
+  content: "";
+  position: absolute;
+  top: -10px;      /* 与文字/编号水印同一套规则：顶部与侧面都压出边界，超出被裁 */
+  right: -10px;
+  width: 200px;
+  height: 200px;
+  background: var(--color-brand);
+  opacity: 0.14;   /* 水印级浓度：隐隐约约 */
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='none' stroke='%23000'%3E%3Ccircle cx='100' cy='0' r='36' stroke-width='3.4'/%3E%3Ccircle cx='100' cy='0' r='55' stroke-width='2.2'/%3E%3Ccircle cx='100' cy='0' r='74' stroke-width='1.3'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='none' stroke='%23000'%3E%3Ccircle cx='100' cy='0' r='36' stroke-width='3.4'/%3E%3Ccircle cx='100' cy='0' r='55' stroke-width='2.2'/%3E%3Ccircle cx='100' cy='0' r='74' stroke-width='1.3'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+
+/* —— 右下：镜像小字（大容器专用，与眉标同排版、对比度最低）—— */
+.corner-note {
+  position: absolute;
+  right: 16px;
+  bottom: -20px;
+  color: color-mix(in srgb, var(--color-brand) 24%, transparent);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* —— 角标家族（一套尺寸 + 三色修饰）：顶栏默认 28px；内容区小角标加 --sm —— */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--h-ctl);
+  padding: 0 11px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.chip--sm {
+  height: var(--chip-sm-h);
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+.chip--dot { width: var(--chip-sm-h); padding: 0; }
+.chip--brand { background: color-mix(in srgb, var(--color-brand) 12%, transparent); color: var(--color-brand); }
+.chip--danger { background: #dc2626; color: #fff; }
+.chip--quiet { background: rgba(31, 41, 55, 0.06); color: rgba(23, 32, 43, 0.62); }
+
 /* Imagora Studio visual layer: a quiet editorial shell around the existing workflow. */
 .studio-header {
   position: relative;
-  min-height: 54px;
-  padding: 10px 14px 11px;
+  padding: 10px 14px;
   border: 1px solid rgba(31, 41, 55, 0.08) !important;
-  border-radius: 16px;
+  border-radius: var(--r-card);
   background: rgba(255, 255, 255, 0.72);
   box-shadow: 0 10px 34px rgba(28, 34, 43, 0.06), inset 0 1px rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(16px);
 }
-.studio-header::after {
-  content: "IMAGE WORKSPACE  /  CREATE WITH INTENT";
-  position: absolute;
-  right: 14px;
-  bottom: -18px;
-  color: rgba(23, 32, 43, 0.34);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+/* 顶栏控件等高：品牌区 / 徽章 / 分段切换 / 幽灵按钮统一 28px，共用一条水平基线 */
+.studio-header .btn-ghost,
+.studio-header .mode-switch,
+.studio-header .chip {
+  height: var(--h-ctl);
+}
+.studio-header .btn-ghost {
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
 }
 .studio-header .brand-swing { padding-left: 2px; }
-.studio-header .brand-swing__face h1 { font-size: 1.12rem; letter-spacing: -0.035em; }
-.studio-header .rounded-md { border: 1px solid color-mix(in srgb, var(--color-brand) 18%, transparent); }
+.studio-header .brand-swing__face h1 { font-size: 1.05rem; letter-spacing: -0.035em; }
 .studio-header > .text-muted { color: rgba(23, 32, 43, 0.48); letter-spacing: 0.01em; }
 
 .studio-toolbar {
@@ -90,7 +267,8 @@ body {
 
 /* Slightly more material controls across the classic form. */
 .panel-card { border-radius: 18px; }
-.field-control { border-color: rgba(31, 41, 55, 0.14); background: rgba(255, 255, 255, 0.78); }
+/* 不透明底：让输入框能完整盖住底层水印（半透明底时水印会"透"到输入框上） */
+.field-control { border-color: rgba(31, 41, 55, 0.14); background: #ffffff; }
 .field-control:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand) 13%, transparent); }
 .btn-primary { border-radius: 11px; box-shadow: 0 8px 18px color-mix(in srgb, var(--color-brand) 18%, transparent); }
 .btn-ghost { border-radius: 10px; }
@@ -99,53 +277,36 @@ body {
 .imagora-app { min-height: 100vh; }
 .classic-main { align-items: stretch; }
 .classic-input-column { min-width: 0; }
-.classic-input-column .panel-card { background: rgba(255,255,255,.7); }
-.classic-input-column .panel-card:first-child {
-  padding: 20px;
-  background: linear-gradient(145deg, rgba(255,255,255,.88), rgba(245,243,238,.74));
-}
-.classic-input-column .panel-card:first-child .field-label::before {
-  content: "01";
-  margin-right: 9px;
-  color: var(--color-brand);
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 10px;
-  letter-spacing: .12em;
-}
-.classic-input-column .panel-card:nth-child(2) .field-label::before {
-  content: "02";
-  margin-right: 9px;
-  color: var(--color-brand);
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 10px;
-  letter-spacing: .12em;
-}
-.classic-input-column .panel-card:nth-child(3) .field-label::before {
-  content: "03";
-  margin-right: 9px;
-  color: var(--color-brand);
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 10px;
-  letter-spacing: .12em;
-}
+/* 三张输入卡共用同一表面：此前首张走渐变、后两张是纯白，同排观感不齐。 */
+.classic-input-column .panel-card { background: var(--surface-card); }
+
+/* 结果面板：经典表单的输出区，表面比输入卡高一档强度（同角度、同色系，见 --surface-panel）。
+ * 深浅两套主题曾在此叠加书写（深色在前、浅色在后完整覆盖），深色那批已全是死声明；
+ * 现只保留浅色主题一处定义，后文不再重复覆盖。 */
 .classic-result-panel {
   min-height: 620px;
-  background: #20262c !important;
-  border-color: rgba(255,255,255,.08) !important;
-  color: #edf1f2;
-  box-shadow: 0 18px 48px rgba(24,29,34,.18) !important;
+  background: var(--surface-panel) !important;
+  border-color: rgba(31, 41, 55, .12) !important;
+  color: #17202b;
+  box-shadow: 0 18px 45px rgba(31, 41, 55, .09) !important;
 }
-.classic-result-panel > div:first-child { color: #f2f5f5; }
-.classic-result-panel .btn-ghost { color: #d6dfdf; }
-.classic-result-panel .btn-ghost:hover:not(:disabled) { color: #20262c; }
+.classic-result-panel > div:first-child { color: #17202b; }
+.classic-result-panel .btn-ghost { color: var(--color-brand); }
+.classic-result-panel .btn-ghost:hover:not(:disabled) { color: #fff; }
 .classic-result-panel .result-gallery { gap: 14px; }
-.classic-result-panel .result-gallery > a { background: #2a3238; border-radius: 12px; padding: 7px; }
-.classic-result-panel .result-gallery p { color: rgba(237,241,242,.58); }
-.classic-result-panel .text-neutral-400 { color: rgba(237,241,242,.58) !important; }
-.classic-result-panel .text-neutral-500 { color: rgba(237,241,242,.72) !important; }
-.classic-result-panel .text-neutral-700 { color: #edf1f2 !important; }
-.classic-result-panel .log-box { background: rgba(0,0,0,.2); border: 1px solid rgba(255,255,255,.08); }
-.classic-result-panel .result-gallery + * { color: rgba(237,241,242,.65); }
+.classic-result-panel .result-gallery > a {
+  border-radius: 12px;
+  padding: 7px;
+  background: rgba(255, 255, 255, .72);
+  border-color: rgba(31, 41, 55, .12);
+}
+.classic-result-panel .result-gallery p,
+.classic-result-panel .text-neutral-400 { color: rgba(23, 32, 43, .5) !important; }
+.classic-result-panel .text-neutral-500 { color: rgba(23, 32, 43, .66) !important; }
+.classic-result-panel .text-neutral-700 { color: #17202b !important; }
+.classic-result-panel .log-box { background: rgba(23, 32, 43, .045); border-color: rgba(23, 32, 43, .08); }
+/* 此处原为深色主题的浅灰白，落在浅底上几乎不可见——归并到同一套次要文字色 */
+.classic-result-panel .result-gallery + * { color: rgba(23, 32, 43, .55); }
 .health-alert { border-radius: 12px; box-shadow: 0 6px 16px rgba(160,110,20,.08); }
 
 /* Dark inspector strip used by both canvas selection and parameter surfaces. */
@@ -172,7 +333,23 @@ body {
 
 /* Gallery, history and modal surfaces share the same product language. */
 .studio-modal-overlay { background: rgba(20,26,31,.62) !important; backdrop-filter: blur(8px); }
-.studio-modal { border: 1px solid rgba(255,255,255,.65); border-radius: 16px !important; background: rgba(251,251,248,.96) !important; box-shadow: 0 24px 70px rgba(15,20,25,.26) !important; }
+.studio-modal { overflow: hidden; border: 1px solid rgba(255,255,255,.65); border-radius: 16px !important; background: rgba(251,251,248,.96) !important; box-shadow: 0 24px 70px rgba(15,20,25,.26) !important; }
+/* 模态内容区：高度由 JS 量出的面板自然高度驱动（--panel-h，见 App.tsx 的 useLayoutEffect）。
+ * 必须是显式像素端点 transition 才真的插值——CSS 的 interpolate-size 解决不了
+ * 「内容变化导致 auto → auto（解析值不同）」这种情形，实测无过渡。
+ * scrollbar-gutter 预留滚动条占位：即便出现滚动条也不横向位移。
+ * [data-growing] = 变高的过渡窗口：这一瞬间容器还装不下新内容，先裁切，
+ * 避免滚动条闪出又消失（变矮时内容必然放得下，不会溢出）。 */
+.modal-body {
+  height: var(--panel-h, auto);
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  transition: height 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.modal-body[data-growing] {
+  overflow-y: hidden;
+}
 .imagora-app input::placeholder, .imagora-app textarea::placeholder { color: rgba(74,84,93,.52); }
 
 @media (max-width: 900px) {
@@ -182,32 +359,8 @@ body {
   .studio-header::after { display: none; }
 }
 
-/* Page-specific expressions: one system, three moods. */
-.classic-result-panel {
-  background: linear-gradient(160deg, #fbfaf7 0%, #f1eee8 100%) !important;
-  border-color: rgba(31,41,55,.12) !important;
-  color: #17202b;
-  box-shadow: 0 18px 45px rgba(31,41,55,.09) !important;
-}
-.classic-result-panel::before {
-  content: "OUTPUT / CONTACT SHEET";
-  display: block;
-  margin: -2px 0 14px;
-  color: rgba(23,32,43,.35);
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .16em;
-}
-.classic-result-panel > div:first-child { color: #17202b; }
-.classic-result-panel .btn-ghost { color: var(--color-brand); }
-.classic-result-panel .btn-ghost:hover:not(:disabled) { color: #fff; }
-.classic-result-panel .result-gallery > a { background: rgba(255,255,255,.72); border-color: rgba(31,41,55,.12); }
-.classic-result-panel .result-gallery p,
-.classic-result-panel .text-neutral-400 { color: rgba(23,32,43,.5) !important; }
-.classic-result-panel .text-neutral-500 { color: rgba(23,32,43,.66) !important; }
-.classic-result-panel .text-neutral-700 { color: #17202b !important; }
-.classic-result-panel .log-box { background: rgba(23,32,43,.045); border-color: rgba(23,32,43,.08); }
+/* Page-specific expressions: one system, three moods.
+ * 经典输出区的表面已并入 .classic-result-panel 主定义（含 --surface-panel），此处不再重复覆盖。 */
 
 .history-overlay { background: rgba(30,30,28,.48) !important; backdrop-filter: blur(6px); }
 .history-modal { border: 1px solid rgba(31,41,55,.12); border-radius: 18px !important; background: #f4f1eb !important; box-shadow: 0 24px 70px rgba(25,25,22,.22) !important; }
@@ -221,40 +374,38 @@ body {
 }
 
 /* Classic form: editorial control room, with a single obvious starting action. */
-.mode-switch { background: rgba(255,255,255,.62); border-color: rgba(31,41,55,.12) !important; }
-.mode-switch__item { min-height: 28px; color: rgba(23,32,43,.54); }
+/* 模式切换：胶囊分段控件，与顶栏其它控件同高（28px），选中态品牌色实底 */
+.mode-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(31,41,55,.1);
+  background: rgba(255,255,255,.72);
+}
+.mode-switch__item {
+  display: inline-flex;
+  align-items: center;
+  height: calc(var(--h-ctl) - 6px);
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  color: rgba(23,32,43,.54);
+  font-size: 12px;
+}
 .mode-switch__item[aria-current="true"],
 .mode-switch__item.bg-brand\/10 { background: var(--color-brand) !important; color: #fff !important; }
 .classic-main { gap: 24px !important; }
 .classic-input-column { position: relative; }
-.classic-input-column::before {
-  content: "CREATE / IMAGE STUDY";
-  display: block;
-  margin: 0 0 9px 3px;
-  color: rgba(23,32,43,.38);
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .16em;
-}
-.classic-input-column .panel-card { border-radius: 15px; }
+/* 左右两栏共用 .column-eyebrow（JSX 同一类名）+ 同一 --pad-card，
+   眉标与内容起始位置在一条水平线上（此前一栏在外、一栏在内，错开 5px）。 */
+.classic-output-column { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.classic-output-column .classic-result-panel { flex: 1; }
+.classic-input-column .panel-card,
+.classic-result-panel { padding: var(--pad-card); border-radius: var(--r-card); }
 .classic-input-column .panel-card:first-child textarea { min-height: 148px; padding: 15px; font-size: 14px; line-height: 1.7; }
-.classic-input-column .panel-card:first-child .field-label { font-size: 13px; letter-spacing: .02em; }
-.classic-input-column .panel-card:nth-child(2) { padding-top: 15px; padding-bottom: 15px; }
-.classic-input-column .panel-card:nth-child(3) { padding-top: 17px; }
-.classic-input-column .panel-card:nth-child(3) .btn-primary { min-height: 46px; font-size: 14px; letter-spacing: .02em; }
+.classic-input-column .panel-card:nth-child(3) .btn-primary { min-height: var(--h-cta); font-size: 14px; letter-spacing: .02em; }
+/* 结果面板角落装饰（弧环 + 编号水印）由 .corner-rings / .corner-mark 承担，此处只保证裁切 */
 .classic-result-panel { position: relative; overflow: hidden; }
-.classic-result-panel::after {
-  content: "";
-  position: absolute;
-  top: -90px;
-  right: -90px;
-  width: 210px;
-  height: 210px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--color-brand) 9%, transparent);
-  pointer-events: none;
-}
 
 /* Canvas: keep the center open and let the inspector feel like a tool, not a card pile. */
 .studio-canvas { isolation: isolate; }
@@ -265,14 +416,14 @@ body {
 
 /* History: archive mood, with denser rows and quiet controls. */
 .history-modal h2 { font-size: 16px; letter-spacing: -.025em; }
-.history-modal [data-testid="history-list"] { scrollbar-color: rgba(23,32,43,.18) transparent; }
+/* 历史列表：滚动条常驻占位（此前单点定义 scrollbar-color，现并入全局方案） */
+.history-modal [data-testid="history-list"] { scrollbar-gutter: stable; }
 .history-modal [data-testid="history-list"] ul > li { border-radius: 12px; }
 .history-modal .field-control { border-radius: 9px; }
 .history-modal .btn-ghost { border-radius: 8px; }
 .api-settings-trigger.is-active { color: var(--color-brand); background: color-mix(in srgb, var(--color-brand) 9%, transparent); }
 .api-settings-trigger.is-active:hover:not(:disabled),
 .api-settings-trigger.is-active:focus-visible { color: #fff !important; }
-.api-local-badge { border: 1px solid rgba(23,32,43,.12); border-radius: 6px; padding: 3px 7px; color: rgba(23,32,43,.5); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 9px; letter-spacing: .08em; }
 .api-settings-modal { color: #17202b; }
 .api-settings-modal .field-control { background: rgba(255,255,255,.86); }
 
@@ -424,6 +575,91 @@ body {
     color: #dc2626;
     --btn-fill: #dc2626;
   }
+
+  /* ============ 按钮尺寸档：收敛各处散落的 !px-* !py-* text-* 内联覆盖 ============
+   * 无修饰 = 表单主行动尺寸；工具栏 / 模态 / 行内小按钮加 --sm，更小的角标按钮加 --xs。
+   * 同层后声明（同特异性时后者生效），所以不需要 !important。 */
+  .btn-sm {
+    @apply px-3 py-1 text-xs;
+  }
+  .btn-xs {
+    @apply px-1.5 py-0.5 text-[10px];
+  }
+
+  /* 文字链接（模态说明文案里的外链） */
+  .link {
+    @apply font-medium underline underline-offset-2;
+    color: var(--color-brand);
+    text-decoration-color: color-mix(in srgb, var(--color-brand) 30%, transparent);
+  }
+  .link:hover {
+    text-decoration-color: var(--color-brand);
+  }
+
+  /* ============ 分段控件（模态 Tab 与顶栏模式切换同源视觉）============
+   * 胶囊轨道 + 内嵌胶囊选中块，尺寸走 --h-ctl；两者共用同一套观感，不各写一份。 */
+  .tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-pill);
+    border: 1px solid rgba(31, 41, 55, 0.1);
+    background: rgba(31, 41, 55, 0.04);
+  }
+  .tabs__item {
+    display: inline-flex;
+    align-items: center;
+    height: calc(var(--h-ctl) - 6px);
+    padding: 0 14px;
+    border-radius: var(--r-pill);
+    color: rgba(23, 32, 43, 0.55);
+    font-size: 12px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .tabs__item:hover {
+    color: rgba(23, 32, 43, 0.8);
+  }
+  .tabs__item[aria-selected="true"] {
+    background: #fff;
+    color: var(--color-brand);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(28, 34, 43, 0.12);
+  }
+
+  /* 只读「键 → 值 + 来源」规格表：模态两处（生效值 / 回退配置）共用同一套排版 */
+  .spec-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .spec-list__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .spec-list__key {
+    flex: none;
+    color: rgba(23, 32, 43, 0.5);
+    font-size: 12px;
+  }
+  .spec-list__val {
+    min-width: 0;
+    flex: 1;
+    text-align: right;
+    color: rgba(23, 32, 43, 0.8);
+    font-size: 12px;
+  }
+  .spec-list__val--mono {
+    font-family: var(--mono);
+  }
+  .spec-list__src {
+    display: block;
+    margin-top: 1px;
+    color: rgba(23, 32, 43, 0.38);
+    font-size: 10px;
+  }
 }
 
 /* ============ 动效层：所有动画类统一收敛于此，组件只引用类名 ============ */
@@ -436,6 +672,11 @@ body {
 .enter-delay-1 { animation-delay: 70ms; }
 .enter-delay-2 { animation-delay: 140ms; }
 .enter-delay-3 { animation-delay: 210ms; }
+
+/* 页签 / 步骤面板切换：只淡入 + 4px 上移，比整体入场更短，避免切换拖沓 */
+.tab-panel {
+  animation: tab-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
 
 /* 图片加载完成淡入：只动 opacity，transform 留给 hover 的 transition，避免 animation fill 锁死 */
 .img-reveal {
@@ -505,13 +746,20 @@ body {
   backface-visibility: hidden;
 }
 
-/* 挤出层：绝对定位铺满 stage，translateZ 越负越深；层数越多/越深颜色越接近深度色 */
+/* 挤出层：绝对定位铺满 stage，translateZ 越负越深；层数越多/越深颜色越接近深度色。
+ * 平面态整体隐藏（opacity:0）：透视会让后台层边缘露出约 1px，而正面层是浅色、挤出层是深色，
+ * 反差下就是肉眼可见的「重影」——只有指针悬停（stage 带 is-tilting）时才淡入参与摆动。 */
 .brand-swing__layer {
   position: absolute;
   inset: 0;
   z-index: 0;
   filter: saturate(0.95) brightness(0.92);
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.brand-swing__stage.is-tilting .brand-swing__layer {
+  opacity: 1;
 }
 
 /* 正面层：最上层，保持各自原始色（logo=主题色，标题=body 文字色） */
@@ -521,6 +769,10 @@ body {
   transform: translateZ(0.6px);
 }
 
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 @keyframes enter-up {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
