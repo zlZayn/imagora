@@ -63,13 +63,12 @@ html {
   --pad-card: 20px;
 }
 
-/* ============ 角落装饰体系（统一锚点，四层，每层一个类） ============
- * 左上 .eyebrow       分区眉标（点阵 + 小字）：统一放容器「上外沿」左对齐 —— 跨栏跨卡片同在一条基线
- * 右上 .corner-mark   粗大编号水印（读 attr(data-step)）：容器加类 + 写编号即生效，新增卡片零成本
- * 右上 .corner-rings  SVG 同心弧环（mask 上色）：跟随窗口主题色，溢出角外被容器裁切
- * 右下 .corner-note   镜像小字：与眉标同排版、对比度最低，只给大容器（顶栏 / 模态）
- * 行内 .chip          角标家族：顶栏 28px / 小号 --sm 18px / --dot 正方 / 三色修饰
- * 装饰一律 pointer-events:none，不参与交互、不影响布局。 */
+/* ============ 角落装饰体系（统一锚点，每层一个类） ============
+ * 右上 .corner-deco__step  编号水印（长在 .corner-deco 容器内，浓度走 --mark-ink）
+ * 右上 .corner-rings       SVG 同心弧环（mask 上色）：跟随窗口主题色，溢出角外被容器裁切
+ * 右下 .corner-note        镜像小字：对比度最低，只给大容器（顶栏 / 模态）
+ * 行内 .chip               角标家族：顶栏 28px / 小号 --sm 18px / --dot 正方 / 三色修饰
+ * 溢出由裁切层 .corner-deco__clip 截断；装饰一律 pointer-events:none，不参与交互、不影响布局。 */
 :root {
   --mono: ui-monospace, SFMono-Regular, monospace;
   /* 展示字体（眉标 / 编号 / 镜像小字共用）：系统 sans + 大字距。
@@ -78,8 +77,7 @@ html {
   --corner-x: 16px;      /* 角落装饰水平内缩 */
   --corner-y: 10px;      /* 角落装饰垂直内缩 */
   --mark-size: 104px;    /* 右上编号水印字号 */
-  --tag-size: 104px;     /* 左上分区词水印字号（与编号同档，一对同权水印） */
-  --mark-ink: 8%;        /* 水印浓度（很低，隐隐约约）——三处水印共用同一个值 */
+  --mark-ink: 8%;        /* 编号水印浓度（很低，隐隐约约）*/
   --chip-sm-h: 18px;     /* 小角标高度 */
 
   /* —— 表面（容器底色）——同级容器共用同一套 150deg 微渐变：同角度、同色系、同强度量级，
@@ -397,8 +395,8 @@ html {
 .mode-switch__item.bg-brand\/10 { background: var(--color-brand) !important; color: #fff !important; }
 .classic-main { gap: 24px !important; }
 .classic-input-column { position: relative; }
-/* 左右两栏共用 .column-eyebrow（JSX 同一类名）+ 同一 --pad-card，
-   眉标与内容起始位置在一条水平线上（此前一栏在外、一栏在内，错开 5px）。 */
+/* 左右两栏共用同一 --pad-card 与容器内边距：内容起始位置在一条水平线上
+   （此前一栏在外、一栏在内，错开 5px）。 */
 .classic-output-column { position: relative; display: flex; flex-direction: column; min-width: 0; }
 .classic-output-column .classic-result-panel { flex: 1; }
 .classic-input-column .panel-card,

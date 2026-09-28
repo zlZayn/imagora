@@ -45,7 +45,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 尺寸阶梯 | `--h-ctl` · `--h-field` · `--h-cta` | 顶栏控件 28 · 表单控件 38 · 主行动 46 |
 | 圆角阶梯 | `--r-pill` · `--r-card` · `--r-control` | 胶囊 · 容器 16 · 控件 10 |
 | 表面 | `--surface-card` · `--surface-panel` | 同级容器同一套 150deg 微渐变，层次靠档位（卡片 < 面板） |
-| 角落装饰 | `.corner-deco` · `.corner-rings` · `.corner-note` | 分区词 / 编号 / 弧环 / 镜像小字 |
+| 角落装饰 | `.corner-deco` · `.corner-rings` · `.corner-note` | 编号 / 弧环 / 镜像小字 |
 | 行内角标 | `.chip`（`--sm` `--dot` `--brand` `--quiet` `--danger`） | 顶栏 28 · 小号 18 |
 | 分段控件 | `.tabs`（模态页签） · `.mode-switch`（顶栏模式） | 同源视觉，尺寸走 `--h-ctl` |
 | 模态内容区 | `.modal-body` | 高度过渡（`--panel-h` 驱动）+ 滚动条占位 + `[data-growing]` 变高裁切 |
@@ -165,9 +165,9 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ### 根文件
 
-- [`App.tsx`](src/App.tsx) — 根组件：顶栏（品牌区 3D `brand-swing` 系、`chip` 角标、`corner-note` 镜像小字）、经典/画布模式切换、**生图 API 设置弹窗**（两段式：① 后端配置只读来源视图 —— 值 + 来源由 `/api/config` 的 `profileView` 下发 ② 个人配置覆盖，默认值取自同一接口、前端不硬编码）。品牌区参数（`BRAND_LAYERS`/`TEXT_Z_STEP`/`LOGO_Z_STEP`/`LOGO_FACE*`）在 App.tsx 顶部——**标题与 logo 挤出深度分档**（logo 线条细，同深度会糊成红块）
+- [`App.tsx`](src/App.tsx) — 根组件：顶栏（品牌区 3D `brand-swing` 系、`chip` 角标、`corner-note` 镜像小字）、经典/画布模式切换、**生图 API 设置弹窗**（三页签：使用中 —— 后端配置只读来源视图，值 + 来源由 `/api/config` 的 `profileView` 下发 / 个人配置 —— 覆盖值与默认值取自同一接口、前端不硬编码 / 预设 —— 存取删本地预设）。品牌区参数（`BRAND_LAYERS`/`TEXT_Z_STEP`/`LOGO_Z_STEP`/`LOGO_FACE*`）在 App.tsx 顶部——**标题与 logo 挤出深度分档**（logo 线条细，同深度会糊成红块）
 - [`main.tsx`](src/main.tsx) — 入口（挂载 + accent 主题注入）
-- [`index.css`](src/index.css) — **唯一样式层**：Tailwind v4 + `:root` 设计 token（`--h-ctl` 控件高 / `--r-card` 卡片圆角 / `--pad-card` 卡片内边距 / `--corner-x,y` 装饰锚点）+ `@layer components` 组件类（btn 体系/panel-card/动效类）+ **角落装饰**（`.corner-deco` = 左上分区词 `__tag` + 右上编号 `__step`，都长在容器内、故意压出边界由 `__clip` 裁切层截断，浓度统一走 `--mark-ink` / `.corner-rings` SVG 弧环 / `.corner-note` 镜像小字 / `.chip` 角标家族）+ **按钮尺寸档**（`.btn-sm` / `.btn-xs`，取代各处 `!px-* !py-* text-*` 内联覆盖）+ `.link` 文字链接+ 品牌区 3D + 落点示意等；改样式只改这里，组件里不写死尺寸与颜色
+- [`index.css`](src/index.css) — **唯一样式层**（Tailwind v4）：`:root` 设计 token + `@layer components` 组件类 + 动效层；导出的 token 与公共类清单见本文「样式体系」节，组件只引用类名、不写死尺寸与颜色
 - [`verify_canvas.py`](e2e/verify_canvas.py) — 画布交互 E2E（36 断言，Playwright headless）
 
 ## 上下游依赖

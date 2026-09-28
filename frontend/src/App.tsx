@@ -452,7 +452,7 @@ function TitleBar({
       <button type="button" onClick={onOpenApi} className={`api-settings-trigger btn-ghost ${personalApi ? "is-active" : ""}`}>
         {personalApi ? "个人 API 已启用" : "生图 API"}
       </button>
-      {/* 右下镜像小字：与左栏/右栏眉标同一套排版（.eyebrow 家族），最低对比度 */}
+      {/* 右下镜像小字：与其它角落装饰同一套排版，对比度最低 */}
       <span className="corner-note">Image Workspace</span>
     </header>
   );

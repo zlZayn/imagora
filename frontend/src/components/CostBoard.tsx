@@ -50,9 +50,6 @@ export function CostBoard({
 
   return (
     <section data-testid="cost-board" className="corner-deco border-b border-neutral-200 bg-white px-4 pt-9 pb-3">
-      <span className="corner-deco__clip" aria-hidden="true">
-        <span className="corner-deco__tag">Budget</span>
-      </span>
       {loading && !stats ? (
         <span className="text-[11px] text-neutral-400">正在统计成本...</span>
       ) : stats ? (
