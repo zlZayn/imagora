@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 
-import { Select } from "./Select";
-
 import {
   checkBudget,
   fetchTask,
@@ -23,6 +21,7 @@ import { useImageZoom } from "../useImageZoom";
 import { CostBoard } from "./CostBoard";
 import { FolderPicker } from "./FolderPicker";
 import { ZoomModal } from "./WorkflowModals";
+import { Select } from "./Select";
 
 function parentDirectory(path: string): string {
   return path.replace(/[\\/][^\\/]+$/, "");
@@ -125,11 +124,8 @@ export function HistoryGallery({
   /** query/status 镜像：回调保持稳定引用（open 打开 effect 只依赖 open），又能读到最新筛选值 */
   const queryRef = useRef(query);
   const statusRef = useRef(status);
-  /** 同上（CanvasPage）：镜像写入放 layout effect；读取点全在 load/loadMore 回调内。 */
-  useLayoutEffect(() => {
-    queryRef.current = query;
-    statusRef.current = status;
-  }, [query, status]);
+  queryRef.current = query;
+  statusRef.current = status;
   /** 单击开原图 / 双击放大预览（与经典表单结果图同款交互，共用 ZoomModal） */
   const { zoom, handleClick, handleDoubleClick, closeZoom } = useImageZoom();
 
@@ -149,14 +145,7 @@ export function HistoryGallery({
   const rerunCandidates = useMemo(() => planRerun(items.filter((it) => it.status === "error")), [items]);
 
   /** 分页大小：DOM 总量控制在单页数量级，滚动顺滑 */
-  /** 状态筛选选项（值 = `/api/history` 的 status 参数；空串 = 全部）。 */
-const STATUS_OPTIONS = [
-  { value: "", label: "全部状态" },
-  { value: "ok", label: "成功" },
-  { value: "error", label: "失败" },
-];
-
-const PAGE_SIZE = 60;
+  const PAGE_SIZE = 60;
 
   /** 成本看板数据（账本原始行聚合 + 预算占用） */
   const loadStats = useCallback(async () => {
@@ -331,48 +320,40 @@ const PAGE_SIZE = 60;
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <section className="flex h-[86vh] w-[min(1100px,96vw)] flex-col overflow-hidden rounded-lg bg-[#f7f7f5] shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <header className="border-b border-neutral-200 bg-white">
-          {/* 标题行：标题 + 提示 + 右侧动作（重跑失败项 / 关闭） */}
-          <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
-            <h2 className="text-sm font-semibold">生成历史</h2>
-            {rerunCandidates.lostRefs > 0 && (
-              <span className="text-[11px] text-amber-600" title="图生图记录但参考图已从资产库找不回，无法还原">
-                {rerunCandidates.lostRefs} 条参考图已丢失
-              </span>
-            )}
-            <div className="ml-auto flex items-center gap-2">
-              {rerunCandidates.runnable.length > 0 && (
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  title="把当前列表里的失败记录重新跑一遍（结果落输出目录并写入历史）"
-                  onClick={() => void openRerun(rerunCandidates.runnable)}
-                >
-                  重跑失败项（{rerunCandidates.runnable.length}）
-                </button>
-              )}
-              <button type="button" className="btn-ghost" onClick={onClose}>关闭</button>
-            </div>
-          </div>
-          {/* 工具行：搜索 + 状态筛选（成组、与标题分行） */}
-          <div className="compact-controls flex flex-wrap items-center gap-2 px-4 pb-3 pt-2">
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") void load(); }}
-              placeholder="搜索提示词、质量或文件名"
-              className="field-control !w-72"
-            />
-            <Select
-              options={STATUS_OPTIONS}
-              value={status}
-              onChange={(next) => { setStatus(next); void load({ status: next }); }}
-              className="w-28"
-            />
-            <button type="button" className="btn-ghost" onClick={() => void load()}>搜索</button>
-          </div>
+    <div className="history-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <section className="history-modal flex h-[86vh] w-[min(1100px,96vw)] flex-col overflow-hidden rounded-lg bg-[#f7f7f5] shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <header className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-4 py-3">
+          <h2 className="mr-2 text-sm font-semibold">生成历史</h2>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") void load(); }}
+            placeholder="搜索提示词、质量或文件名"
+            className="field-control !w-72 !py-1"
+          />
+          <Select
+            value={status}
+            onChange={(next) => { setStatus(next); void load({ status: next }); }}
+            className="w-28"
+            options={[{ value: "", label: "全部状态" }, { value: "ok", label: "成功" }, { value: "error", label: "失败" }]}
+          />
+          <button type="button" className="btn-ghost !px-3 !py-1" onClick={() => void load()}>搜索</button>
+          {rerunCandidates.runnable.length > 0 && (
+            <button
+              type="button"
+              className="btn-ghost !px-3 !py-1"
+              title="把当前列表里的失败记录重新跑一遍（结果落输出目录并写入历史）"
+              onClick={() => void openRerun(rerunCandidates.runnable)}
+            >
+              重跑失败项（{rerunCandidates.runnable.length}）
+            </button>
+          )}
+          {rerunCandidates.lostRefs > 0 && (
+            <span className="text-[11px] text-amber-600" title="图生图记录但参考图已从资产库找不回，无法还原">
+              {rerunCandidates.lostRefs} 条参考图已丢失
+            </span>
+          )}
+          <button type="button" className="btn-ghost ml-auto !px-3 !py-1" onClick={onClose}>关闭</button>
         </header>
         <CostBoard
           stats={stats}

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { getConfig, getHealthDetails, openFolder, rememberOutputDir } from "./api";
+import { getConfig, getHealthDetails, openFolder, readPersonalApiPresets, readPersonalApiSettings, rememberOutputDir, savePersonalApiPresets, savePersonalApiSettings } from "./api";
 import { useGenerationTask } from "./useGenerationTask";
 import { accentForWindow } from "./accent";
-import type { AppConfig, GenerationTaskStatus, RefItem, ResultItem } from "./types";
+import type { AppConfig, GenerationTaskStatus, PersonalApiPreset, PersonalApiSettings, RefItem, ResultItem } from "./types";
 import { errMessage, generatingLabel } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
 import { UploadZone } from "./components/UploadZone";
@@ -40,6 +40,57 @@ function openNewWindow() {
   window.open(url.pathname + url.search, "_blank");
 }
 
+function PersonalApiModal({ settings, onSave, onClose }: { settings: PersonalApiSettings | null; onSave: (settings: PersonalApiSettings | null) => void; onClose: () => void }) {
+  const [form, setForm] = useState<PersonalApiSettings>(settings ?? {
+      baseUrl: "https://www.aiwanwu.cc", apiKey: "", model: "", apiPath: "/v1/images/generations",
+  });
+  const [presets, setPresets] = useState<PersonalApiPreset[]>(() => readPersonalApiPresets());
+  const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [presetName, setPresetName] = useState("");
+  const savePreset = () => {
+    const name = presetName.trim();
+    if (!name || !form.baseUrl.trim() || !form.apiKey.trim()) return;
+    const preset: PersonalApiPreset = {
+      id: selectedPresetId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      settings: { ...form, baseUrl: form.baseUrl.trim().replace(/\/$/, "") },
+    };
+    const next = selectedPresetId ? presets.map((item) => item.id === selectedPresetId ? preset : item) : [...presets, preset];
+    setPresets(next);
+    savePersonalApiPresets(next);
+    setSelectedPresetId(preset.id);
+    setPresetName(preset.name);
+  };
+  const deletePreset = () => {
+    if (!selectedPresetId) return;
+    const next = presets.filter((item) => item.id !== selectedPresetId);
+    setPresets(next);
+    savePersonalApiPresets(next);
+    setSelectedPresetId("");
+    setPresetName("");
+  };
+  return (
+    <div className="studio-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <section className="studio-modal api-settings-modal w-[min(520px,94vw)] p-5" onClick={(event) => event.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between"><h2 className="text-base font-semibold">生图 API 设置</h2><span className="api-local-badge">仅当前浏览器</span></div>
+          <p className="mb-4 text-xs text-neutral-500">填写 OpenAI 图片接口兼容服务后，经典表单和无限画布都会使用这套配置。Key 只保存在本机浏览器。<a className="ml-1 font-medium text-[var(--color-brand)] underline decoration-[var(--color-brand)]/30 underline-offset-2 hover:decoration-[var(--color-brand)]" href="https://www.aiwanwu.cc/" target="_blank" rel="noreferrer">获取 API ↗</a></p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <label className="block text-xs font-medium text-neutral-600">API 预设<select className="field-control mt-1" value={selectedPresetId} onChange={(e) => { const id = e.target.value; setSelectedPresetId(id); const preset = presets.find((item) => item.id === id); if (preset) { setForm(preset.settings); setPresetName(preset.name); } }}><option value="">当前编辑配置</option>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>
+            <div className="flex items-end"><button type="button" className="btn-ghost !px-3 !py-2 text-xs" onClick={deletePreset} disabled={!selectedPresetId}>删除预设</button></div>
+          </div>
+          <label className="block text-xs font-medium text-neutral-600">接口地址<input className="field-control mt-1" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://api.example.com" /></label>
+          <label className="block text-xs font-medium text-neutral-600">API Key<input className="field-control mt-1 font-mono" type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder="sk-..." /></label>
+          <label className="block text-xs font-medium text-neutral-600">模型名称<input className="field-control mt-1" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="gpt-image-1" /></label>
+          <label className="block text-xs font-medium text-neutral-600">图片接口路径<input className="field-control mt-1 font-mono text-xs" value={form.apiPath} onChange={(e) => setForm({ ...form, apiPath: e.target.value })} /></label>
+          <div className="grid grid-cols-[1fr_auto] gap-2"><input className="field-control" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="预设名称" /><button type="button" className="btn-ghost !px-3 !py-2 text-xs" onClick={savePreset} disabled={!presetName.trim() || !form.apiKey.trim()}>保存为预设</button></div>
+        </div>
+        <div className="mt-5 flex justify-between gap-2"><button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={() => { savePersonalApiSettings(null); onSave(null); onClose(); }}>清除个人配置</button><div className="flex gap-2"><button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={onClose}>取消</button><button type="button" className="btn-primary !px-4 !py-1 text-xs" disabled={!form.baseUrl.trim() || !form.apiKey.trim()} onClick={() => { const next = { ...form, baseUrl: form.baseUrl.trim().replace(/\/$/, "") }; savePersonalApiSettings(next); onSave(next); onClose(); }}>保存并使用</button></div></div>
+      </section>
+    </div>
+  );
+}
+
 /** 顶栏品牌区 3D 挤出参数（借 React Bits DepthText 手法）：
  *  logo 与标题各自正面/深度配色，越深的层越接近深度色（progress^2 缓动 + color-mix）；
  *  logo 正面跟随窗口主题色（var(--color-brand)），标题正面沿用 body 文字色，均不硬编码。 */
@@ -74,6 +125,8 @@ function TitleBar({
   onModeChange,
   activeProfile,
   defaultModel,
+  onOpenApi,
+  personalApi,
 }: {
   windowId: number | null;
   onNewWindow: () => void;
@@ -83,6 +136,8 @@ function TitleBar({
   activeProfile?: string | undefined;
   /** 当前 profile 的默认模型 */
   defaultModel?: string | undefined;
+  onOpenApi: () => void;
+  personalApi: PersonalApiSettings | null;
 }) {
   /** 品牌区（logo + 标题整体）3D 指针跟随：借 React Bits DepthText 手法——
    *  10 层挤出堆叠（见 BRAND_LAYERS / BRAND_DEPTH + .brand-swing__layer 样式）常驻 DOM，
@@ -161,7 +216,7 @@ function TitleBar({
   }, []);
 
   return (
-    <header className="enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-200/70 pb-3">
+    <header className="studio-header enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-200/70 pb-3">
       <a
         href="https://github.com/zlZayn/imagora"
         target="_blank"
@@ -222,11 +277,11 @@ function TitleBar({
         </span>
       )}
       {/* 模式切换：紧凑分段按钮，并入标题行右侧 */}
-      <div className="flex overflow-hidden rounded-md border border-neutral-200">
+      <div className="mode-switch flex overflow-hidden rounded-md border border-neutral-200">
         <button
           type="button"
           onClick={() => onModeChange("classic")}
-          className={`px-3 py-0.5 text-xs transition-colors ${
+          className={`mode-switch__item px-3 py-0.5 text-xs transition-colors ${
             mode === "classic" ? "bg-brand/10 font-medium text-brand" : "text-neutral-500 hover:bg-neutral-50"
           }`}
         >
@@ -235,7 +290,7 @@ function TitleBar({
         <button
           type="button"
           onClick={() => onModeChange("canvas")}
-          className={`px-3 py-0.5 text-xs transition-colors ${
+          className={`mode-switch__item px-3 py-0.5 text-xs transition-colors ${
             mode === "canvas" ? "bg-brand/10 font-medium text-brand" : "text-neutral-500 hover:bg-neutral-50"
           }`}
         >
@@ -248,6 +303,9 @@ function TitleBar({
       <button type="button" onClick={onNewWindow} className="btn-ghost px-2 py-1 text-xs">
         ＋ 新窗口
       </button>
+      <button type="button" onClick={onOpenApi} className={`api-settings-trigger btn-ghost px-2 py-1 text-xs ${personalApi ? "is-active" : ""}`}>
+        {personalApi ? "个人 API 已启用" : "生图 API"}
+      </button>
     </header>
   );
 }
@@ -255,6 +313,8 @@ function TitleBar({
 export function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [windowId, setWindowId] = useState<number | null>(null);
+  const [personalApi, setPersonalApi] = useState<PersonalApiSettings | null>(() => readPersonalApiSettings());
+  const [showApiSettings, setShowApiSettings] = useState(false);
 
 /** 动态 favicon：标签页图标跟随窗口主题色（与顶栏 logo / 菜单边框同色），多开一眼可辨 */
 useEffect(() => {
@@ -367,6 +427,11 @@ useEffect(() => {
     () => (config?.qualities ?? []).map((q) => ({ value: q, label: q })),
     [config],
   );
+
+  // 后端自检只知道项目默认 Key；启用个人 API 后，个人 Key 同样可以满足生图条件。
+  const visibleHealthIssues = personalApi
+    ? healthIssues.filter((issue) => !issue.includes("未配置 API Key"))
+    : healthIssues;
 
   /** 订阅当前任务状态：queued/running 驱动按钮，终态落结果 / 日志 / 结果区状态面板。
    *  过程状态（排队/生成中）由右栏 ResultPanel 呈现，日志区只收终态与操作反馈——不写过程行。 */
@@ -495,7 +560,7 @@ useEffect(() => {
 
   return (
     <div
-      className="mx-auto max-w-[1500px] px-6 py-4"
+      className="imagora-app mx-auto max-w-[1500px] px-6 py-4"
       style={{ "--color-brand": accent.brand, "--color-brand-dark": accent.brandDark } as CSSProperties}
     >
       <TitleBar
@@ -505,11 +570,14 @@ useEffect(() => {
         onModeChange={switchMode}
         activeProfile={config?.activeProfile}
         defaultModel={config?.defaultModel}
+        onOpenApi={() => setShowApiSettings(true)}
+        personalApi={personalApi}
       />
+      {showApiSettings && <PersonalApiModal settings={personalApi} onSave={setPersonalApi} onClose={() => setShowApiSettings(false)} />}
 
-      {healthIssues.length > 0 && (
-        <div className="mb-3 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {healthIssues.map((issue) => <div key={issue}>{issue}</div>)}
+      {visibleHealthIssues.length > 0 && (
+        <div className="health-alert mb-3 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {visibleHealthIssues.map((issue) => <div key={issue}>{issue}</div>)}
         </div>
       )}
 
@@ -528,11 +596,11 @@ useEffect(() => {
         className={
           mode === "canvas"
             ? "hidden"
-            : "grid grid-cols-[6fr_4fr] items-start gap-5"
+            : "classic-main grid grid-cols-[6fr_4fr] items-start gap-5"
         }
       >
         {/* 左栏：输入面板 */}
-        <section className="space-y-4">
+        <section className="classic-input-column space-y-4">
           <div className="panel-card enter-up space-y-3">
             <label className="field-label" htmlFor="prompt">
               提示词
@@ -609,7 +677,7 @@ useEffect(() => {
         </section>
 
         {/* 右栏：结果画廊 */}
-        <section className="panel-card enter-up enter-delay-3 min-h-[560px]">
+        <section className="classic-result-panel panel-card enter-up enter-delay-3 min-h-[560px]">
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="field-label mb-0">生成结果</span>
             {lastSubmissionId && (

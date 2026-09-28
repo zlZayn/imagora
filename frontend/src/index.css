@@ -8,9 +8,273 @@
 }
 
 body {
-  background-color: #f7f7f5;
-  color: #262626;
+  background:
+    radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--color-brand) 8%, transparent), transparent 30rem),
+    radial-gradient(circle at 88% 0%, rgba(24, 37, 56, 0.045), transparent 26rem),
+    #f4f2ee;
+  color: #17202b;
+  font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+  letter-spacing: -0.01em;
 }
+
+/* Imagora Studio visual layer: a quiet editorial shell around the existing workflow. */
+.studio-header {
+  position: relative;
+  min-height: 54px;
+  padding: 10px 14px 11px;
+  border: 1px solid rgba(31, 41, 55, 0.08) !important;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 34px rgba(28, 34, 43, 0.06), inset 0 1px rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+}
+.studio-header::after {
+  content: "IMAGE WORKSPACE  /  CREATE WITH INTENT";
+  position: absolute;
+  right: 14px;
+  bottom: -18px;
+  color: rgba(23, 32, 43, 0.34);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+.studio-header .brand-swing { padding-left: 2px; }
+.studio-header .brand-swing__face h1 { font-size: 1.12rem; letter-spacing: -0.035em; }
+.studio-header .rounded-md { border: 1px solid color-mix(in srgb, var(--color-brand) 18%, transparent); }
+.studio-header > .text-muted { color: rgba(23, 32, 43, 0.48); letter-spacing: 0.01em; }
+
+.studio-toolbar {
+  padding: 9px 10px;
+  border: 1px solid rgba(31, 41, 55, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 6px 20px rgba(31, 41, 55, 0.045);
+  backdrop-filter: blur(12px);
+}
+.studio-toolbar > div:first-child {
+  padding-right: 10px;
+  border-right: 1px solid rgba(31, 41, 55, 0.09);
+}
+.studio-toolbar .btn-ghost { color: rgba(23, 32, 43, 0.72); }
+.studio-toolbar .btn-ghost:hover:not(:disabled) { color: #fff; }
+.studio-help {
+  margin: 0 4px;
+  min-height: 20px;
+  color: rgba(23, 32, 43, 0.43) !important;
+  letter-spacing: 0.01em;
+}
+.studio-help .font-medium { color: rgba(23, 32, 43, 0.66) !important; letter-spacing: 0.08em; }
+.studio-canvas {
+  border-color: rgba(31, 41, 55, 0.12) !important;
+  border-radius: 18px !important;
+  background: rgba(252, 252, 250, 0.72) !important;
+  box-shadow: 0 18px 45px rgba(31, 41, 55, 0.09), inset 0 1px rgba(255, 255, 255, 0.9) !important;
+}
+.studio-canvas .react-flow__renderer {
+  background: radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.72), transparent 48%);
+}
+.studio-canvas .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid rgba(31, 41, 55, 0.13);
+  border-radius: 11px;
+  box-shadow: 0 7px 18px rgba(31, 41, 55, 0.08);
+}
+.studio-canvas .react-flow__controls-button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.84);
+  color: #52606f;
+}
+.studio-canvas .react-flow__controls-button:hover { background: color-mix(in srgb, var(--color-brand) 10%, white); color: var(--color-brand); }
+
+/* Slightly more material controls across the classic form. */
+.panel-card { border-radius: 18px; }
+.field-control { border-color: rgba(31, 41, 55, 0.14); background: rgba(255, 255, 255, 0.78); }
+.field-control:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand) 13%, transparent); }
+.btn-primary { border-radius: 11px; box-shadow: 0 8px 18px color-mix(in srgb, var(--color-brand) 18%, transparent); }
+.btn-ghost { border-radius: 10px; }
+
+/* D direction across the full product: light creative surface, dark inspector accents. */
+.imagora-app { min-height: 100vh; }
+.classic-main { align-items: stretch; }
+.classic-input-column { min-width: 0; }
+.classic-input-column .panel-card { background: rgba(255,255,255,.7); }
+.classic-input-column .panel-card:first-child {
+  padding: 20px;
+  background: linear-gradient(145deg, rgba(255,255,255,.88), rgba(245,243,238,.74));
+}
+.classic-input-column .panel-card:first-child .field-label::before {
+  content: "01";
+  margin-right: 9px;
+  color: var(--color-brand);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+.classic-input-column .panel-card:nth-child(2) .field-label::before {
+  content: "02";
+  margin-right: 9px;
+  color: var(--color-brand);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+.classic-input-column .panel-card:nth-child(3) .field-label::before {
+  content: "03";
+  margin-right: 9px;
+  color: var(--color-brand);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+.classic-result-panel {
+  min-height: 620px;
+  background: #20262c !important;
+  border-color: rgba(255,255,255,.08) !important;
+  color: #edf1f2;
+  box-shadow: 0 18px 48px rgba(24,29,34,.18) !important;
+}
+.classic-result-panel > div:first-child { color: #f2f5f5; }
+.classic-result-panel .btn-ghost { color: #d6dfdf; }
+.classic-result-panel .btn-ghost:hover:not(:disabled) { color: #20262c; }
+.classic-result-panel .result-gallery { gap: 14px; }
+.classic-result-panel .result-gallery > a { background: #2a3238; border-radius: 12px; padding: 7px; }
+.classic-result-panel .result-gallery p { color: rgba(237,241,242,.58); }
+.classic-result-panel .text-neutral-400 { color: rgba(237,241,242,.58) !important; }
+.classic-result-panel .text-neutral-500 { color: rgba(237,241,242,.72) !important; }
+.classic-result-panel .text-neutral-700 { color: #edf1f2 !important; }
+.classic-result-panel .log-box { background: rgba(0,0,0,.2); border: 1px solid rgba(255,255,255,.08); }
+.classic-result-panel .result-gallery + * { color: rgba(237,241,242,.65); }
+.health-alert { border-radius: 12px; box-shadow: 0 6px 16px rgba(160,110,20,.08); }
+
+/* Dark inspector strip used by both canvas selection and parameter surfaces. */
+.studio-inspector {
+  border-color: rgba(255,255,255,.12) !important;
+  background: rgba(29,36,42,.9) !important;
+  box-shadow: 0 12px 26px rgba(20,25,30,.18) !important;
+}
+.studio-inspector .btn-ghost { color: #d7e0e1; }
+.studio-inspector .btn-ghost:hover:not(:disabled) { color: #20262c; }
+.studio-canvas .node-pop {
+  border-color: rgba(32,43,51,.13) !important;
+  background: rgba(255,255,255,.88) !important;
+  box-shadow: 0 12px 26px rgba(33,44,53,.12), inset 0 1px rgba(255,255,255,.9) !important;
+}
+.studio-canvas .node-pop.node-selected {
+  border-color: var(--color-brand) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 16%, transparent), 0 14px 30px rgba(33,44,53,.16) !important;
+}
+.studio-canvas .node-pop .field-control { background: rgba(247,249,249,.9); }
+.studio-canvas .react-flow__edge-path { stroke: #7c8994; stroke-width: 1.5; }
+.studio-canvas .react-flow__edge.selected .react-flow__edge-path { stroke: var(--color-brand); stroke-width: 2.5; }
+.studio-canvas .react-flow__handle { box-shadow: 0 0 0 3px rgba(255,255,255,.85); }
+
+/* Gallery, history and modal surfaces share the same product language. */
+.studio-modal-overlay { background: rgba(20,26,31,.62) !important; backdrop-filter: blur(8px); }
+.studio-modal { border: 1px solid rgba(255,255,255,.65); border-radius: 16px !important; background: rgba(251,251,248,.96) !important; box-shadow: 0 24px 70px rgba(15,20,25,.26) !important; }
+.imagora-app input::placeholder, .imagora-app textarea::placeholder { color: rgba(74,84,93,.52); }
+
+@media (max-width: 900px) {
+  .imagora-app { padding-inline: 14px; }
+  .classic-main { grid-template-columns: 1fr !important; }
+  .classic-result-panel { min-height: 480px; }
+  .studio-header::after { display: none; }
+}
+
+/* Page-specific expressions: one system, three moods. */
+.classic-result-panel {
+  background: linear-gradient(160deg, #fbfaf7 0%, #f1eee8 100%) !important;
+  border-color: rgba(31,41,55,.12) !important;
+  color: #17202b;
+  box-shadow: 0 18px 45px rgba(31,41,55,.09) !important;
+}
+.classic-result-panel::before {
+  content: "OUTPUT / CONTACT SHEET";
+  display: block;
+  margin: -2px 0 14px;
+  color: rgba(23,32,43,.35);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .16em;
+}
+.classic-result-panel > div:first-child { color: #17202b; }
+.classic-result-panel .btn-ghost { color: var(--color-brand); }
+.classic-result-panel .btn-ghost:hover:not(:disabled) { color: #fff; }
+.classic-result-panel .result-gallery > a { background: rgba(255,255,255,.72); border-color: rgba(31,41,55,.12); }
+.classic-result-panel .result-gallery p,
+.classic-result-panel .text-neutral-400 { color: rgba(23,32,43,.5) !important; }
+.classic-result-panel .text-neutral-500 { color: rgba(23,32,43,.66) !important; }
+.classic-result-panel .text-neutral-700 { color: #17202b !important; }
+.classic-result-panel .log-box { background: rgba(23,32,43,.045); border-color: rgba(23,32,43,.08); }
+
+.history-overlay { background: rgba(30,30,28,.48) !important; backdrop-filter: blur(6px); }
+.history-modal { border: 1px solid rgba(31,41,55,.12); border-radius: 18px !important; background: #f4f1eb !important; box-shadow: 0 24px 70px rgba(25,25,22,.22) !important; }
+.history-modal > header { background: rgba(255,255,255,.72); border-color: rgba(31,41,55,.1); }
+.history-modal ul > li { border-color: rgba(31,41,55,.11); background: rgba(255,255,255,.72); transition: transform .2s ease, box-shadow .2s ease; }
+.history-modal ul > li:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(31,41,55,.08); }
+
+@media (max-width: 640px) {
+  .history-modal ul { grid-template-columns: 1fr !important; }
+  .history-modal { height: 92vh; }
+}
+
+/* Classic form: editorial control room, with a single obvious starting action. */
+.mode-switch { background: rgba(255,255,255,.62); border-color: rgba(31,41,55,.12) !important; }
+.mode-switch__item { min-height: 28px; color: rgba(23,32,43,.54); }
+.mode-switch__item[aria-current="true"],
+.mode-switch__item.bg-brand\/10 { background: var(--color-brand) !important; color: #fff !important; }
+.classic-main { gap: 24px !important; }
+.classic-input-column { position: relative; }
+.classic-input-column::before {
+  content: "CREATE / IMAGE STUDY";
+  display: block;
+  margin: 0 0 9px 3px;
+  color: rgba(23,32,43,.38);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .16em;
+}
+.classic-input-column .panel-card { border-radius: 15px; }
+.classic-input-column .panel-card:first-child textarea { min-height: 148px; padding: 15px; font-size: 14px; line-height: 1.7; }
+.classic-input-column .panel-card:first-child .field-label { font-size: 13px; letter-spacing: .02em; }
+.classic-input-column .panel-card:nth-child(2) { padding-top: 15px; padding-bottom: 15px; }
+.classic-input-column .panel-card:nth-child(3) { padding-top: 17px; }
+.classic-input-column .panel-card:nth-child(3) .btn-primary { min-height: 46px; font-size: 14px; letter-spacing: .02em; }
+.classic-result-panel { position: relative; overflow: hidden; }
+.classic-result-panel::after {
+  content: "";
+  position: absolute;
+  top: -90px;
+  right: -90px;
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-brand) 9%, transparent);
+  pointer-events: none;
+}
+
+/* Canvas: keep the center open and let the inspector feel like a tool, not a card pile. */
+.studio-canvas { isolation: isolate; }
+.studio-canvas .react-flow__background pattern circle { fill: rgba(89,104,116,.28); }
+.studio-canvas .react-flow__pane { background: transparent; }
+.studio-inspector { max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none; }
+.studio-inspector::-webkit-scrollbar { display: none; }
+
+/* History: archive mood, with denser rows and quiet controls. */
+.history-modal h2 { font-size: 16px; letter-spacing: -.025em; }
+.history-modal [data-testid="history-list"] { scrollbar-color: rgba(23,32,43,.18) transparent; }
+.history-modal [data-testid="history-list"] ul > li { border-radius: 12px; }
+.history-modal .field-control { border-radius: 9px; }
+.history-modal .btn-ghost { border-radius: 8px; }
+.api-settings-trigger.is-active { color: var(--color-brand); background: color-mix(in srgb, var(--color-brand) 9%, transparent); }
+.api-settings-trigger.is-active:hover:not(:disabled),
+.api-settings-trigger.is-active:focus-visible { color: #fff !important; }
+.api-local-badge { border: 1px solid rgba(23,32,43,.12); border-radius: 6px; padding: 3px 7px; color: rgba(23,32,43,.5); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 9px; letter-spacing: .08em; }
+.api-settings-modal { color: #17202b; }
+.api-settings-modal .field-control { background: rgba(255,255,255,.86); }
 
 /* ============ 公共组件类：表单 / 按钮 / 卡片 统一 ============ */
 @layer components {
@@ -147,6 +411,12 @@ body {
   }
   .btn-ghost:disabled {
     @apply cursor-not-allowed opacity-50;
+  }
+
+  /* 个人 API 启用态沿用次要按钮的 hover 反白，避免深色填充后文字失去对比度 */
+  .api-settings-trigger.is-active:hover:not(:disabled),
+  .api-settings-trigger.is-active:focus-visible {
+    color: #fff;
   }
 
   /* 危险修饰：文字与涟漪同为红色（配合 btn-ghost 使用） */

@@ -12,9 +12,9 @@ export interface WorkflowEntry {
 /** 遮罩层基座：点击外部关闭 */
 function ModalOverlay({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="studio-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="w-[26rem] max-w-[92vw] rounded-lg bg-white p-4 shadow-2xl"
+        className="studio-modal w-[26rem] max-w-[92vw] rounded-lg bg-white p-4 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {children}

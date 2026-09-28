@@ -7,8 +7,53 @@ import type {
   RefItem,
   WorkflowEdge,
   WorkflowNode,
+  PersonalApiSettings,
+  PersonalApiPreset,
 } from "./types";
-import { isAppConfig, isHistoryResponse, type HistoryResponse, type Validator } from "./api-guards";
+
+const PERSONAL_API_STORAGE_KEY = "imagora.personal-api.v1";
+const PERSONAL_API_PRESETS_STORAGE_KEY = "imagora.personal-api.presets.v1";
+
+export function readPersonalApiSettings(): PersonalApiSettings | null {
+  try {
+    const raw = localStorage.getItem(PERSONAL_API_STORAGE_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof value.baseUrl !== "string" || typeof value.apiKey !== "string") return null;
+    return {
+      baseUrl: value.baseUrl,
+      apiKey: value.apiKey,
+      model: typeof value.model === "string" ? value.model : "",
+        apiPath: typeof value.apiPath === "string"
+          ? value.apiPath
+          : (typeof value.generationsPath === "string" ? value.generationsPath : "/v1/images/generations"),
+    };
+  } catch { return null; }
+}
+
+export function savePersonalApiSettings(settings: PersonalApiSettings | null): void {
+  if (!settings?.baseUrl || !settings.apiKey) localStorage.removeItem(PERSONAL_API_STORAGE_KEY);
+  else localStorage.setItem(PERSONAL_API_STORAGE_KEY, JSON.stringify(settings));
+}
+
+export function readPersonalApiPresets(): PersonalApiPreset[] {
+  try {
+    const raw = localStorage.getItem(PERSONAL_API_PRESETS_STORAGE_KEY);
+    if (!raw) return [];
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is PersonalApiPreset =>
+      item && typeof item.id === "string" && typeof item.name === "string"
+      && item.settings && typeof item.settings.baseUrl === "string"
+      && typeof item.settings.apiKey === "string"
+      && typeof item.settings.apiPath === "string",
+    );
+  } catch { return []; }
+}
+
+export function savePersonalApiPresets(presets: PersonalApiPreset[]): void {
+  localStorage.setItem(PERSONAL_API_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+}
 /** 从错误响应体里取可读原因：FastAPI 的 detail（字符串或 {reason}）优先，非 JSON 原样截断 */
 function errorDetail(text: string): string {
   try {
@@ -34,10 +79,8 @@ export function isHttpError(error: unknown): error is HttpError {
   return error instanceof Error && "status" in error && typeof error.status === "number";
 }
 
-/** 通用 JSON 请求，非 2xx 抛 HttpError（带 status，供调用方区分 409 超预算等分支）。
- *  可选 `validate`：给了就在 api 边界校验响应形状，形状不符立刻抛错（错误信息带端点路径），
- *  避免坏数据流到渲染层才炸；没给的端点行为与以往逐字一致。 */
-async function requestJson<T>(url: string, init?: RequestInit, validate?: Validator<T>): Promise<T> {
+/** 通用 JSON 请求，非 2xx 抛 HttpError（带 status，供调用方区分 409 超预算等分支） */
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
     const detail = await res.text();
@@ -45,20 +88,14 @@ async function requestJson<T>(url: string, init?: RequestInit, validate?: Valida
       status: res.status,
     });
   }
-  const payload: unknown = await res.json();
-  if (validate) {
-    if (!validate(payload)) throw new Error(`响应形状不符合预期: ${url}`);
-    return payload;
-  }
-  // 未接校验的端点：维持原断言（逐端点在后续刀接入，见 api-guards.ts 的落地范围）
-  return payload as T;
+  return res.json() as Promise<T>;
 }
 
 /** 获取应用初始化配置（尺寸/质量/默认输出路径/窗口编号）
  *  传 win 表示沿用已有窗口编号（URL ?win= 或 window.name 记忆），否则由服务端分配 */
 export function getConfig(win?: number): Promise<AppConfig> {
   const query = win ? `?win=${win}` : "";
-  return requestJson(`/api/config${query}`, undefined, isAppConfig);
+  return requestJson<AppConfig>(`/api/config${query}`);
 }
 
 export function getHealthDetails(): Promise<{
@@ -134,6 +171,13 @@ export async function submitGenerate(
   formData.append("quality", params.quality);
   formData.append("output_dir", params.outputDir);
   formData.append("win", String(params.win)); // 与后端 Form 参数名一致，日志按窗口溯源
+  const personal = readPersonalApiSettings();
+  if (personal) {
+    formData.append("api_base_url", personal.baseUrl);
+    formData.append("api_key", personal.apiKey);
+    if (personal.model) formData.append("api_model", personal.model);
+    formData.append("api_path", personal.apiPath);
+  }
   if (params.allowOverBudget) {
     // 预算预检已确认：超限才放行（见 core/cost.py check_budget 与 /api/budget/check）
     formData.append("allow_over_budget", "true");
@@ -284,13 +328,13 @@ export async function generationHistory(params: {
   offset?: number;
   query?: string;
   status?: string;
-} = {}): Promise<HistoryResponse> {
+} = {}): Promise<{ items: GenerationHistoryItem[]; hasMore: boolean }> {
   const query = new URLSearchParams();
   query.set("limit", String(params.limit ?? 60));
   if (params.offset) query.set("offset", String(params.offset));
   if (params.query) query.set("query", params.query);
   if (params.status) query.set("status", params.status);
-  return requestJson(`/api/history?${query.toString()}`, undefined, isHistoryResponse);
+  return requestJson(`/api/history?${query.toString()}`);
 }
 
 export async function importHistoryAsset(path: string): Promise<{

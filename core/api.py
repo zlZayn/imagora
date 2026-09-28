@@ -6,7 +6,6 @@
   resolve_size_with_ratio()   尺寸解析（--size 与 --ratio 二选一）
   build_default_output_path() 默认输出路径（当前目录下 output/）
 """
-
 import base64
 import contextlib
 import itertools
@@ -46,9 +45,7 @@ def resolve_size_with_ratio(size, ratio, tier):
             raise ValueError(f"不支持比例 {ratio}，可用: {', '.join(RATIOS)}")
         tiers = RATIOS[ratio]
         if tier not in tiers:
-            raise ValueError(
-                f"比例 {ratio} 没有 {tier} 档，可用档位: {', '.join(tiers)}"
-            )
+            raise ValueError(f"比例 {ratio} 没有 {tier} 档，可用档位: {', '.join(tiers)}")
         return tiers[tier]
     return size or DEFAULT_SIZE
 
@@ -58,18 +55,11 @@ def build_default_output_path(output_path, output_format):
     if output_path:
         return output_path
     seq = next(_SEQ)
-    return str(
-        Path(DEFAULT_OUTPUT_DIR)
-        / f"ai_{time.strftime('%Y%m%d_%H%M%S')}_{seq:03d}.{output_format}"
-    )
+    return str(Path(DEFAULT_OUTPUT_DIR) / f"ai_{time.strftime('%Y%m%d_%H%M%S')}_{seq:03d}.{output_format}")
 
 
-def write_file_with_retry(
-    output_path: str,
-    data: bytes,
-    attempts: int = 3,
-    backoff: tuple[float, ...] = (0.3, 0.8, 1.5),
-) -> None:
+def write_file_with_retry(output_path: str, data: bytes, attempts: int = 3,
+                          backoff: tuple[float, ...] = (0.3, 0.8, 1.5)) -> None:
     """写文件带瞬时锁重试（Windows 实况补丁）。
 
     背景：杀软（Defender/火绒等）或云同步（OneDrive 桌面备份）实时扫描刚落盘的
@@ -93,17 +83,10 @@ def write_file_with_retry(
             time.sleep(backoff[min(attempt, len(backoff) - 1)])
 
 
-def generate_image(
-    prompt,
-    image_path=None,
-    images=None,
-    size=DEFAULT_SIZE,
-    quality=DEFAULT_QUALITY,
-    model=DEFAULT_MODEL,
-    n=1,
-    output_format="png",
-    output_path=None,
-):
+def generate_image(prompt, image_path=None, images=None, size=DEFAULT_SIZE,
+                   quality=DEFAULT_QUALITY, model=DEFAULT_MODEL, n=1,
+                   output_format="png", output_path=None, api_base_url=None,
+                   api_key=None, generations_path=None, edits_path=None):
     """文生图 / 图生图。
 
     - 传 image_path（单张）或 images（多张参考图）：走 edits 接口
@@ -121,7 +104,8 @@ def generate_image(
         output_format: png / jpg / webp
         output_path: 保存路径（None 时自动生成）
     """
-    headers = {"Authorization": f"Bearer {get_api_key()}"}
+    base_url = (api_base_url or BASE_URL).rstrip("/")
+    headers = {"Authorization": f"Bearer {api_key or get_api_key()}"}
     payload = {
         "model": model,
         "prompt": prompt,
@@ -135,25 +119,21 @@ def generate_image(
     image_paths = images if images else ([image_path] if image_path else [])
     if image_paths:
         # 图生图：一张或多张参考图，一次请求提交（ExitStack 保证任一打开失败时已开的也关闭）
-        url = f"{BASE_URL}{API_PATHS['edits']}"
+        url = f"{base_url}{edits_path or API_PATHS['edits']}"
         with contextlib.ExitStack() as stack:
             opened = [stack.enter_context(open(p, "rb")) for p in image_paths]
             files = [
                 ("image", (os.path.basename(p), f, "application/octet-stream"))
                 for p, f in zip(image_paths, opened)
             ]
-            response = requests.post(
-                url, headers=headers, files=files, data=payload, timeout=300
-            )
+            response = requests.post(url, headers=headers, files=files, data=payload, timeout=300)
     else:
         # 文生图
-        url = f"{BASE_URL}{API_PATHS['generations']}"
+        url = f"{base_url}{generations_path or API_PATHS['generations']}"
         response = requests.post(url, headers=headers, json=payload, timeout=300)
 
     if response.status_code != 200:
-        raise RuntimeError(
-            f"接口请求失败（HTTP {response.status_code}）：{response.text[:200]}"
-        )
+        raise RuntimeError(f"接口请求失败（HTTP {response.status_code}）：{response.text[:200]}")
 
     item = response.json()["data"][0]
     if "b64_json" in item:

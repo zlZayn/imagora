@@ -88,6 +88,20 @@ export interface GenerateParams {
   allowOverBudget?: boolean;
 }
 
+/** 当前浏览器窗口的个人兼容 API 配置（仅存本机 localStorage）。 */
+export interface PersonalApiSettings {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  apiPath: string;
+}
+
+export interface PersonalApiPreset {
+  id: string;
+  name: string;
+  settings: PersonalApiSettings;
+}
+
 /** 画布图片注册表条目（/api/canvas/* 返回；registry entry + absPath/url 供生成引用与显示） */
 export interface AssetEntry {
   id: string;

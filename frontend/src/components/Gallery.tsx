@@ -67,7 +67,7 @@ export function Gallery({ items }: GalleryProps) {
 
   return (
     <>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] items-start gap-3">
+      <div className="result-gallery grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] items-start gap-3">
         {images.map((item, i) => (
           <a
             key={`${item.url}-${i}`}
