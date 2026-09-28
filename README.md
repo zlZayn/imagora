@@ -90,7 +90,7 @@ cd Imagora/frontend; npm run dev             # 前端开发模式（热更新，
 | `uv run python -m main batch --config <目录>\batch_prompts.json --dry-run` | 批量（预览不花钱） |
 | `uv run python -m main config` | 查看当前 profile 支持的尺寸 / 比例 / 质量 |
 
-测试、lint、E2E 等开发命令见 [AGENTS.md](AGENTS.md)「常用命令（后端）」与 [frontend/README.md](frontend/README.md)。
+测试、lint、E2E 等开发命令见 [AGENTS.md](AGENTS.md)「常用命令」与「构建时机」。
 
 ## 命令行（CLI）
 
