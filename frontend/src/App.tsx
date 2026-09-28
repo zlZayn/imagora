@@ -367,34 +367,7 @@ function PersonalApiModal({
   );
 }
 
-/** 顶栏品牌区 3D 挤出参数（借 React Bits DepthText 手法）：
- *  logo 与标题各自正面/深度配色，越深的层越接近深度色（progress^2 缓动 + color-mix）；
- *  logo 正面跟随窗口主题色（var(--color-brand)），标题正面沿用 body 文字色，均不硬编码。 */
-const BRAND_LAYERS = 10; // 挤出层数（越小越省 DOM，也越浅）
-/* 层间距分两档：标题字面大，1.5px/层（10 层 ≈15px 厚度）撑得起立体感；
- * logo 图标线条细，同深度会被挤成"红块"（细节糊掉）——压到 0.4px/层（≈4px），
- * 靠层内反向 translateZ 补偿让两者在同一层里各走各的深度（见下方 svg 的 transform）。 */
-const TEXT_Z_STEP = 1.5;
-const LOGO_Z_STEP = 0.4;
-const LOGO_FACE = "var(--color-brand)"; // logo 正面基准色（跟随窗口主题色）
-const LOGO_DEPTH = "var(--color-brand-dark)"; // logo 挤出深色（主题色加深）
-const TEXT_FACE = "#262626"; // 标题正面基准色（与 body 文字色一致）
-const TEXT_DEPTH = "#000000"; // 标题挤出深色
-const LOGO_FACE_LIGHT = "color-mix(in srgb, var(--color-brand) 88%, white)"; // logo 正面浅色（比挤出层起点亮一档，叠加深浅层次；侧面渐变不变）
-const TEXT_FACE_LIGHT = "color-mix(in srgb, #262626 88%, white)"; // 标题正面浅色
-
-/** DepthText 同款分层取色：index 1…BRAND_LAYERS，层越靠前越接近正面色 */
-function brandLayerColor(face: string, depth: string, index: number): string {
-  const progress = index / BRAND_LAYERS;
-  const eased = progress * progress;
-  const faceMix = Math.round((1 - eased) * 72 + 4);
-  return `color-mix(in srgb, ${face} ${faceMix}%, ${depth})`;
-}
-
-/** 挤出层索引：1（最前）…BRAND_LAYERS（最后，translateZ 最负 = 最深） */
-const brandLayers = Array.from({ length: BRAND_LAYERS }, (_, li) => BRAND_LAYERS - li);
-
-/** 品牌 logo 路径（与 favicon 同一图形，抽出便于多层复用） */
+/** 品牌图形与 favicon 同源；顶栏只渲染一层，避免文字在透视下重影。 */
 const BRAND_LOGO_PATH = "M755.242667 396.224L643.84 168.32l-0.064-0.106667Q634.176 149.333333 612.373333 149.333333t-31.424 18.901334l-0.917333 1.813333v0.213333l-124.906667 255.488-0.064 0.128q-2.709333 6.037333 1.045334 11.52 3.541333 5.205333 9.92 5.290667h45.802666q8.682667 0.042667 12.501334-7.658667l88.106666-180.330666 60.906667 124.714666H597.76q-8.832-0.085333-12.586667 7.829334l-18.709333 38.506666-0.042667 0.128q-2.709333 6.037333 1.024 11.52 3.562667 5.205333 9.92 5.290667h146.389334q18.453333 0.405333 28.8-14.549333 10.581333-15.253333 2.688-31.914667z m-2.922667-237.44l-0.725333-1.557333q-3.776-7.872-12.565334-7.872h-21.290666l0.021333 0.021333h-24.085333q-6.506667 0.042667-10.069334 5.333333-3.754667 5.568-0.917333 11.648l130.474667 274.709334q3.754667 7.850667 12.565333 7.850666h45.376q6.357333 0.064 10.005333-5.184 3.818667-5.546667 1.024-11.626666l-0.064-0.106667-126.101333-265.557333-3.626667-7.658667zM471.466667 247.402667l3.626666-0.170667 0.213334-0.021333q15.808-1.557333 26.24-13.034667 10.56-11.690667 9.728-27.136-0.853333-15.402667-12.586667-25.962667Q487.125333 170.666667 471.253333 170.666667H208.106667l-4.778667 0.128h-0.128q-35.114667 1.877333-59.328 26.090666Q119.466667 221.290667 119.466667 254.954667v573.952l0.128 4.544v0.149333q2.026667 33.578667 27.84 56.618667Q173.034667 913.066667 208.213333 913.066667h607.701334l4.757333-0.128h0.128q35.114667-1.877333 59.328-26.090667 24.405333-24.405333 24.405333-58.069333V501.12l-0.213333-3.52v-0.234667q-1.706667-15.338667-13.994667-25.28-12.117333-9.792-27.946666-9.024-15.872 0.768-26.88 11.712-10.346667 10.261333-11.157334 24.234667l-4.757333 4.970667q-70.741333 72.768-140.992 116.053333-60.394667 37.226667-91.925333 37.226667-30.442667 0-69.717334-27.477334l-5.802666-4.096-0.106667 0.128q-1.066667-1.024-2.474667-2.048l-6.613333-4.864q-10.24-7.488-15.701333-11.392l-9.024-6.186666-0.085334-0.064q-14.72-9.621333-27.605333-14.890667-18.773333-7.722667-37.248-7.722667-52.992 0-212.565333 110.336V255.232l0.106666-1.514667q1.066667-6.314667 8.362667-6.314666H471.466667z m-129.493334 441.514666l0.021334-0.021333 5.717333-3.349333q51.733333-30.08 64.426667-30.272 3.178667 0.170667 6.058666 1.493333l0.213334 0.085333 4.565333 1.770667q3.093333 1.344 5.909333 3.456l41.984 30.165333Q530.56 733.866667 586.666667 733.866667q95.338667 0 237.610666-126.890667v221.504l-0.106666 1.514667q-1.066667 6.314667-8.362667 6.314666H208.426667l-1.706667-0.106666q-7.04-1.024-7.018667-7.445334v-44.821333q86.613333-62.08 142.250667-95.04z";
 
 /** 顶部标题区：logo + 标题 + 窗口徽章 + 配置徽章（当前 profile·模型，确认切换中转站生效）+ 模式切换 + 新窗口按钮 */
@@ -419,85 +392,8 @@ function TitleBar({
   onOpenApi: () => void;
   personalApi: PersonalApiSettings | null;
 }) {
-  /** 品牌区（logo + 标题整体）3D 指针跟随：借 React Bits DepthText 手法——
-   *  10 层挤出堆叠（见 BRAND_LAYERS / TEXT_Z_STEP + .brand-swing__layer 样式）常驻 DOM，
-   *  但平面态整层透明（is-tilting 才淡入，见 index.css）：透视会让后台层边缘露出约 1px，
-   *  正面浅色与挤出深色的反差会变成肉眼可见的重影。
-   *  鼠标接近时向光标方向倾斜，挤出厚度随摆动显现、移动时平滑跟随、离开回摆到位后撤掉类。
-   *  只在悬停期写 transform（不碰颜色/字号），纯 JS 驱动（不受全局 reduced-motion
-   *  的 CSS 动画降级规则影响——指针跟随属直接操作型动效，非周边自动动画）。 */
+  /** 品牌区使用单层 Logo，悬停只改变高光与阴影，避免透视挤出造成重影。 */
   const brandRootRef = useRef<HTMLAnchorElement | null>(null);
-  const brandStageRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const root = brandRootRef.current;
-    const stage = brandStageRef.current;
-    if (!root || !stage || typeof window === "undefined") return;
-    // 触屏 / 无 hover 设备不启用（DepthText 同款限制）
-    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
-
-    const TILT = 11;
-    const SMOOTHING = 0.14;
-    const clamp = (v: number) => Math.max(-1, Math.min(1, v));
-
-    let raf = 0;
-    let hovering = false;
-    // 默认平面：0 偏移；仅悬停期写入倾角，离开回摆到 0（3D 只在鼠标靠近时出现）
-    const current = { x: 0, y: 0 };
-    const target = { x: 0, y: 0 };
-
-    const apply = () => {
-      stage.style.transform = `rotateX(${current.x.toFixed(3)}deg) rotateY(${current.y.toFixed(3)}deg)`;
-    };
-    const tick = () => {
-      current.x += (target.x - current.x) * SMOOTHING;
-      current.y += (target.y - current.y) * SMOOTHING;
-      apply();
-      // 已回到静止位且不在悬停：撤掉 is-tilting（挤出层淡出、平面态零重影）并停循环（省电）
-      if (!hovering && Math.abs(current.x - target.x) < 0.01 && Math.abs(current.y - target.y) < 0.01) {
-        stage.classList.remove("is-tilting");
-        raf = 0;
-        return;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    const ensureLoop = () => {
-      if (!raf) raf = requestAnimationFrame(tick);
-    };
-
-    const onEnter = () => {
-      hovering = true;
-      stage.classList.add("is-tilting");
-      ensureLoop();
-    };
-    const onMove = (e: PointerEvent) => {
-      const r = root.getBoundingClientRect();
-      if (!r.width || !r.height) return;
-      // 与 DepthText 同款归一：光标相对中心越偏，倾角越大
-      const nx = (e.clientX - (r.left + r.width / 2)) / (r.width * 0.7);
-      const ny = (e.clientY - (r.top + r.height / 2)) / (r.height * 0.7);
-      target.y = clamp(nx) * TILT;
-      target.x = -clamp(ny) * TILT;
-    };
-    const onLeave = () => {
-      hovering = false;
-      target.x = 0;
-      target.y = 0;
-      ensureLoop();
-    };
-
-    root.addEventListener("pointerenter", onEnter);
-    root.addEventListener("pointermove", onMove);
-    root.addEventListener("pointerleave", onLeave);
-    return () => {
-      root.removeEventListener("pointerenter", onEnter);
-      root.removeEventListener("pointermove", onMove);
-      root.removeEventListener("pointerleave", onLeave);
-      cancelAnimationFrame(raf);
-      stage.style.transform = "";
-      stage.classList.remove("is-tilting");
-    };
-  }, []);
 
   return (
     <header className="studio-header enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -509,51 +405,17 @@ function TitleBar({
         className="brand-swing"
         title="打开远程仓库（GitHub）"
       >
-        <div ref={brandStageRef} className="brand-swing__stage">
-          {brandLayers.map((index) => (
-            <span
-              key={index}
-              className="brand-swing__layer"
-              style={{ transform: `translateZ(${-index * TEXT_Z_STEP}px)` }}
-            >
-              <svg
-                width="30"
-                height="30"
-                viewBox="0 0 1024 1024"
-                aria-hidden="true"
-                style={{
-                  fill: brandLayerColor(LOGO_FACE, LOGO_DEPTH, index),
-                  /* 反向补偿：抵消标题那档深度差 → 图标只按 LOGO_Z_STEP 后退，细节不被挤糊 */
-                  transform: `translateZ(${index * (TEXT_Z_STEP - LOGO_Z_STEP)}px)`,
-                }}
-              >
-                <path d={BRAND_LOGO_PATH} />
-              </svg>
-              <h1 className="text-lg font-semibold tracking-wide" style={{ color: brandLayerColor(TEXT_FACE, TEXT_DEPTH, index) }}>
-                Imagora
-              </h1>
-            </span>
-          ))}
-          <span className="brand-swing__face">
-            <svg
-              width="30"
-              height="30"
-              viewBox="0 0 1024 1024"
-              fill={LOGO_FACE_LIGHT}
-              aria-hidden="true"
-            >
-              <path d={BRAND_LOGO_PATH} />
-            </svg>
-            <h1 className="text-lg font-semibold tracking-wide" style={{ color: TEXT_FACE_LIGHT }}>
-              Imagora
-            </h1>
-          </span>
-        </div>
+        <span className="brand-swing__face">
+          <svg width="30" height="30" viewBox="0 0 1024 1024" fill="var(--color-brand)" aria-hidden="true">
+            <path d={BRAND_LOGO_PATH} />
+          </svg>
+          <h1 className="text-lg font-semibold tracking-wide">Imagora</h1>
+        </span>
       </a>
-      {windowId !== null && <span className="chip chip--brand">窗口 #{windowId}</span>}
+      {windowId !== null && <span className="chip chip--brand window-chip">⌘{String(windowId).padStart(2, "0")}</span>}
       {activeProfile && (
         <span
-          className="chip chip--quiet"
+          className="chip chip--quiet profile-chip"
           title={`当前配置：profile「${activeProfile}」${defaultModel ? ` · 默认模型 ${defaultModel}` : ""}`}
         >
           {activeProfile}
@@ -905,15 +767,11 @@ useEffect(() => {
             : "classic-main grid grid-cols-[6fr_4fr] items-start gap-5"
         }
       >
-        {/* 左栏：输入面板。两个水印都长在卡片内（左上分区词 + 右上编号，同一个裁切层）——
-            这样它们随卡片动画一起进退，且始终在内容层之下，不会叠到输入框上。 */}
+        {/* 左栏：输入面板。卡片保留简洁的中文标题与右上步骤编号。 */}
         <section className="classic-input-column">
           <div className="space-y-4">
             <div className="panel-card corner-deco enter-up space-y-3">
-              <span className="corner-deco__clip" aria-hidden="true">
-                <span className="corner-deco__tag">Input</span>
-                <span className="corner-deco__step">1</span>
-              </span>
+              <span className="corner-deco__clip" aria-hidden="true"><span className="corner-deco__step">1</span></span>
               <label className="field-label" htmlFor="prompt">
                 提示词
               </label>
@@ -995,12 +853,9 @@ useEffect(() => {
           </div>
         </section>
 
-        {/* 右栏：结果画廊（分区词 + 弧环都长在面板内，与左栏同一套角落装饰） */}
+        {/* 右栏：结果画廊，保留轻量角落装饰。 */}
         <section className="classic-output-column">
           <section className="classic-result-panel corner-rings corner-deco panel-card enter-up enter-delay-3 min-h-[560px]">
-            <span className="corner-deco__clip" aria-hidden="true">
-              <span className="corner-deco__tag">Output</span>
-            </span>
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="field-label mb-0">生成结果</span>
               {lastSubmissionId && (

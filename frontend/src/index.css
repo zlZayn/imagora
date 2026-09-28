@@ -94,9 +94,7 @@ html {
  * （实测左栏比右栏低 3px）；块级后标签顶部即内容起点，跨栏自然对齐。 */
 .field-label { display: block; }
 
-/* —— 角落水印（左上分区词 + 右上编号）：共用一层裁切层 ——
- * 两个水印都故意压出容器边界，超出部分由裁切层截断（"从容器边缘切出来"的平面设计手法）。
- * 裁切层是独立覆盖层、不作用于容器自身——所以容器内的下拉 / 浮层不会被误裁。 */
+/* —— 角落编号：独立裁切层，不影响卡片内容和浮层 —— */
 .corner-deco { position: relative; }
 .corner-deco__clip {
   position: absolute;
@@ -106,21 +104,6 @@ html {
   border-radius: inherit;
   pointer-events: none;
   user-select: none;
-}
-/* 左上：分区词（INPUT / OUTPUT）——大号淡色 sans + 大字距 */
-.corner-deco__tag {
-  position: absolute;
-  top: -0.18em;   /* 顶部压出一点点，溢出处被裁掉 */
-  left: -0.06em;
-  /* 浓度取统一 token：水印只是背景底纹，不该压过正文 */
-  color: color-mix(in srgb, var(--color-brand) var(--mark-ink), transparent);
-  font-family: var(--font-display);
-  font-size: var(--tag-size);
-  font-weight: 800;
-  letter-spacing: 0.12em;   /* 字号变大后收紧字距，OUTPUT 才不会顶到容器右边界 */
-  line-height: 1;
-  text-transform: uppercase;
-  white-space: nowrap;
 }
 /* 右上：编号——顶部与右侧都压出边界 */
 .corner-deco__step {
@@ -194,6 +177,24 @@ html {
 .chip--brand { background: color-mix(in srgb, var(--color-brand) 12%, transparent); color: var(--color-brand); }
 .chip--danger { background: #dc2626; color: #fff; }
 .chip--quiet { background: rgba(31, 41, 55, 0.06); color: rgba(23, 32, 43, 0.62); }
+.window-chip,
+.profile-chip {
+  border: 1px solid color-mix(in srgb, var(--color-brand) 15%, rgba(255,255,255,.65));
+  background: color-mix(in srgb, var(--color-brand) 7%, rgba(255,255,255,.62));
+  box-shadow: inset 0 1px rgba(255,255,255,.8), 0 3px 12px rgba(35,42,50,.045);
+  backdrop-filter: blur(12px) saturate(125%);
+}
+.window-chip {
+  min-width: 42px;
+  padding-inline: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+.profile-chip {
+  color: color-mix(in srgb, var(--color-brand) 72%, #17202b);
+}
 
 /* Imagora Studio visual layer: a quiet editorial shell around the existing workflow. */
 .studio-header {
@@ -706,67 +707,35 @@ html {
   animation: pulse-glow 1.6s ease-in-out infinite;
 }
 
-/* ============ 顶栏品牌区 3D 挤出 + 指针跟随（logo + Imagora 标题整体） ============
- * 借 React Bits DepthText 的手法，颜色/字号等一概保持各自原始色：
- * .brand-swing（perspective 景深，同 .depth-text）→
- * .brand-swing__stage（preserve-3d 旋转层 + grid 叠层，同 .depth-text__stage）→
- *   .brand-swing__layer×N（translateZ 逐层后退的挤出体，颜色由 JS 逐层写入）+
- *   .brand-swing__face（z=0.6px 正面，logo=主题色 / 标题=body 文字色）。
- * 挤出层常驻 DOM，默认被正面层完全盖住（平面态）；stage 角度由 App.tsx 指针跟踪
- * 逻辑逐帧写入 transform：鼠标进入 → 向光标倾斜，挤出厚度随摆动显现，
- * 移动 → 平滑跟随，离开 → 回摆到平面（3D 只出现在鼠标靠近时）。
- * 属直接操作型动效（非周边自动动画），故不受系统「关闭动画效果」
- * （prefers-reduced-motion）影响。 */
+/* ============ 顶栏品牌区：单层 Logo + 轻量玻璃高光 ============
+ * Logo 只渲染一次，避免透视挤出在指针附近形成重影；悬停只提升亮度和阴影。 */
 .brand-swing {
   display: inline-flex;
   align-items: center;
-  perspective: 900px;
-  perspective-origin: 50% 48%;
   cursor: pointer;
+  border-radius: 12px;
+  transition: transform .28s cubic-bezier(.16,1,.3,1), filter .28s ease;
 }
-
-.brand-swing__stage {
-  position: relative;
-  display: inline-grid;
-  place-items: center;
-  transform-style: preserve-3d;
-  transform-origin: 50% 50%;
-  will-change: transform;
-}
-
-/* 挤出层 / 正面共用布局：grid 同格叠放 + 行内排列（logo 与标题横向 gap 不变） */
-.brand-swing__layer,
 .brand-swing__face {
-  grid-area: 1 / 1;
   display: inline-flex;
   align-items: center;
   gap: 0.75rem; /* 对应标题行原 gap-x-3 */
   white-space: nowrap;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
+  transition: filter .28s ease;
 }
-
-/* 挤出层：绝对定位铺满 stage，translateZ 越负越深；层数越多/越深颜色越接近深度色。
- * 平面态整体隐藏（opacity:0）：透视会让后台层边缘露出约 1px，而正面层是浅色、挤出层是深色，
- * 反差下就是肉眼可见的「重影」——只有指针悬停（stage 带 is-tilting）时才淡入参与摆动。 */
-.brand-swing__layer {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  filter: saturate(0.95) brightness(0.92);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s ease;
+.brand-swing:hover {
+  transform: translateY(-1px) scale(1.015);
+  filter: drop-shadow(0 5px 12px color-mix(in srgb, var(--color-brand) 18%, transparent));
 }
-.brand-swing__stage.is-tilting .brand-swing__layer {
-  opacity: 1;
+.brand-swing:hover .brand-swing__face svg {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--color-brand) 28%, transparent));
 }
-
-/* 正面层：最上层，保持各自原始色（logo=主题色，标题=body 文字色） */
-.brand-swing__face {
-  position: relative;
-  z-index: 1;
-  transform: translateZ(0.6px);
+@media (prefers-reduced-motion: reduce) {
+  .brand-swing,
+  .brand-swing__face,
+  .brand-swing__face svg {
+    transition: none;
+  }
 }
 
 @keyframes tab-in {
