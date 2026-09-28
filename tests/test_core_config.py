@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """core/config.py 单元测试
 
-覆盖: get_api_key（环境变量 / 跟随 profile / 缺失报错）、profile 解析（纯函数）、RATIOS 表结构合法性。
+覆盖: get_api_key（环境变量 / 跟随 profile / 缺失报错）、profile 解析（纯函数）、RATIOS 表结构合法性、
+配置来源视图 build_profile_view（值 + 来自哪一层，供 /api/config 下发前端呈现）。
 """
 
 import re
@@ -141,3 +142,61 @@ def test_cost_for_size_from_size_options():
     known = config.SIZE_OPTIONS[0]
     assert config.cost_for_size(known["value"]) == float(known["cost"])
     assert config.cost_for_size("9999x9999") == 0.0
+
+
+def test_build_profile_view_reports_layer_sources():
+    """配置视图：每个值都带「来自哪一层」——profile 写死的标 config.json，回退的标内置默认；
+    本机注册的 profile 名一并列出（前端据此展示，不必自己读 config.json）。"""
+    cfg = {
+        "default_profile": "wanwu",
+        "profiles": {"wanwu": {"base_url": "https://a.example"}, "other": {}},
+    }
+    view = config.build_profile_view(
+        profile_name="wanwu",
+        profile={"base_url": "https://a.example"},
+        cfg=cfg,
+        env_active="",
+        env_file_keys=set(),
+        api_key_name=None,
+    )
+    assert view["name"] == "wanwu"
+    assert view["nameSource"] == "config.json default_profile"
+    assert view["registeredProfiles"] == ["other", "wanwu"]
+
+    by_key = {field["key"]: field for field in view["fields"]}
+    assert by_key["baseUrl"]["value"] == "https://a.example"
+    assert by_key["baseUrl"]["source"] == "config.json profile"
+    # profile 没写的字段回退内置兜底，来源要如实标注（前端由此提示「你没配，这是默认值」）
+    assert by_key["model"]["source"] == "内置默认"
+    assert by_key["model"]["value"]
+
+
+def test_build_profile_view_marks_env_and_key_source():
+    """来源标注要区分 .env 与系统环境变量；密钥只报「已配置 + 来源」，绝不回传值本身。"""
+    view = config.build_profile_view(
+        profile_name="wanwu",
+        profile={},
+        cfg={},
+        env_active="other",
+        env_file_keys={"ACTIVE_PROFILE", "API_KEY_OTHER"},
+        api_key_name="API_KEY_OTHER",
+    )
+    assert view["nameSource"] == ".env ACTIVE_PROFILE"
+    assert view["registeredProfiles"] == []
+    key_field = {field["key"]: field for field in view["fields"]}["apiKey"]
+    assert key_field["configured"] is True
+    assert key_field["source"] == ".env API_KEY_OTHER"
+    assert key_field["value"] is None
+
+    # 系统环境变量（非 .env 文件）用另一种措辞，两种来源不该混为一谈
+    view2 = config.build_profile_view(
+        profile_name="wanwu",
+        profile={},
+        cfg={},
+        env_active="",
+        env_file_keys=set(),
+        api_key_name="API_KEY",
+    )
+    assert {field["key"]: field for field in view2["fields"]}["apiKey"]["source"] == (
+        "环境变量 API_KEY"
+    )

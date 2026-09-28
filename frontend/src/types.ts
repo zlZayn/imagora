@@ -6,6 +6,29 @@ export interface SizeOption {
 }
 
 /** 应用初始化配置 */
+/** 配置来源视图的一项（/api/config 的 profileView.fields）：值 + 它来自哪一层 */
+export interface ConfigFieldView {
+  key: string;
+  label: string;
+  /** 普通字段为该层实际生效的值；密钥类字段不回传值（只报 configured） */
+  value?: string | null;
+  /** 仅密钥类字段有：是否已配置 */
+  configured?: boolean;
+  /** 来源标签：`config.json profile` / `.env API_KEY_WANWU` / `内置默认` / `未配置` */
+  source: string;
+  mono?: boolean;
+}
+
+/** 配置来源视图：后端把「值 + 来源」算好后下发，前端只渲染，不自行推断分层规则 */
+export interface ConfigProfileView {
+  name: string | null;
+  /** profile 名的来源：config.json default_profile 或 .env ACTIVE_PROFILE */
+  nameSource: string;
+  /** 本机 config.json 里注册过的 profile 名 */
+  registeredProfiles: string[];
+  fields: ConfigFieldView[];
+}
+
 export interface AppConfig {
   sizes: SizeOption[];
   qualities: string[];
@@ -14,10 +37,14 @@ export interface AppConfig {
   windowId: number;
   /** 当前中转站 base URL（config.json profile 解析，前端展示用） */
   baseUrl?: string;
+  /** 当前 profile 的图片生成接口路径（config.json api_paths.generations，个人 API 配置的默认值来源） */
+  apiPath?: string;
   /** 当前 profile 的默认模型（标题栏徽章展示，确认切换生效） */
   defaultModel?: string;
   /** 当前生效的配置 profile 名（config.json 多 profile，.env ACTIVE_PROFILE 可覆盖） */
   activeProfile?: string;
+  /** 配置来源视图：每个关键项的值 + 来自哪一层（供 API 设置弹窗呈现） */
+  profileView?: ConfigProfileView;
 }
 
 /** 已落盘服务端的参考图（/api/upload-ref 返回；未上传成功的本地兜底 synced=false） */

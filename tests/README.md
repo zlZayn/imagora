@@ -5,29 +5,29 @@ FastAPI 路由级 + 纯逻辑测试，**不调真实上游 API、不花钱**。�
 ## 本地常用命令（在项目根目录执行）
 
 ```powershell
-# 后端全量（258 用例）
-.\.venv\Scripts\python.exe -m pytest --basetemp=<ASCII 临时目录>
+# 后端全量（260 用例）
+.\.venv\Scripts\python.exe -m pytest
 # 按模块筛选
-.\.venv\Scripts\python.exe -m pytest tests/test_core_config.py tests/test_server_helpers.py --basetemp=<ASCII 临时目录>
+.\.venv\Scripts\python.exe -m pytest tests/test_core_config.py tests/test_server_helpers.py
 # 前端（frontend/ 目录内）
 cd frontend; npm test
 ```
 
 ## 该目录特有坑
 
-- **必须 `--basetemp=<ASCII 可写目录>`**：默认 `%TEMP%\pytest-of-speak` 权限异常（WinError 5），不指定 setup 即报错（已知问题，勿忘）
+- **默认临时目录即可**：历史上 `%TEMP%\pytest-of-speak` 的 ACL 被改坏（多为管理员权限进程遗留）导致 setup 报 WinError 5，需 `--basetemp` 绕开；该目录已清理重建，默认路径恢复正常。若再遇到 WinError 5：提权执行 `takeown /F "%LOCALAPPDATA%\Temp\pytest-of-speak" /R /D Y` 后删掉该目录即可（pytest 自动重建）
 - **用户数据默认隔离（autouse `isolate_user_data`，见 conftest.py）**：输出目录 / 注册表 / 工作流 / 账本 / 预算一律指向 `tmp_path`。历史上 `asset_iso` 是 opt-in，漏用的用例会把测试图片写进真实 `output/.assets`（实测：跑一次 pytest 就多出 3 个假资产，反复复现）——新增用例无需再声明夹具，但**不得构造指向真实用户目录的路径**
 - **5 个 Windows 专属测试**：netstat 端口探测 / powershell 父进程链 / C: 绝对路径 / 跨盘相对化——只在 Windows 通过；CI 相关 Job 必须 `windows-latest`
 - 路由测试直接 `from server import ...`（import 即建 FastAPI app，属预期）
 - **测试数字是 AGENTS 仪表盘数据源**：增/删测试用例必须同步 AGENTS「当前仪表盘」；数字意外变化（非新增导致）必须报告维护者
 
-## 文件索引（后端 pytest，共 258）——每个 test_*.py 测什么
+## 文件索引（后端 pytest，共 260）——每个 test_*.py 测什么
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
 | [`test_core_api.py`](test_core_api.py) | 18 | 尺寸解析 / 默认输出路径（并发唯一）/ 错误格式化 / 写文件瞬时锁重试 |
 | [`test_core_batch.py`](test_core_batch.py) | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
-| [`test_core_config.py`](test_core_config.py) | 15 | API Key 跟随 profile / profile 解析优先级与缺失回退 / 白名单校验 / RATIOS 表结构 |
+| [`test_core_config.py`](test_core_config.py) | 17 | API Key 跟随 profile / profile 解析优先级与缺失回退 / 白名单校验 / RATIOS 表结构 / **配置来源视图（值 + 来自哪一层、.env 与系统环境变量区分、密钥不回传值）** |
 | [`test_core_cost.py`](test_core_cost.py) | 21 | 账本聚合（成功/失败计数、成功率、费用只算成功行、按天窗口与倒序、按尺寸/模式、坏行与脏类型容错、空账本）/ 今日花费 / 预估费用（已知/未知尺寸、非法张数）/ 预算规范化与读写（缺失/损坏/原子写无残留）/ 超预算判定（不限放行、单次上限、当日已花+预估、双限、remaining） |
 | [`test_core_logging.py`](test_core_logging.py) | 8 | 日志写入 / 并发串行 / 路径相对化 |
 | [`test_core_history.py`](test_core_history.py) | 16 | 历史读取 / 坏行容忍 / 筛选 / **搜索换行归一（CRLF 粘贴可命中）** / **同参数聚合（失败去重只留最新、成功吸收失败、时间不算参数、任一参数不同不合并、inputAssetIds 参与判定）** / **分页（聚合后切片与 total、offset 越界、与搜索/状态一致）** / backfill（报告·补齐·幂等·跳过无法反查·坏行保留） |
@@ -85,7 +85,7 @@ cd frontend; npm test
 ## CI 要求
 
 - Backend Job：**windows-latest**（5 个 Windows 专属测试）
-- `--basetemp` 指向 ASCII 临时目录（本地自选目录，CI 用 `${{ runner.temp }}`，见 ci.yml）
+- 本地默认临时目录即可；CI 固定用 `${{ runner.temp }}`（见 ci.yml）
 - 细节见 [../.github/workflows/ci.yml](../.github/workflows/ci.yml)（三 Job：Backend / Frontend / E2E）
 
 ## 参考

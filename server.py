@@ -47,6 +47,7 @@ from core.api import format_error, generate_image
 from core.canvas import safe_ref_path_allowlist
 from core.config import (
     ACTIVE_PROFILE,
+    API_PATHS,
     BASE_URL,
     DEFAULT_MODEL,
     DEFAULT_OUTPUT_DIR,
@@ -249,8 +250,12 @@ def get_config(win: int | None = None):
         "defaultOutputDir": default_dir,
         "windowId": window_id,
         "baseUrl": BASE_URL,
+        "apiPath": API_PATHS.get("generations", ""),
         "defaultModel": DEFAULT_MODEL,
         "activeProfile": ACTIVE_PROFILE,
+        # 配置来源视图：前端据此呈现「该值来自 config.json / .env / 内置默认」。
+        # profile 增字段时前端自动多一行，无需逐处适配（唯一真相源 = core/config.py）。
+        "profileView": config.describe_config(),
     }
 
 

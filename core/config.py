@@ -118,6 +118,11 @@ if getattr(sys, "frozen", False):
 ENV_FILE_PATH = _APP_ROOT / ".env"
 
 
+# 记录「值确实来自 .env 文件」的键：.env 加载后与系统环境变量同处 os.environ 无法区分，
+# 要向前端报准来源（.env 还是系统环境变量）就得在装载时留痕（不影响任何取值优先级）。
+_ENV_FILE_KEYS: set[str] = set()
+
+
 def _load_env_file():
     """读取 .env（KEY=VALUE，# 注释），已存在的环境变量不覆盖"""
     if not ENV_FILE_PATH.exists():
@@ -127,7 +132,10 @@ def _load_env_file():
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        name = key.strip()
+        if name and name not in os.environ:
+            os.environ[name] = value.strip().strip('"').strip("'")
+            _ENV_FILE_KEYS.add(name)
 
 
 _load_env_file()
@@ -200,3 +208,113 @@ DEFAULT_MODEL = _get("default_model")
 DEFAULT_QUALITY = _get("default_quality")
 DEFAULT_SIZE = _get("default_size")
 DEFAULT_TIER = _get("default_tier")
+
+
+# ---------- 配置来源视图（只读）：供 /api/config 下发前端呈现 ----------
+# 分层优先级（高 → 低）：.env / 环境变量 > config.json profile > default_profile > 内置默认。
+# 前端不自行推断来源——只渲染这里的 value + source，profile 增字段时前端不必「分开改多处」。
+_SRC_PROFILE = "config.json profile"
+_SRC_FALLBACK = "内置默认"
+
+
+def get_api_key_source() -> str | None:
+    """返回命中的 Key 环境变量名（只报告，不抛错、不返回值本身）。
+
+    候选顺序必须与 get_api_key 一致——两处各写一份，早晚漂移。
+    """
+    candidates = []
+    if ACTIVE_PROFILE:
+        candidates.append(f"API_KEY_{ACTIVE_PROFILE.upper()}")
+    candidates += ["API_KEY", "AIWANWU_API_KEY"]
+    for name in candidates:
+        if os.environ.get(name):
+            return name
+    return None
+
+
+def build_profile_view(
+    *,
+    profile_name: str | None,
+    profile: dict,
+    cfg: dict,
+    env_active: str,
+    env_file_keys: set[str],
+    api_key_name: str | None,
+) -> dict:
+    """纯函数：把「各层解析结果」拼成「值 + 来源」视图（/api/config 的 profileView）。
+
+    只拼装、不读全局状态——单测把各层参数直接喂进来即可，不必碰真实环境变量。
+    """
+
+    def env_where(name: str) -> str:
+        """环境变量的准确来源：.env 文件还是系统环境变量"""
+        return f".env {name}" if name in env_file_keys else f"环境变量 {name}"
+
+    def source_of(profile_key: str) -> str:
+        """该键是 profile 里写死的，还是回退到内置兜底"""
+        return _SRC_PROFILE if profile_key in profile else _SRC_FALLBACK
+
+    def value_of(key: str):
+        return profile.get(key, _DEFAULTS[key])
+
+    profiles = cfg.get("profiles")
+    registered = sorted(profiles) if isinstance(profiles, dict) else []
+    api_paths = value_of("api_paths")
+
+    return {
+        "name": profile_name,
+        "nameSource": (
+            env_where("ACTIVE_PROFILE") if env_active else "config.json default_profile"
+        ),
+        "registeredProfiles": registered,
+        "fields": [
+            {
+                "key": "baseUrl",
+                "label": "接口地址",
+                "value": value_of("base_url"),
+                "source": source_of("base_url"),
+                "mono": False,
+            },
+            {
+                "key": "apiPath",
+                "label": "接口路径",
+                "value": (
+                    api_paths.get("generations", "")
+                    if isinstance(api_paths, dict)
+                    else ""
+                ),
+                "source": source_of("api_paths"),
+                "mono": True,
+            },
+            {
+                "key": "model",
+                "label": "模型",
+                "value": value_of("default_model"),
+                "source": source_of("default_model"),
+                "mono": False,
+            },
+            {
+                "key": "apiKey",
+                "label": "API Key",
+                "value": None,
+                "configured": bool(api_key_name),
+                "source": env_where(api_key_name) if api_key_name else "未配置",
+                "mono": True,
+            },
+        ],
+    }
+
+
+def describe_config() -> dict:
+    """薄包装：把当前进程实际解析出的各层喂给 build_profile_view。
+
+    纯只读——不改加载顺序、不改环境变量；密钥只报「是否配置 + 来源」，绝不回传值。
+    """
+    return build_profile_view(
+        profile_name=ACTIVE_PROFILE,
+        profile=_profile,
+        cfg=_cfg,
+        env_active=(os.environ.get("ACTIVE_PROFILE") or "").strip(),
+        env_file_keys=_ENV_FILE_KEYS,
+        api_key_name=get_api_key_source(),
+    )

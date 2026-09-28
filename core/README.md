@@ -4,22 +4,22 @@ FastAPI 路由（`server.py`）与 CLI（`main.py`）共用的业务层。**不�
 
 ## 本地常用命令
 
-- 全部 core 测试：`.venv\Scripts\python.exe -m pytest tests/test_core_*.py --basetemp=<ASCII 临时目录>`
-- 单文件测试：`.venv\Scripts\python.exe -m pytest tests/test_core_config.py -v --basetemp=<ASCII 临时目录>`
+- 全部 core 测试：`.venv\Scripts\python.exe -m pytest tests/test_core_*.py`
+- 单文件测试：`.venv\Scripts\python.exe -m pytest tests/test_core_config.py -v`
 - Ruff 检查：`.venv\Scripts\python.exe -m ruff check core`
 
 ## 该目录特有坑
 
 - `canvas.py` 只是兼容 shim（星号 re-export registry + graphstore），**不在这里加新逻辑**
-- pytest 必须加 `--basetemp=<ASCII 可写目录>`（默认 `%TEMP%\pytest-of-speak` 权限异常报 WinError 5）
+- pytest 默认临时目录即可；WinError 5 属 `%TEMP%\pytest-of-speak` 的 ACL 被改坏（解法见 [../tests/README.md](../tests/README.md) 坑清单）
 - 单测不真调上游：`api.py` 走 monkeypatch mock 保持接口可注入（纪律细则见 [AGENTS.md](AGENTS.md)）
 - 展示与导入同源防错条（ARCHITECTURE 9.7）：`resolve_history_asset_path` 在 `server.py`，不在 core
 
 ## 文件索引（每个文件：职责 / 关键导出 / 被谁依赖 / 改后必测）
 
 ### [config.py](config.py)
-- 职责：配置中心——profile 解析（优先级：环境变量 > config.json > 内置）、API Key、尺寸/质量选项、成本表
-- 关键导出：`resolve_profile_config()`、`unknown_profile_keys()`、`get_api_key()`、`cost_for_size()` + 模块常量（`SIZE_OPTIONS` / `QUALITY_OPTIONS` / `RATIOS` / `WORK_ROOT` / `DEFAULT_OUTPUT_DIR` 等）
+- 职责：配置中心——profile 解析（优先级：环境变量 > config.json > 内置）、API Key、尺寸/质量选项、成本表、**配置来源视图**（每个值的来源层，供 `/api/config` 下发给前端呈现，前端不自行推断分层）
+- 关键导出：`resolve_profile_config()`、`unknown_profile_keys()`、`get_api_key()`、`get_api_key_source()`、`build_profile_view()`（纯函数）/ `describe_config()`（薄包装）、`cost_for_size()` + 模块常量（`SIZE_OPTIONS` / `QUALITY_OPTIONS` / `RATIOS` / `WORK_ROOT` / `DEFAULT_OUTPUT_DIR` 等）
 - 被谁依赖：`server.py`、`api.py`、`main.py`、`registry.py`、`history.py`
 - 改后必测：`tests/test_core_config.py`
 - 注意：新增 config.json profile 键必须同步 `unknown_profile_keys` 白名单 + 测试
