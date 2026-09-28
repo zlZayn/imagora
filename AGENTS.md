@@ -35,6 +35,14 @@
 - 改 `scripts/launcher.cs` 或 `scripts/启动生图工作台.ico` → `powershell -File scripts\make_launcher.ps1`（换图标要先跑 `scripts/make_icon.py` 再编译，图标是编译期内嵌的）；**编译前先关掉正在运行的启动器窗口**，Windows 不允许覆盖运行中的 exe
 - 无需构建：后端代码（`main.py` / `core/` / `server.py`，清 `__pycache__` 重启即可）、`scripts/启动生图工作台.cmd`（exe 只转发不解析其内容）、文档与测试
 
+## 提交前检查（本地 hook）
+
+启用一次即可（每个 clone 执行一次）——`git config core.hooksPath .githooks`。
+
+之后 `git commit` 会自动跑：改了 `.py` → `ruff check`；改了 `frontend/**` 源码 → `eslint`（仅暂存文件）。慢检查（tsc / 单测 / E2E）不放进 hook，避免拖慢提交；它们由 CI 兜底。
+
+CI 在 push 后自动跑，红叉处理顺序：`gh run view <id>` 看哪个 job 挂了 → 代码问题就修了重推；网络 / flaky 用 `gh run rerun <id> --failed` 重跑（未提交的本地改动不会重跑）。
+
 ## 常用命令（后端）
 
 - `uv run pytest`：默认临时目录即可（历史 WinError 5 坑与解法见「活跃坑」）；逐文件覆盖见 [tests/README.md](tests/README.md)

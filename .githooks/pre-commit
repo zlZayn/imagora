@@ -1,0 +1,37 @@
+#!/bin/sh
+# pre-commit：只对本次暂存的文件跑对应快检查（后端 ruff / 前端 eslint），失败即阻止提交。
+#
+# 设计取舍：
+#   - 只跑"秒级"检查。tsc、单测、E2E 留给 CI —— hook 一慢，大家就会用 --no-verify 绕过，等于没有。
+#   - 前端只查本次改动的文件，不整仓全量。
+#   - 后端 ruff check 是全量但毫秒级，直接跑。
+#
+# 启用（每个 clone 执行一次；Linux/macOS 首次可能还需 chmod +x .githooks/pre-commit）：
+#   git config core.hooksPath .githooks
+#
+# 跳过单次检查：git commit --no-verify
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+fail=0
+
+# —— 后端：改了 .py 就跑 ruff ——
+if printf '%s\n' "$staged" | grep -qE '\.py$'; then
+    echo "[pre-commit] ruff check（后端）"
+    uv run ruff check . || fail=1
+fi
+
+# —— 前端：改了 frontend 下的源码就跑 eslint（只查暂存文件）——
+fe=$(printf '%s\n' "$staged" | grep -E '^frontend/.*\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
+if [ -n "$fe" ]; then
+    echo "[pre-commit] eslint（前端，仅暂存文件）"
+    files=$(printf '%s\n' "$fe" | sed 's|^frontend/||' | tr '\n' ' ')
+    (cd frontend && npx eslint $files) || fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+    echo "[pre-commit] 检查未通过，提交已阻止（确认无误可用 git commit --no-verify 跳过）"
+    exit 1
+fi
+exit 0
