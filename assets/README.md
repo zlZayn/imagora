@@ -2,6 +2,7 @@
 
 - 职责：仓库自己的文档配图，只服务 markdown 渲染（GitHub 与本地预览），**不是应用资源**。
 - 子目录：`screenshots/` 放 README「界面一览」用的界面截图。将来若有架构示意图，另开 `assets/diagrams/`，不与截图混放。
+- **本目录目前只有 `screenshots/` 一类，是有意保留的层级**：`diagrams/` 类出现时直接并列，不动现有结构。
 - 命名：`<界面或场景>-<视角>.png`，全小写 kebab-case（现有：`canvas-overview` / `form-view` / `terminal-window`）。
 - 被谁引用：根 [README.md](../README.md)「界面一览」。改文件名要同改那里三处链接。
 - 变更影响路由：新增或改名 → 同改根 README 的链接，以及根 [AGENTS.md](../AGENTS.md) 待办里指向本目录的那条；跑 `python scripts/check_docs.py` 确认不断链。
