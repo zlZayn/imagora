@@ -1,18 +1,30 @@
-<p align="center">
-  <img src="frontend/src/brand/logo.svg" alt="Imagora" width="72" height="72">
+<div align="center">
+
+<img src="frontend/src/brand/logo.svg" alt="Imagora" width="72" height="72">
+
+<h1>Imagora | 意象集</h1>
+
+<p>
+  <a href="https://github.com/zlZayn/imagora/actions/workflows/ci.yml"><img src="https://github.com/zlZayn/imagora/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href=".python-version"><img src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12"></a>
+  <a href="frontend/package.json"><img src="https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=black" alt="React 19"></a>
 </p>
 
-<h1 align="center">Imagora</h1>
+<div align="center">
+  <p>
+    <strong><a href="README.md">简体中文</a></strong> · <a href="README_en.md">English</a>
+  </p>
+</div>
 
-[![CI](https://github.com/zlZayn/imagora/actions/workflows/ci.yml/badge.svg)](https://github.com/zlZayn/imagora/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](.python-version)
-[![React 19](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=black)](frontend/package.json)
+<p><b>一个本机运行的 AI 生图工作台</b></p>
 
-**本机 AI 生图工作台**：接你自己配置的 OpenAI 兼容接口，把「出图 → 看结果 → 改参考 → 再出」这条链路收进一个网页。
-提示词、参考图、批量任务、产物和花费全在同一处管理，还能用无限画布把多张图的参考关系连起来迭代。
+<p>文生图与图生图一体，用无限画布编排工作流，提示词契约一键导入，多开窗口并行出图（主体色区分）。<br>
+支持批量与命令行。提示词、参考图、任务、产物和花费全在同一处管理。</p>
 
-它不绑定场景——商品图、角色设定、封面海报、概念图、素材铺量，凡是能写成提示词的都能做。
+<p>它不绑定场景——商品图、角色设定、封面海报、概念图、素材铺量，凡是能写成提示词的都能做。</p>
+
+</div>
 
 > **数据边界**　请求直连你配置的接口；密钥只留在本机 `.env` 或你自己的浏览器里；图片与生成记录全落在本地目录，没有任何中转服务。
 

@@ -6,7 +6,7 @@
 
 ## 文档体系（双向引用，层层递进）
 
-- 分层不重叠：根 [README.md](README.md)（用户用法）→ 本文档（维护索引）→ [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（设计圣经）→ 子目录 README（模块手册）
+- 分层不重叠：根 [README.md](README.md)（用户用法；英文版 [README_en.md](README_en.md)，**中英同改，改一必改二**）→ 本文档（维护索引）→ [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（设计圣经）→ 子目录 README（模块手册）
 - 双件分离：AGENTS.md 只写规则，README.md 只写是什么/怎么改（每可维护目录一对，两者不互相重复；如 [core/AGENTS.md](core/AGENTS.md) 自动注入、[core/README.md](core/README.md) 按需读）
 - **双向引用**：根索引指向子手册（上文变更速查 / 文档地图），子手册「参考」节回引本文档与 ARCHITECTURE——从任何一层都能回到索引，缺一即断链
 - **层层递进**：同一事实只在一层书写——用户层写"怎么用"，索引层写"去哪查"，手册层写"是什么/改哪"，圣经层写"为什么/防什么"
