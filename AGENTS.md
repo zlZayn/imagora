@@ -53,7 +53,7 @@ CI 在 push 后自动跑，红叉处理顺序：`gh run view <id>` 看哪个 job
 
 ## 待办
 
-- [ ] 重新生成 [assets/screenshots/](assets/screenshots/) 下的 README 预览截图：现有图与当前 UI 不一致（顶栏控件高度、卡片编号水印、容器表面渐变、滚动条均已调整），且外观体系（主体色 / 背景材质 / 壁纸 / 通透度）新增后仍无对应图。门面「界面一览」已声明「图待重拍」并留了两处槽位与图注（外观面板展开态、铺壁纸的整页效果），要拍到哪些状态见 [assets/README.md](assets/README.md)
+- [ ] 重新生成 [assets/screenshots/](assets/screenshots/) 下的 README 预览截图：现有图与当前 UI 不一致（顶栏控件高度、卡片编号水印、容器表面渐变、滚动条均已调整），且外观体系（主体色 / 背景材质 / 壁纸 / 通透度）新增后仍无对应图。门面「界面一览」已声明「图待重拍」并留了两处槽位与图注（外观弹窗打开态、铺壁纸的整页效果），要拍到哪些状态见 [assets/README.md](assets/README.md)
 - [ ] 门面首屏图标：[frontend/src/brand/logo.svg](frontend/src/brand/logo.svg) 是单色 `#475569` 且无底板，GitHub 深色模式下对比约 2.4:1、偏暗（浅色模式正常，不是图裂）。要么给图标加底色、要么换一枚带底的图、要么首屏不放图——现状是"接受"，见 2026-09-29 README 重写那轮
 - [ ] CLI 一条预算闸门都没有：`gen` / `batch` 直连 `generate_image`，不看 `dailyLimit` 也不看 `singleRunLimit`（闸门只在 web 侧的 `/api/generate*`）。与门面宣传的「预算保护」不一致，加闸门会改变 CLI 成功/失败语义，**等拍板**——见 [issue #34](https://github.com/zlZayn/imagora/issues/34) 末尾
 - [ ] 拆分 [frontend/src/components/CanvasPage.tsx](frontend/src/components/CanvasPage.tsx)：**先补行为基线测试**（当前覆盖薄、裸拆风险高），再分步拆、每步独立验证，CI + E2E 兜底；不急于一次拆完，也不混进严格开关批次

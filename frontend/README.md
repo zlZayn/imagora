@@ -45,7 +45,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 尺寸阶梯 | `--h-ctl` · `--h-field` · `--h-cta` | 顶栏控件 28 · 表单控件 38 · 主行动 46 |
 | 圆角阶梯 | `--r-pill` · `--r-card` · `--r-control` | 胶囊 · 容器 16 · 控件 10 |
 | 表面 | `--surface-card` · `--surface-panel` · `--field-bg` · `--surface-blur` | 由 App 用 `surfaceTokens(色相, 通透度)` 在 **JS 里算成字面量后内联注入**（与 `--color-brand` 同路）；通透度拉到 1 时卡片/面板 alpha 仅约 0.05（接近全透明），输入框另有 `FIELD_ALPHA_FLOOR = 0.25` 底线。两条硬约束（模糊绝不随通透度增长、CSS 里不写「函数内嵌 var()」）见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 9.4 第 7、8 条 |
-| 通用滑杆 | `.range-field` | 外观弹窗的参数滑杆（通透度用它；与主色滑杆同形，轨道保持中性） |
+| 通用滑杆 | `.range-field` | 外观弹窗的参数滑杆（通透度用它；与主体色滑杆同形，轨道保持中性） |
 | 角落装饰 | `.corner-deco` · `.corner-rings` · `.corner-note` | 编号 / 弧环 / 镜像小字 |
 | 快捷键面板 | `.help-more` + `__btn` / `__panel` | 画布页操作帮助右侧的 `?`；原生 `details/summary`，无需组件状态 |
 | 最近提示词 | `.recent-prompt` | 结果区空态一键复用的提示词行：单行截断，完整内容走 title 悬停 |
@@ -59,7 +59,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 开关 | `.switch` | 布尔开关（原生 checkbox + 轨道圆钮，状态只走 `:checked`）；画布边界开关用它 |
 | 画布边界 | `html[data-canvas-bounds="off"] .studio-canvas` | 关闭时收掉画布边框 / 底色 / 投影与渲染层底色晕，与页面背景融为一体 |
 | 滚动条 | `--sb-size` · `--sb-thumb` · `--sb-track` | 全局统管；轨道 transparent = 跟随所在容器底色 |
-| 主色选择 | `.accent-swatches` / `.accent-swatch`（选中态 `.is-on`） · `.accent-hue` | 外观弹窗的九色预设方块 + 自定义色相滑杆：**色块底色由组件按 `accentFromHue` 现算并内联注入**，CSS 只管形状（28 方块、圆角 8）、hover 抬升与选中态的双层外圈；`.accent-hue` 是主色滑杆本体（`--r-pill` 轨道 + 自定义 thumb，「通用滑杆」`.range-field` 与它同形）。取到的色相写到根元素 `--accent-hue`，背景材质与页面光晕都读它 |
+| 主体色选择 | `.accent-swatches` / `.accent-swatch`（选中态 `.is-on`） · `.accent-hue` | 外观弹窗的九色预设方块 + 自定义色相滑杆：**色块底色由组件按 `accentFromHue` 现算并内联注入**，CSS 只管形状（28 方块、圆角 8）、hover 抬升与选中态的双层外圈；`.accent-hue` 是主体色滑杆本体（`--r-pill` 轨道 + 自定义 thumb，「通用滑杆」`.range-field` 与它同形）。取到的色相写到根元素 `--accent-hue`，背景材质与页面光晕都读它 |
 
 ## 文件索引
 
