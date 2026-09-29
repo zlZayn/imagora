@@ -55,9 +55,10 @@ CI 在 push 后自动跑，红叉处理顺序：`gh run view <id>` 看哪个 job
 
 - [ ] 重新生成 [assets/screenshots/](assets/screenshots/) 下的 README 预览截图：现有图与当前 UI 不一致（顶栏控件高度、卡片编号水印、容器表面渐变、滚动条均已调整），且外观体系（主体色 / 背景材质 / 壁纸 / 通透度）新增后仍无对应图。门面「界面一览」已声明「图待重拍」并留了两处槽位与图注（外观弹窗打开态、铺壁纸的整页效果），要拍到哪些状态见 [assets/README.md](assets/README.md)
 - [ ] 门面首屏图标：[frontend/src/brand/logo.svg](frontend/src/brand/logo.svg) 是单色 `#475569` 且无底板，GitHub 深色模式下对比约 2.4:1、偏暗（浅色模式正常，不是图裂）。要么给图标加底色、要么换一枚带底的图、要么首屏不放图——现状是"接受"，见 2026-09-29 README 重写那轮
-- [ ] CLI 一条预算闸门都没有：`gen` / `batch` 直连 `generate_image`，不看 `dailyLimit` 也不看 `singleRunLimit`（闸门只在 web 侧的 `/api/generate*`）。与门面宣传的「预算保护」不一致，加闸门会改变 CLI 成功/失败语义，**等拍板**——见 [issue #34](https://github.com/zlZayn/imagora/issues/34) 末尾
+- [ ] CLI 与网页端功能不对等（预算闸门 / 历史与花费回读 / 重跑失败项 / 取消 / 提示词导入格式 / 切 profile，全清单在 [issue #35](https://github.com/zlZayn/imagora/issues/35)）：其中**预算闸门**最要紧——`gen` / `batch` 直连 `generate_image`，不看 `dailyLimit` 也不看 `singleRunLimit`，与门面宣传的「预算保护」不一致，补闸门会改变 CLI 成功/失败语义，**等拍板**；其余各项按该 issue 清单逐项定
 - [ ] 拆分 [frontend/src/components/CanvasPage.tsx](frontend/src/components/CanvasPage.tsx)：**先补行为基线测试**（当前覆盖薄、裸拆风险高），再分步拆、每步独立验证，CI + E2E 兜底；不急于一次拆完，也不混进严格开关批次
 - [ ] **内置壁纸作为预设是否合适，待议**（cslkkl 的外观体系贡献，2026-09-29 登记）：5 种背景材质（纸纤维 / 木纹 / 干净冷灰 / 雾面 / 跟随主体色，纯 CSS、不占体积）留作预设没问题；待议的是 2 张内置壁纸 `frontend/public/wallpapers/dragon.jpg`（青玉游龙）+ `tiger.jpg`（晨曦神兽），共 795 KB 且已入库——要再想三点：① 入库体积（两张近 800 KB 常驻仓库）；② 预设普适性（具体题材的图当内置预设，是否人人愿意看到）；③ 资源策略（内置图入库 vs 用户自选壁纸存 IndexedDB 不入库，是否该统一）。两条路渲染同源、行为已正确，这里只议"要不要留作预设"；**现在不改代码、不动壁纸文件**
+- [ ] `check-markdown-links.py --refs` 对 HTML 锚点误报：两份 README 的中英切换块用 `<a href="README_en.md">`，被当成「引用未做成链接」告警（工具只认 markdown 链接语法，不解析 HTML）。当前接受（每次跑多这 2 条 warn）；将来给工具加 HTML 解析，或换写法
 - 无其他（8-23 备份清理；8-24 文档体系重构 + CI 完善；9-22 成本看板 + 预算保护 + 重跑失败项；9-29 `check_docs.py` 接进 CI 前端 job）
 
 ## 活跃坑 / 注意
