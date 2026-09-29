@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.IO;
 
 /// <summary>
-/// Imagora 启动器：双击本程序等同于双击 scripts\启动生图工作台.cmd。
+/// Imagora 启动器：双击本程序等同于双击 scripts\desktop\启动生图工作台.cmd。
 /// 只做一件事——把该脚本交给 cmd.exe 执行，并透传退出码。
 ///
 /// 为什么用 exe 而不是快捷方式（.lnk）：
@@ -17,7 +17,7 @@ internal static class Launcher
     {
         // 以本程序所在目录为项目根：相对定位，仓库整体移动或换机器后依然成立
         string root = AppDomain.CurrentDomain.BaseDirectory;
-        string script = Path.Combine(root, "scripts", "启动生图工作台.cmd");
+        string script = Path.Combine(root, "scripts", "desktop", "启动生图工作台.cmd");
 
         if (!File.Exists(script))
         {

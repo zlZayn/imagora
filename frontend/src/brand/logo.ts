@@ -2,7 +2,7 @@ import logoSvg from './logo.svg?raw';
 
 /**
  * 品牌图形的唯一来源就是同目录的 `logo.svg`：顶栏、动态 favicon、
- * 桌面图标（`scripts/make_icon.py`）全部从这里取。改形状只改那个文件，
+ * 桌面图标（`scripts/desktop/make_icon.py`）全部从这里取。改形状只改那个文件，
  * 不必再同步散落的第二、第三份手抄副本。
  */
 

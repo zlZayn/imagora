@@ -168,7 +168,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ### [brand/logo.ts](src/brand/logo.ts)
 - 职责：品牌图形的**唯一取处**——形状只写在 [brand/logo.svg](src/brand/logo.svg) 一份里，本模块用 `?raw` 在构建期内联，导出 `BRAND_LOGO_PATH` / `BRAND_LOGO_VIEWBOX`（顶栏 `<svg>` 用）与 `brandLogoSvg(fill)`（动态 favicon 用：只换根元素 `fill`，颜色仍按窗口走）
-- 被谁依赖：`App.tsx`（顶栏品牌区 + 标签页图标注入）；`scripts/make_icon.py` 也读同一份 svg 生成桌面图标
+- 被谁依赖：`App.tsx`（顶栏品牌区 + 标签页图标注入）；`scripts/desktop/make_icon.py` 也读同一份 svg 生成桌面图标
 - 注意：`logo.svg` 必须**只有一处 `fill`** 且带 `<path d="…">` 与 `viewBox`（`brand/logo.test.ts` 钉着），取不到就在 import 期抛错，不静默渲染成空白图标。**别再抄第二份形状**：历史上手抄过三份（svg + 顶栏 + favicon 模板），改一次要动三处且没有任何校验
 
 ### Hooks（组件级逻辑）

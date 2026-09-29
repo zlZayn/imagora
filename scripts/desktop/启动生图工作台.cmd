@@ -1,8 +1,8 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-REM 本脚本位于 scripts/：%~dp0 是 scripts/，先上跳一层回到项目根，后续相对路径（frontend\ 等）都基于项目根
-pushd "%~dp0.." || exit /b 1
+REM 本脚本位于 scripts/desktop/：%~dp0 是该目录，先上跳两层回到项目根，后续相对路径（frontend\ 等）都基于项目根
+pushd "%~dp0..\.." || exit /b 1
 
 set "PORT=7860"
 set "URL=http://127.0.0.1:%PORT%"

@@ -1,18 +1,18 @@
-﻿# 编译项目根目录的「启动生图工作台.exe」——一个把 scripts\启动生图工作台.cmd
+﻿# 编译项目根目录的「启动生图工作台.exe」——一个把 scripts\desktop\启动生图工作台.cmd
 # 转交给 cmd 的极简启动器（源码同目录 launcher.cs）。
 #
 # 用 Windows 自带的 C# 编译器（.NET Framework 4.x 的 csc.exe），不引入任何第三方依赖；
-# exe 内嵌 scripts\启动生图工作台.ico 作为图标，并按自身所在目录定位脚本，
+# exe 内嵌 scripts\desktop\启动生图工作台.ico 作为图标，并按自身所在目录定位脚本，
 # 因此可以随仓库分发、换目录或换机器都能用。
 #
 # 何时需要重跑：
 #   - 改了 launcher.cs（启动器行为）
 #   - 换了图标（.ico 是编译期内嵌的）
 # 何时**不需要**：
-#   - 改 scripts\启动生图工作台.cmd 的逻辑（exe 只是转发，不解析其内容）
+#   - 改 scripts\desktop\启动生图工作台.cmd 的逻辑（exe 只是转发，不解析其内容）
 #   - 改前端 / 后端代码（那是 npm run build 的事，见 frontend/README.md）
 #
-# 用法（项目根目录）：powershell -NoProfile -File scripts\make_launcher.ps1
+# 用法（项目根目录）：powershell -NoProfile -File scripts\desktop\make_launcher.ps1
 # 可选 -Output 指定输出路径以做试验，不覆盖正式文件。
 
 [CmdletBinding()]
@@ -23,7 +23,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $scriptDir = $PSScriptRoot
-$root = Split-Path -Parent $scriptDir
+$root = Split-Path -Parent (Split-Path -Parent $scriptDir)
 $source = Join-Path $scriptDir 'launcher.cs'
 $icon = Join-Path $scriptDir '启动生图工作台.ico'
 $target = if ($Output) { $Output } else { Join-Path $root '启动生图工作台.exe' }

@@ -42,7 +42,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | --- | --- |
 | `main.py` | CLI 入口：`ui` / `menu` / `batch` / `gen` / `config` 五个子命令（`gen` 与 web 表单完全对等：必填参数校验、多参考图、资产旁路、提交快照、全量账本） |
 | `server.py` | FastAPI 应用：全部 `/api/*` 路由 + 托管 `frontend/dist` |
-| `启动生图工作台.exe` | 开发环境双击入口：极简启动器（源码 [scripts/launcher.cs](../scripts/launcher.cs)，编译脚本 [scripts/make_launcher.ps1](../scripts/make_launcher.ps1)），内嵌图标并把执行转交 [scripts/启动生图工作台.cmd](../scripts/启动生图工作台.cmd)：构建检查 → 起服务 → 开窗 → 进入交互菜单 |
+| `启动生图工作台.exe` | 开发环境双击入口：极简启动器（源码 [scripts/desktop/launcher.cs](../scripts/desktop/launcher.cs)，编译脚本 [scripts/desktop/make_launcher.ps1](../scripts/desktop/make_launcher.ps1)），内嵌图标并把执行转交 [scripts/desktop/启动生图工作台.cmd](../scripts/desktop/启动生图工作台.cmd)：构建检查 → 起服务 → 开窗 → 进入交互菜单 |
 | `config.json` | 公开配置（git 跟踪）：多 profile（中转站/模型/尺寸/质量/ratios），`default_profile` 指定公共默认 |
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
 | `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
@@ -105,7 +105,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `gen` | 单张生图（与 web 表单完全对等） | 必填：`prompt`、`--size`/`--ratio`（二选一）、`--quality`、`-o`/`--output`；可选：`-i`（多张参考图）、`--tier`、`--model`、`--n`、`--format`、`--no-asset` |
 | `config` | 显示当前 profile 支持的尺寸/比例/质量/默认值（实时读 `config.json`） | 无 |
 
-### 3.2 启动脚本三段流程（`scripts/启动生图工作台.cmd`，由根目录 `启动生图工作台.exe` 唤起）
+### 3.2 启动脚本三段流程（`scripts/desktop/启动生图工作台.cmd`，由根目录 `启动生图工作台.exe` 唤起）
 
 脚本是日常入口，按顺序完成三件事：
 
@@ -361,7 +361,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 - **transition 约束**：只作用于 border-color/box-shadow/opacity，**禁用 `transition-all`**——否则 textarea 拉伸等交互被尺寸插值拖慢（曾误判为性能问题，实为 CSS 插值）。唯一例外：连线路径的 `stroke/stroke-width` 过渡（hover 亮起延迟，见 9.4 第 2 条）。
 - **画布节点动画**：作用在内层 `.node-pop`（外层 `.react-flow__node` 是定位 transform，不可位移）；动画类是运行时标记，保存/加载时剥离，不持久化。
 - **动效与浮层堆叠**：transform 动画（fill both）让元素成为 stacking context，含浮层的卡片需 `relative` + 更高 z-index 才能盖过后续卡片。
-- **窗口主题色**：accent.ts 按窗口编号黄金角取色，运行时覆盖 `--color-brand`；favicon 同算法动态生成——多开一眼可辨。两处图形（顶栏与 favicon）**共用同一份形状源** `src/brand/logo.svg`，经 `src/brand/logo.ts` 在构建期内联，桌面图标由 `scripts/make_icon.py` 读同一份生成，产物同步由 `check_docs.py` 比指纹；`--color-brand` 默认值是中性 slate 兜底（JS 加载前生效）。**终端提示同源换色**：rich 菜单「已打开窗口 #N」与启动脚本首窗提示均用该窗口的主题色（可按窗口号区分终端行）——算法三处同源：`frontend/src/accent.ts` / `main.py:accent_for_window`（rich 面板与菜单行）/ `scripts/window_accent.ps1`（供 `scripts/启动生图工作台.cmd` 首窗着色），改色相/饱和/明度必须三处同步，勿单独改一处。
+- **窗口主题色**：accent.ts 按窗口编号黄金角取色，运行时覆盖 `--color-brand`；favicon 同算法动态生成——多开一眼可辨。两处图形（顶栏与 favicon）**共用同一份形状源** `src/brand/logo.svg`，经 `src/brand/logo.ts` 在构建期内联，桌面图标由 `scripts/desktop/make_icon.py` 读同一份生成，产物同步由 `check_docs.py` 比指纹；`--color-brand` 默认值是中性 slate 兜底（JS 加载前生效）。**终端提示同源换色**：rich 菜单「已打开窗口 #N」与启动脚本首窗提示均用该窗口的主题色（可按窗口号区分终端行）——算法三处同源：`frontend/src/accent.ts` / `main.py:accent_for_window`（rich 面板与菜单行）/ `scripts/desktop/window_accent.ps1`（供 `scripts/desktop/启动生图工作台.cmd` 首窗着色），改色相/饱和/明度必须三处同步，勿单独改一处。
 - **行动按钮体系（两档 + 状态类）**：视觉语言统一为胶囊圆角（rounded-full，Tailwind 计算值为极大半径）+ 窗口主题色 + 涟漪反转动效。两档统一由 `::before` **按钮同形层**（`inset:0`、圆角 inherit、`scaleX(0)→1` 从中心向左右横向展开，`transform-origin:50% 50%`）实现 hover 填充——任意宽度（如 flex-1 撑满的「生成图片」）都完整覆盖，扩展方向是「中间往两边」而非四周放射；`--btn-fill` 固定填充底色（hover 文字变色不影响涟漪色）。`btn-primary` 常态实底白字，hover 白色涟漪反转 → 白底 + 主题色字（主行动，视觉重）；`btn-ghost` 与 primary 同源——无边框透明胶囊 + 常态主题色文字，hover 主题色涟漪填充 + 反白（次要行动，视觉轻）。状态类：`btn-busy`（生成中呼吸）、`btn-draggable`（可拖出）、`btn-danger`（红字红涟漪，配合 ghost）。透明按钮的典型场景即画布选中操作栏：毛玻璃面板（bg-white/20）上常态透明（主题色描边文字）、hover 涟漪填充反白，"删除所选"用 btn-danger；主行动仍放 btn-primary。涟漪扩散与文字变色同节奏 0.35s（横向展开、无 hover 缩放），主交互 0.3s（React Bits 类按钮范例）。非行动按钮（下拉触发/列表项/图标钮/分段控件/深色浮层条）不走本体系——语义是控件不是行动按钮。
 - **顶栏品牌区 3D（logo + 标题整体）**：借 React Bits DepthText 手法——`App.tsx` 顶部常量 `BRAND_LAYERS`（10）/ `BRAND_DEPTH`（1.5）生成 translateZ 挤出层（总深 ≈15px 克制偏浅），`brandLayerColor` 用 `color-mix` 让各层从正面色向深度色渐变（logo 正面 `var(--color-brand)` 随窗口主题色、标题正面 `#262626` = body 文字色，均不硬编码）；**正面层（`z=0.6px`）比挤出层起点亮一档（基准色混白 12%：`LOGO_FACE_LIGHT`/`TEXT_FACE_LIGHT`），侧面渐变仍用原基准色不变**——深浅层次更分明；挤出层常驻 DOM 但被正面层盖住即平面态。指针跟踪（`pointerenter/move/leave` + rAF 平滑 0.14）只写 `--stage` 的 rotateX/rotateY：鼠标靠近才倾斜（±11°）显现立体并随光标摆动，离开回摆到平面。默认态无动画开销（停止 rAF 循环）；纯 JS 内联 transform 属直接操作型动效，不受全局 `prefers-reduced-motion` 降级影响；整体包 `<a target="_blank">` 点击打开远程仓库。
 

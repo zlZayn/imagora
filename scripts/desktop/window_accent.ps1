@@ -8,7 +8,7 @@ param(
 是同一算法的三处实现，改色相/饱和/明度必须三处同步，勿单独改动。
 
 用法（供 启动生图工作台.cmd 调用）：
-    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\window_accent.ps1 -WindowId 2
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\desktop\window_accent.ps1 -WindowId 2
 #>
 $hue = ((($WindowId - 1) * 137.508) % 360) / 360.0
 

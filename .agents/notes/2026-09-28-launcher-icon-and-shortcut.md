@@ -1,6 +1,8 @@
 # 决策：启动入口的图标绑定方案（2026-09-28）
 
-状态：生效
+状态：被取代
+
+指针：[决策：桌面入口用自编译的启动器 exe（2026-09-29）](2026-09-29-launcher-exe-entry.md)
 
 ## 问题
 
@@ -10,10 +12,10 @@ Windows **不支持给 `.cmd` / `.bat` 嵌图标**（这是系统限制，不是
 
 ## 决策
 
-用 **Windows 快捷方式**：根目录只放 `启动生图工作台.lnk`，指向 `scripts/启动生图工作台.cmd`，`IconLocation` 指向 `scripts/启动生图工作台.ico`——根目录因此只出现一个入口。
+用 **Windows 快捷方式**：根目录只放 `启动生图工作台.lnk`，指向 `scripts/desktop/启动生图工作台.cmd`，`IconLocation` 指向 `scripts/desktop/启动生图工作台.ico`——根目录因此只出现一个入口。
 
-- 启动脚本与图标都收在 `scripts/`：脚本用 `pushd "%~dp0.."` 把工作目录切回项目根，`frontend/` 等相对路径才成立（约束见 [scripts/AGENTS.md](../../scripts/AGENTS.md)）。
-- 入口图标由 [make_icon.py](../../scripts/make_icon.py) 从 `frontend/public/favicon.svg` 生成。
+- 启动脚本与图标都收在 `scripts/desktop/`：脚本用 `pushd "%~dp0..\.."` 把工作目录切回项目根，`frontend/` 等相对路径才成立（约束见 [scripts/AGENTS.md](../../scripts/AGENTS.md)）。
+- 入口图标由 [make_icon.py](../../scripts/desktop/make_icon.py) 从 `frontend/src/brand/logo.svg` 生成。
 - 图标为**透明底 + 灰黑线条**（`#17202b`，项目正文文字色），取代原先「紫色渐变方块 + 白线」的通用 AI 观感。
 - `.cmd` 原文件零改动——快捷方式只是并列新增的一个文件。
 
@@ -33,11 +35,11 @@ Windows **不支持给 `.cmd` / `.bat` 嵌图标**（这是系统限制，不是
   $root = (Get-Location).Path
   $sh = New-Object -ComObject WScript.Shell
   $s = $sh.CreateShortcut("$root\启动生图工作台.lnk")
-  $s.TargetPath = "$root\scripts\启动生图工作台.cmd"
+  $s.TargetPath = "$root\scripts\desktop\启动生图工作台.cmd"
   $s.WorkingDirectory = $root
-  $s.IconLocation = "$root\scripts\启动生图工作台.ico,0"
+  $s.IconLocation = "$root\scripts\desktop\启动生图工作台.ico,0"
   $s.Save()
   ```
 
 - **任务栏图标仍是默认的**：`.lnk` 只决定「入口在资源管理器里的样子」。运行中窗口/任务栏图标由宿主进程（`cmd.exe` → `python.exe`）决定，要换需走 exe 路线，当前不做。
-- 回退：删掉 `启动生图工作台.lnk` 即回到原状；`.ico` 的旧版本可从 git 取回（`git checkout -- 启动生图工作台.ico`）。
+- 回退：删掉 `启动生图工作台.lnk` 即回到原状；`.ico` 的旧版本可从 git 取回（`git checkout -- scripts/desktop/启动生图工作台.ico`）。

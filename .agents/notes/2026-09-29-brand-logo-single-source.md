@@ -14,7 +14,7 @@
 
 - `frontend/src/brand/logo.ts` 用 Vite 的 `?raw` 在**构建期**把它内联成字符串，导出 `BRAND_LOGO_PATH` / `BRAND_LOGO_VIEWBOX` / `brandLogoSvg(fill)`；顶栏与动态 favicon 都从这里取，**颜色仍按窗口主题色注入，行为不变**
 - `frontend/index.html` 不再放静态 `<link rel="icon">`：它本来在 React 挂载后立刻被动态图标覆盖，留着只多了第四份副本；代价是首帧极短时间标签页无图标
-- `scripts/make_icon.py` 改读同一份 svg，并写下 `scripts/icon-source.sha256`（源图内容指纹）
+- `scripts/desktop/make_icon.py` 改读同一份 svg，并写下 `scripts/desktop/icon-source.sha256`（源图内容指纹）
 - `check_docs.py` 比对指纹：源图改了而产物没重生成 → 红。已接进 CI 前端 job，所以这道检查真会拦
 - 门面首屏图片改指 `src/brand/logo.svg`（GitHub 直接渲染该文件）
 

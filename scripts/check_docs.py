@@ -153,8 +153,8 @@ def check_counts(
 
 
 LOGO_SOURCE = ROOT / "frontend" / "src" / "brand" / "logo.svg"
-ICON_SIDECAR = ROOT / "scripts" / "icon-source.sha256"
-ICON_FILE = ROOT / "scripts" / "启动生图工作台.ico"
+ICON_SIDECAR = ROOT / "scripts" / "desktop" / "icon-source.sha256"
+ICON_FILE = ROOT / "scripts" / "desktop" / "启动生图工作台.ico"
 
 
 def check_icon_freshness() -> list[str]:
@@ -173,7 +173,7 @@ def check_icon_freshness() -> list[str]:
             if not f.exists()
         ]
         return [
-            f"{'、'.join(missing)}: 桌面图标或其指纹缺失，跑 scripts/make_icon.py 重建"
+            f"{'、'.join(missing)}: 桌面图标或其指纹缺失，跑 scripts/desktop/make_icon.py 重建"
         ]
     want = hashlib.sha256(LOGO_SOURCE.read_bytes()).hexdigest()
     got = ICON_SIDECAR.read_text(encoding="utf-8").strip()
@@ -182,7 +182,7 @@ def check_icon_freshness() -> list[str]:
             f"{ICON_SIDECAR.relative_to(ROOT)}: 指纹 {got[:12]}… 与 "
             f"{LOGO_SOURCE.relative_to(ROOT)} 当前内容 {want[:12]}… 不一致"
             " —— 源图改了但图标没重生成，exe 仍是旧形状。"
-            "依次跑：scripts/make_icon.py，再 powershell -File scripts/make_launcher.ps1"
+            "依次跑：scripts/desktop/make_icon.py，再 powershell -File scripts/desktop/make_launcher.ps1"
             "（编译前先关掉正在运行的启动器）"
         )
     return problems

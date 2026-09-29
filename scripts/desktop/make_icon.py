@@ -2,8 +2,8 @@
 
 做法与取舍：
 
-- 图形取自 [logo.svg](../frontend/src/brand/logo.svg)（全仓唯一一份形状，**不改动原文件**），只替换填充色；
-- 生成后把源图内容的 sha256 写进 `scripts/icon-source.sha256`，
+- 图形取自 [logo.svg](../../frontend/src/brand/logo.svg)（全仓唯一一份形状，**不改动原文件**），只替换填充色；
+- 生成后把源图内容的 sha256 写进 `scripts/desktop/icon-source.sha256`，
   `check_docs.py` 用它判断「源改了、产物没重生成」——不重跑渲染就能查，CI 不必装浏览器；
 - 用 `getBBox()` 取图形紧致边界重设 viewBox，裁掉四周留白——否则小尺寸下图形偏小；
 - 每个尺寸单独让浏览器渲染（缩放质量优于图像库重采样），再按 ICO 规范打包（PNG 嵌入，Vista+ 支持）；
@@ -11,8 +11,8 @@
 
 用法（项目根目录，可选传输出路径）：
 
-    .\\.venv\\Scripts\\python.exe scripts\\make_icon.py
-    .\\.venv\\Scripts\\python.exe scripts\\make_icon.py %TEMP%\\preview.ico
+    .\\.venv\\Scripts\\python.exe scripts\\desktop\\make_icon.py
+    .\\.venv\\Scripts\\python.exe scripts\\desktop\\make_icon.py %TEMP%\\preview.ico
 """
 
 import hashlib
@@ -23,7 +23,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SVG = ROOT / "frontend" / "src" / "brand" / "logo.svg"
 SIDECAR = Path(__file__).resolve().parent / "icon-source.sha256"
 OUT = (

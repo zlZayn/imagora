@@ -32,9 +32,9 @@
 ## 构建时机（三套构建互不相干，别混着做）
 
 - 改 `frontend/src/**` → 在 `frontend/` 跑 `npm run build`；不跑则浏览器仍拿旧 `dist/`（改动"看不见"）
-- 改 `scripts/launcher.cs` 或 `scripts/启动生图工作台.ico` → `powershell -File scripts\make_launcher.ps1`（换图标要先跑 `scripts/make_icon.py` 再编译，图标是编译期内嵌的）；**编译前先关掉正在运行的启动器窗口**，Windows 不允许覆盖运行中的 exe
-- **换品牌图形（logo）是一条链，漏一环就出现"顶栏新图、标签页旧图"**：改 [frontend/src/brand/logo.svg](frontend/src/brand/logo.svg)（全仓唯一形状源，顶栏 / 动态 favicon / 门面首屏都从它取）→ 跑 `scripts/make_icon.py`（同时刷新 `scripts/icon-source.sha256`）→ 关掉正在运行的启动器 → `powershell -File scripts\make_launcher.ps1`。前两环由 `check_docs.py` 兜（指纹不一致就红），后两环只能本机做，CI 不测双击
-- 无需构建：后端代码（`main.py` / `core/` / `server.py`，清 `__pycache__` 重启即可）、`scripts/启动生图工作台.cmd`（exe 只转发不解析其内容）、文档与测试
+- 改 `scripts/desktop/launcher.cs` 或 `scripts/desktop/启动生图工作台.ico` → `powershell -File scripts\desktop\make_launcher.ps1`（换图标要先跑 `scripts/desktop/make_icon.py` 再编译，图标是编译期内嵌的）；**编译前先关掉正在运行的启动器窗口**，Windows 不允许覆盖运行中的 exe
+- **换品牌图形（logo）是一条链，漏一环就出现"顶栏新图、标签页旧图"**：改 [frontend/src/brand/logo.svg](frontend/src/brand/logo.svg)（全仓唯一形状源，顶栏 / 动态 favicon / 门面首屏都从它取）→ 跑 `scripts/desktop/make_icon.py`（同时刷新 `scripts/desktop/icon-source.sha256`）→ 关掉正在运行的启动器 → `powershell -File scripts\desktop\make_launcher.ps1`。前两环由 `check_docs.py` 兜（指纹不一致就红），后两环只能本机做，CI 不测双击
+- 无需构建：后端代码（`main.py` / `core/` / `server.py`，清 `__pycache__` 重启即可）、`scripts/desktop/启动生图工作台.cmd`（exe 只转发不解析其内容）、文档与测试
 
 ## 提交前检查（本地 hook）
 
