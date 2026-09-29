@@ -396,6 +396,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 4. **浮层被后续卡片盖住**。规范：含浮层的卡片加 relative + 更高 z-index。
 5. **全屏浮层被动画 transform 祖先捕获**。现象：`fixed inset-0` 的弹窗只覆盖容器大小（如放大预览只出现在结果卡片内，四周不是全屏）。原因：入场动画 `fill both` 结束后 computed transform 仍是非 none 的矩阵，把 fixed 后代的包含块改成该祖先。规范：全屏浮层（如 ZoomModal）用 `createPortal(..., document.body)` 渲染，脱离任何 transform/filter 祖先；不要依赖"恰好没有动画祖先"。测试保障：Playwright 断言预览容器 boundingBox == 视口。
 6. **Portal 点击沿 React 组件树冒泡误关外层宿主**。现象：放大预览里点图片中间（非空白）却连带关掉外层遮罩（历史画廊退到画布）。原因：`createPortal` 内容挂到 body，但合成事件仍沿 **React 组件树**冒泡（非 DOM 树）——宿主遮罩的 `onClick=onClose` 收得到 Portal 内的点击，DOM 上的兄弟关系拦不住。规范：Portal 根（ZoomModal 的 `data-zoom-overlay` 层）必须 `onClick` stopPropagation 截停冒泡；关闭判定仍走 pointerdown（真实按下元素），两者职责分离。测试：WorkflowModals.test.tsx（组件单测锁定）。
+7. **毛玻璃随通透度增长，越模糊越看不清**。现象：卡片文字压不住壁纸，用户反复报「看不清壁纸」。根因：`backdrop-filter: blur()` 跟着通透度往上加（曾到 80px），整卡糊成奶白雾、壁纸被洗成灰白，比不透明更挡视线。规范：**模糊绝不随通透度增长**——`blurFor` 当前恒返回 `none`（函数保留只为「由 JS 注入整条字面量」这条路不破）；可读性靠壁纸降噪滤镜（`WALLPAPER_IMAGE_FILTER`）+ 卡片文字的极淡白描边兜底，输入框另有 `FIELD_ALPHA_FLOOR = 0.25` 底线（只抬输入框，不抬卡片/面板）。曾试过 8~12px 的中间档，同样被要求归零。测试：`surface.test.ts`（任何通透度都返回 `none`、底线只作用于输入框、alpha 单调）。
+8. **CSS 里写「函数内嵌 var()」的声明被压缩器整条丢弃**。现象：本地 dev 看着对，构建后样式静默失效——`backdrop-filter: blur(var(--x))` 与 `hsl(… / calc(0.66 * var(--x)))` 都被证明确实会丢。规范：需要按 JS 状态算出的字面量，就在 JS 里拼成**整条值**再内联注入（`surface.ts` 的 `surfaceTokens`，与 `--color-brand` 同路）；CSS 侧只允许 `var()` 作为**整个值**（`backdrop-filter: var(--x, none)` 安全）。测试保障：`surface.test.ts` 只锁「三档都是合法 CSS 值」，压缩器丢弃这条**没有自动化断言**——改这类声明必须实跑 `npm run build` 后在 `dist/` 里确认声明还在。
 
 ### 9.5 坐标与几何
 

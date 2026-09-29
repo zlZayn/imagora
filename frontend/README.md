@@ -44,7 +44,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | --- | --- | --- |
 | 尺寸阶梯 | `--h-ctl` · `--h-field` · `--h-cta` | 顶栏控件 28 · 表单控件 38 · 主行动 46 |
 | 圆角阶梯 | `--r-pill` · `--r-card` · `--r-control` | 胶囊 · 容器 16 · 控件 10 |
-| 表面 | `--surface-card` · `--surface-panel` · `--field-bg` · `--surface-blur` | 由 App 用 `surfaceTokens(色相, 通透度)` 在 **JS 里算成字面量后内联注入**（与 `--color-brand` 同路）；通透度拉到 1 时卡片/面板 alpha 仅约 0.05（接近全透明），输入框另有 **`FIELD_ALPHA_FLOOR = 0.25` 底线**（框里的占位灰字压在花哨壁纸上会发飘，只抬输入框、不抬卡片/面板）；可读性靠**壁纸降噪滤镜 + 卡片文字的极淡白描边**兜底，**不用毛玻璃**（`--surface-blur` 恒为 `none`）。**模糊绝不可随通透度增长**——曾涨到 80px，整卡变成奶白雾、壁纸被洗成灰白，比不透明更挡视线（用户反复报「看不清壁纸」的真因；随后 8~12px 也被要求归零）。**不要在 CSS 里写** `blur(var(--x))` 或 `hsl(… / calc(0.66 * var(--x)))`——「函数内嵌 var()」的整条声明会被压缩器丢弃；`var()` 作为**整个值**（`backdrop-filter: var(--x, none)`）则安全 |
+| 表面 | `--surface-card` · `--surface-panel` · `--field-bg` · `--surface-blur` | 由 App 用 `surfaceTokens(色相, 通透度)` 在 **JS 里算成字面量后内联注入**（与 `--color-brand` 同路）；通透度拉到 1 时卡片/面板 alpha 仅约 0.05（接近全透明），输入框另有 `FIELD_ALPHA_FLOOR = 0.25` 底线。两条硬约束（模糊绝不随通透度增长、CSS 里不写「函数内嵌 var()」）见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 9.4 第 7、8 条 |
 | 通用滑杆 | `.range-field` | 外观弹窗的参数滑杆（通透度用它；与主色滑杆同形，轨道保持中性） |
 | 角落装饰 | `.corner-deco` · `.corner-rings` · `.corner-note` | 编号 / 弧环 / 镜像小字 |
 | 快捷键面板 | `.help-more` + `__btn` / `__panel` | 画布页操作帮助右侧的 `?`；原生 `details/summary`，无需组件状态 |
