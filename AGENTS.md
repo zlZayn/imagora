@@ -2,7 +2,7 @@
 
 > 全局索引：本项目只放仪表盘与变更路由。模块细节查子目录 README 手册，设计/决策/防错查 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，用户用法查 [README.md](README.md)。
 > **放置约定**：固定放项目根目录，主流 AI 编程 agent 启动时自动发现并注入上下文——因此本文档必须保持"仪表盘含量"（几十行），细节一律外置子 README。
-> **互改联动**：改任何子 README / ARCHITECTURE 后，复查本文档引用是否仍有效、数字/坑是否过时；本文档是其他文档的入口，双向引用缺一即断链。改文档后跑 `python scripts/check_docs.py`（链接可解析 + 仪表盘计数与源码一致，见 [scripts/README.md](scripts/README.md)）。
+> **互改联动**：改任何子 README / ARCHITECTURE 后，复查本文档引用是否仍有效、数字/坑是否过时；本文档是其他文档的入口，双向引用缺一即断链。改文档后跑 `python scripts/check_docs.py`（链接可解析 + 仪表盘计数与源码一致，见 [scripts/README.md](scripts/README.md)）——**CI 的前端 job 也跑它**，漂了就红，不靠人记得。
 
 ## 文档体系（双向引用，层层递进）
 
@@ -52,10 +52,9 @@ CI 在 push 后自动跑，红叉处理顺序：`gh run view <id>` 看哪个 job
 
 ## 待办
 
-- [ ] 把 [scripts/check_docs.py](scripts/check_docs.py) 接进 [ci.yml](.github/workflows/ci.yml)：它现在只有本地跑，链接与计数漂移靠人记得
 - [ ] 重新生成 [assets/](assets/) 下的 README 预览截图：现有图与当前 UI 不一致（顶栏控件高度、卡片编号水印、容器表面渐变、滚动条均已调整）
 - [ ] 拆分 [frontend/src/components/CanvasPage.tsx](frontend/src/components/CanvasPage.tsx)：**先补行为基线测试**（当前覆盖薄、裸拆风险高），再分步拆、每步独立验证，CI + E2E 兜底；不急于一次拆完，也不混进严格开关批次
-- 无其他（8-23 备份清理；8-24 文档体系重构 + CI 完善；9-22 成本看板 + 预算保护 + 重跑失败项）
+- 无其他（8-23 备份清理；8-24 文档体系重构 + CI 完善；9-22 成本看板 + 预算保护 + 重跑失败项；9-29 `check_docs.py` 接进 CI 前端 job）
 
 ## 活跃坑 / 注意
 

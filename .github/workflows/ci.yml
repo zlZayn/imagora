@@ -56,6 +56,13 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+      - name: Docs check (links + dashboard counts)
+        # 排在 npm ci 之前：只读仓库文件、不装任何依赖，几十秒就能判红，没必要等构建。
+        # 本 job 的默认 working-directory 是 frontend/，这里显式回到仓库根——
+        # 脚本按自身位置解析根目录，命令写法与 AGENTS / scripts/README 里那条保持一致。
+        # ubuntu runner 自带 python3，脚本只用标准库。（本地仍写作 `python`，见 scripts/README.md）
+        working-directory: .
+        run: python3 scripts/check_docs.py --quiet
       - uses: actions/setup-node@v4
         with:
           node-version: 22

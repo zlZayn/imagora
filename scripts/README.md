@@ -22,7 +22,11 @@
 - 职责：文档完整性校验——相对 markdown 链接可解析 + 仪表盘测试计数与源码一致（后端数 `def test_`、前端数 `it()`，逐处比对 AGENTS / tests/README / ARCHITECTURE / frontend/README 的声明数字）
 - 危险级别：**低**（只读，不写任何文件）
 - 命令：`python scripts/check_docs.py`（`--quiet` 只出问题）；退出码 0=通过 / 1=有断链或计数漂移
+- 落点：已接进 CI —— [.github/workflows/ci.yml](../.github/workflows/ci.yml) 前端 job 的第一步（checkout 之后、`npm ci` 之前，不装依赖所以判红快），CI 上写作 `python3`（ubuntu runner），本地仍是 `python`
 - 改后必测：`python scripts/check_docs.py` 自检（改文档后跑一次即可，无需单测——脚本本身即校验器）
+- 注意它有两处**已知盲区**（2026-09-29 实测，别把"绿"当成"表格全对"）：
+  - 前端**逐文件**用例数不校验（表格行只 `pass`），总数按 `frontend/src` 全量 `it()` 数——曾出现四处逐文件数字与源码不符而脚本仍绿
+  - 只解析 markdown 链接 `[..](..)`，写在反引号里的路径（如 `` `docs/x.md` ``）照不到
 - 背景：计数分散多处人工同步易漏（曾出现 221→222 漏改、frontend 145 过时数字），脚本把「数字与源码一致」从纪律变成可执行检查
 
 ### [make_icon.py](make_icon.py)
