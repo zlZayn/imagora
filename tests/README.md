@@ -65,13 +65,14 @@ cd frontend; npm test
 | [`cost.test.ts`](../frontend/src/cost.test.ts) | 6 | 金额/比例/耗时格式化（非法值回退 -）/ 预算摘要（不限与设限两种、兼容预检结果的 settings 形态）/ 看板主指标行顺序与文案 |
 | [`api-guards.test.ts`](../frontend/src/api-guards.test.ts) | 9 | `/api` 响应形状守卫（必填字段类型、可选字段「在但类型错」、多出的键放行） |
 | [`format.test.ts`](../frontend/src/format.test.ts) | 6 | `formatBytes` 三档与 1024 边界 / `generatingLabel` 文案 / `errMessage`（Error 与非 Error、超长才截断、恰好等于上限不截、limit 可覆盖） |
-| [`accent.test.ts`](../frontend/src/accent.test.ts) | 4 | 同一编号恒定取色、`null` 回落 1 号、黄金角色相分布（含越过 360 回绕与 0 号负色相的现行为）、`brand` 与 `brandDark` 只差明度 |
+| [`accent.test.ts`](../frontend/src/accent.test.ts) | 13 | 同一编号恒定取色、`null` 回落 1 号、黄金角色相分布（含越过 360 回绕与 0 号负色相的现行为）、`brand` 与 `brandDark` 只差明度 / 色相归一到 [0,360) / NaN·Infinity 回落 0 不产出坏值 / 自定义色相与自动取色共用同一公式 / 九个预设互不重复且在合法区间 / 读写往返（未设置读 `null`、存后读回、存越界先归一、传 `null` 清除、空白或非法视为未设置） |
 | [`windowInherit.test.ts`](../frontend/src/windowInherit.test.ts) | 10 | 写读往返且不清除、`notice` 省略即不写该键、空参考图 `filesIncluded: false`、`sessionStorage` 抛错时放弃继承不抛错、无键 / 非 JSON / 顶层形状不符 / `refs` 字段类型不符 / `notice` 非字符串一律判无继承、清除不误伤其他键 |
 | [`rerun.test.ts`](../frontend/src/rerun.test.ts) | 9 | 可重跑判定（成功记录、空提示词、缺尺寸/质量、图生图参考图丢失、参考图仍在、纯文生图）/ 分组与丢失计数 / 批量参数构造（空 path 丢弃）/ 跳过原因聚合排序 |
-| [`wallpaperStore.test.ts`](../frontend/src/wallpaperStore.test.ts) | 7 | IndexedDB 不可用降级（读 null、写 false、删不抛错）/ 全局缺失 `indexedDB` / `open` 抛异常 / `open` 触发 `onerror` 或 `onblocked` 均安静返回。成功读写路径由真机验证（jsdom 无 IndexedDB，且该全局连声明都没有，造替身必须先 `vi.stubGlobal`） |
+| [`wallpaperStore.test.ts`](../frontend/src/wallpaperStore.test.ts) | 10 | IndexedDB 不可用降级（读 null、写 false、删不抛错）/ 全局缺失 `indexedDB` / `open` 抛异常 / `open` 触发 `onerror` 或 `onblocked` 均安静返回。成功读写路径由真机验证（jsdom 无 IndexedDB，且该全局连声明都没有，造替身必须先 `vi.stubGlobal`） |
 | [`canvasBounds.test.ts`](../frontend/src/canvasBounds.test.ts) | 9 | 画布边界开关（默认开、只有 0/false 才关、空白与非法值回落、localStorage 不可用降级） |
-| [`backgroundPreset.test.ts`](../frontend/src/backgroundPreset.test.ts) | 9 | 背景材质预设：清单 id 唯一且默认项在最前、每项标签与提示非空、不含深色预设（暗房/蓝图属独立工程）、`isBackgroundPresetId` 拒绝非字符串与未知 id、读写往返、非法存储值与非法入参均回落默认「跟随主体色」 |
-| [`surface.test.ts`](../frontend/src/surface.test.ts) | 14 | 卡片通透度：入参钳到 [0,1] 且空值回落默认、通透度越高各档 alpha 单调变小、通透度 0 落到基准（卡片 0.9/0.68）、拉到最透仍留 >0.2 白（保证文字可读）、面板始终比卡片实一档、色相参与底色并被归一、NaN 色相回落 0、读写往返与坏值回落 |
+| [`backgroundPreset.test.ts`](../frontend/src/backgroundPreset.test.ts) | 13 | 背景材质预设：清单 id 唯一且默认项在最前、每项标签与提示非空、不含深色预设（暗房/蓝图属独立工程）、材质组与壁纸组互不重叠且合起来是全部、壁纸组全有 URL 而材质组一个都没有、两张内置壁纸都在、`presetWallpaperOf` 按组分流（壁纸给 URL / 材质与非法 id 给 `null`）、`isBackgroundPresetId` 拒绝非字符串与未知 id、读写往返（每项合法预设都能往返）、非法存储值与非法入参均回落默认「跟随主体色」、非法 id 不写进存储（不污染已有值） |
+| [`surface.test.ts`](../frontend/src/surface.test.ts) | 15 | 卡片通透度：入参钳到 [0,1] 且空值回落默认、通透度越高各档 alpha 单调变小、通透度 0 落到基准（卡片 0.9/0.68）、拉到最透仍留 >0.2 白（保证文字可读）、`blurFor` 在任何通透度下都返回 `none`（毛玻璃已彻底关闭，不许随通透度增长）、输入框有 `FIELD_ALPHA_FLOOR = 0.25` 底线而卡片不受此限、面板始终比卡片实一档、色相参与底色并被归一、NaN 色相回落 0、读写往返与坏值回落 |
+| [`recentPrompts.test.ts`](../frontend/src/recentPrompts.test.ts) | 10 | 最近提示词挑选：按入参顺序取（越靠前越新）不重排、同一条反复重跑只算一次并保留最靠前那次、**按前 40 字归并近似版本**且保留最新、前 40 字不同视为两条、归并键先归一连续空白（只差空格数算同一条）、丢弃空白与缺失项、裁剪首尾空白后再去重、受 `limit` 限制且取满即停、去重后不足 limit 返回全部、空入参返回空数组 |
 
 ## 变更影响路由（改前必看）
 
