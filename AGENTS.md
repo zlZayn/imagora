@@ -58,7 +58,7 @@ CI 在 push 后自动跑，红叉处理顺序：`gh run view <id>` 看哪个 job
 - [ ] CLI 与网页端功能不对等（预算闸门 / 历史与花费回读 / 重跑失败项 / 取消 / 提示词导入格式 / 切 profile，全清单在 [issue #35](https://github.com/zlZayn/imagora/issues/35)）：其中**预算闸门**最要紧——`gen` / `batch` 直连 `generate_image`，不看 `dailyLimit` 也不看 `singleRunLimit`，与门面宣传的「预算保护」不一致，补闸门会改变 CLI 成功/失败语义，**等拍板**；其余各项按该 issue 清单逐项定
 - [ ] 拆分 [frontend/src/components/CanvasPage.tsx](frontend/src/components/CanvasPage.tsx)：**先补行为基线测试**（当前覆盖薄、裸拆风险高），再分步拆、每步独立验证，CI + E2E 兜底；不急于一次拆完，也不混进严格开关批次
 - [ ] **内置壁纸作为预设是否合适，待议**（cslkkl 的外观体系贡献，2026-09-29 登记）：5 种背景材质（纸纤维 / 木纹 / 干净冷灰 / 雾面 / 跟随主体色，纯 CSS、不占体积）留作预设没问题；待议的是 2 张内置壁纸 `frontend/public/wallpapers/dragon.jpg`（青玉游龙）+ `tiger.jpg`（晨曦神兽），共 795 KB 且已入库——要再想三点：① 入库体积（两张近 800 KB 常驻仓库）；② 预设普适性（具体题材的图当内置预设，是否人人愿意看到）；③ 资源策略（内置图入库 vs 用户自选壁纸存 IndexedDB 不入库，是否该统一）。两条路渲染同源、行为已正确，这里只议"要不要留作预设"；**现在不改代码、不动壁纸文件**
-- [ ] `check-markdown-links.py --refs` 对 HTML 锚点误报：两份 README 的中英切换块用 `<a href="README_en.md">`，被当成「引用未做成链接」告警（工具只认 markdown 链接语法，不解析 HTML）。当前接受（每次跑多这 2 条 warn）；将来给工具加 HTML 解析，或换写法
+- [ ] 链接检查两套并存：[scripts/check_docs.py](scripts/check_docs.py) 的链接项与 skill 工具 `check-markdown-links.py` 功能重叠；待 skill 工具修好 HTML 锚点与中文名误报后，评估把项目脚本里那项整掉，让它只管项目特有检查（测试数字同步、图标新鲜度、exe 路径）。**2026-09-30 复跑：两类误报均已消失**（`--refs` 不再报切换块、`--github` 0 errors），前提已满足
 - 无其他（8-23 备份清理；8-24 文档体系重构 + CI 完善；9-22 成本看板 + 预算保护 + 重跑失败项；9-29 `check_docs.py` 接进 CI 前端 job）
 
 ## 活跃坑 / 注意
