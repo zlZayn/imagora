@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""文档完整性校验：相对链接可解析 + 仪表盘测试计数与源码一致。
+"""仓库完整性校验：相对链接可解析 + 仪表盘计数与源码一致 + 桌面链产物不脱节
+（图标指纹、exe 里烘焙的启动脚本路径）。
 
 只读、无副作用（不写任何文件），本地与 CI 均可跑：
     python scripts/check_docs.py [--quiet]
@@ -188,6 +189,39 @@ def check_icon_freshness() -> list[str]:
     return problems
 
 
+LAUNCHER_CS = ROOT / "scripts" / "desktop" / "launcher.cs"
+
+
+def check_launcher_target() -> list[str]:
+    """launcher.cs 里烘焙进 exe 的 .cmd 路径必须真的落在本仓。
+
+    exe 是编译产物：路径写错、或 .cmd 挪了位置而没同步改这里 + 重编，
+    表现只是「双击失灵」——CI 不跑双击，ruff 也看不出，只能靠这条静态校验兜。
+    """
+    if not LAUNCHER_CS.exists():
+        return [f"{LAUNCHER_CS.relative_to(ROOT)}: 启动器源码不见了"]
+    src = LAUNCHER_CS.read_text(encoding="utf-8")
+    m = re.search(r"Path\.Combine\(\s*root\s*,([^)]*)\)", src)
+    if m is None:
+        return [
+            (
+                f"{LAUNCHER_CS.relative_to(ROOT)}: 找不到 Path.Combine(root, …) 形式的启动脚本定位，"
+                "本校验需要跟着改（别让它空转）"
+            )
+        ]
+    parts = re.findall(r'"([^"]+)"', m.group(1))
+    target = ROOT.joinpath(*parts)
+    if not target.exists():
+        return [
+            (
+                f"{LAUNCHER_CS.relative_to(ROOT)}: 烘焙进 exe 的启动脚本路径 {'/'.join(parts)} "
+                "在仓里不存在 —— 挪了 .cmd 就要同步改这里，再重编 exe"
+                "（powershell -NoProfile -File scripts\\desktop\\make_launcher.ps1）"
+            )
+        ]
+    return []
+
+
 def main() -> int:
     # GBK 控制台（Windows 默认 cp936）无法打印 ✔/❌，统一按 utf-8 输出
     try:
@@ -206,7 +240,12 @@ def main() -> int:
     frontend_total = count_frontend_tests()
     count_problems = check_counts(backend_total, per_file, frontend_total)
 
-    problems = link_problems + count_problems + check_icon_freshness()
+    problems = (
+        link_problems
+        + count_problems
+        + check_icon_freshness()
+        + check_launcher_target()
+    )
     for p in problems:
         print(f"❌ {p}")
     if not problems:

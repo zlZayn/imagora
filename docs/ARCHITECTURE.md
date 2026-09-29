@@ -50,6 +50,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `tests/` | 后端 pytest（266 用例）+ 前端 vitest（292 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `assets/` | **文档配图**（只服务 markdown 渲染，不是应用资源）：`screenshots/` 放 README「界面一览」的界面截图；**双件**：assets/AGENTS.md + assets/README.md |
+| `_ui-audit/` | 开发期 UI 审计图（本机产物，git 忽略）：由 [scripts/capture.py](../scripts/capture.py) 生成，与门面配图 `assets/screenshots/` 不是一回事 |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流、`submissions/` 经典提交图快照 |
 

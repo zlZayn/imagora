@@ -8,7 +8,7 @@
 ## 文件索引
 
 ### [check_docs.py](check_docs.py)
-- 职责：仓库完整性只读校验——相对 markdown 链接可解析 + 仪表盘测试计数与源码一致（后端数 `def test_`、前端数 `it()`，逐处比对 AGENTS / tests/README / ARCHITECTURE / frontend/README 的声明数字）+ 桌面图标产物与品牌源图同步（比 `desktop/icon-source.sha256`）
+- 职责：仓库完整性只读校验——相对 markdown 链接可解析 + 仪表盘测试计数与源码一致（后端数 `def test_`、前端数 `it()`，逐处比对 AGENTS / tests/README / ARCHITECTURE / frontend/README 的声明数字）+ 桌面图标产物与品牌源图同步（比 `desktop/icon-source.sha256`）；`desktop/launcher.cs` 里烘焙进 exe 的启动脚本路径确实存在（挪了 .cmd 没同步改就红）
 - 危险级别：**低**（只读，不写任何文件）
 - 命令：`python scripts/check_docs.py`（`--quiet` 只出问题）；退出码 0=通过 / 1=有断链或计数漂移
 - 落点：已接进 CI —— [.github/workflows/ci.yml](../.github/workflows/ci.yml) 前端 job 的第一步（checkout 之后、`npm ci` 之前，不装依赖所以判红快），CI 上写作 `python3`（ubuntu runner），本地仍是 `python`
