@@ -163,17 +163,38 @@ def _resolve_output(args) -> tuple[str, str, str]:
     return output_path, output_dir, output_format
 
 
-def handle_gen_command(args):
-    """单张生图（文生图 / 图生图）—— 与 web 表单完全对等。
+def _resolve_output_list(args, count: int) -> tuple[list[str], str, str]:
+    """按张数解析每轮一张的输出路径，返回 (paths, output_dir, output_format)。
 
-    与 web 端的差异仅在调度：CLI 单次同步等待结果（不进入全局任务池），其余链路一致：
-      - 尺寸/质量/参考图/格式/张数无损透传到模型 API
-      - 成功后旁路 persist_submission_assets（与 server 共用同一资产旁路逻辑）
-      - 计费走 config.cost_for_size（与 server.size_cost 同源）
+    - 传目录：每轮各走一次 `_resolve_output`，自动序号保证互不相同
+    - 传具体文件：第 1 张用原名（与 `--n 1` 完全一致），第 2 张起加 `_2`、`_3` 后缀
+    """
+    first, output_dir, output_format = _resolve_output(args)
+    if count <= 1:
+        return [first], output_dir, output_format
+    if os.path.isdir(args.output) or args.output.endswith(("\\", "/")):
+        paths = [first] + [_resolve_output(args)[0] for _ in range(count - 1)]
+        return paths, output_dir, output_format
+    stem, ext = os.path.splitext(first)
+    return (
+        [first] + [f"{stem}_{i}{ext}" for i in range(2, count + 1)],
+        output_dir,
+        output_format,
+    )
+
+
+def handle_gen_command(args):
+    """生图（文生图 / 图生图），`--n` 由客户端循环兑现。
+
+    与 web 端的差异仅在调度：CLI 逐张同步等待结果（不进入全局任务池），其余链路一致：
+      - 尺寸/质量/参考图/格式对齐 web；每张一次请求、每次请求 `n=1`
+      - 每张各自旁路 persist_submission_assets（与 server 共用同一资产旁路逻辑）
+      - 每张各自写一行账本，计费走 config.cost_for_size（与 server.size_cost 同源）
     """
     _validate_gen_args(args)
 
-    output_path, output_dir, output_format = _resolve_output(args)
+    requested = max(1, args.n)
+    paths, output_dir, output_format = _resolve_output_list(args, requested)
     size = resolve_size_with_ratio(args.size, args.ratio, args.tier)
 
     ref_paths: list[str] = []
@@ -184,79 +205,100 @@ def handle_gen_command(args):
             sys.exit(2)
         ref_paths.append(abs_p)
 
-    # --no-asset 模式不生成 submission_id（不写提交快照、不进资产旁路、账本无联动字段）
-    submission_id = "" if args.no_asset else graphstore.next_submission_id()
-    cost = config_mod.cost_for_size(size)
-    started_at = time.time()
-    dest = output_path
-    ok = False
-    try:
-        if ref_paths:
-            # 图生图：多张参考图一次请求提交（与 web 表单 images 字段等价）
-            print_info(f"图生图 · 参考图 {len(ref_paths)} 张")
-            generate_image(
-                prompt=args.prompt,
-                images=ref_paths,
-                size=size,
-                quality=args.quality,
-                model=args.model,
-                n=args.n,
-                output_format=output_format,
-                output_path=dest,
-            )
-        else:
-            print_info("文生图")
-            generate_image(
-                prompt=args.prompt,
-                image_path=None,
-                size=size,
-                quality=args.quality,
-                model=args.model,
-                n=args.n,
-                output_format=output_format,
-                output_path=dest,
-            )
-        ok = True
-        print_success(f"已保存: {dest}（{size}）· 费用 {cost:.2f} 元")
-    except Exception as e:
-        print_error(f"生成失败: {api.format_error(e)}")
+    unit_cost = config_mod.cost_for_size(size)
+    mode = "img2img" if ref_paths else "txt2img"
+    if mode == "img2img":
+        print_info(f"图生图 · 参考图 {len(ref_paths)} 张")
+    else:
+        print_info("文生图")
+    if len(paths) > 1:
+        total = unit_cost * len(paths)
+        print_info(f"共 {len(paths)} 张 · 逐张请求 · 预计费用 {total:.2f} 元")
 
-    # 旁路：注册资产 + 落提交快照（委托 graphstore 公共函数，与 server 同源；
-    # --no-asset 或生成失败时跳过；任何失败不抛，不影响生成结果）
-    submission_meta: dict | None = None
-    if ok and submission_id:
+    failures: list[str] = []
+    spent = 0.0
+    for index, dest in enumerate(paths, start=1):
+        if len(paths) > 1:
+            print_info(f"第 {index}/{len(paths)} 张")
+        # --no-asset 模式不生成 submission_id（不写提交快照、不进资产旁路、账本无联动字段）
+        submission_id = "" if args.no_asset else graphstore.next_submission_id()
+        started_at = time.time()
+        ok = False
         try:
-            params = {"size": size, "quality": args.quality, "outputDir": output_dir}
-            submission_meta = graphstore.persist_submission_assets(
-                submission_id,
-                args.prompt,
-                params,
-                ref_paths,
-                [dest],
-                0,
-            )
-        except Exception:
-            submission_meta = None
+            if ref_paths:
+                # 多张参考图一次请求提交（与 web 表单 images 字段等价）
+                generate_image(
+                    prompt=args.prompt,
+                    images=ref_paths,
+                    size=size,
+                    quality=args.quality,
+                    model=args.model,
+                    n=1,
+                    output_format=output_format,
+                    output_path=dest,
+                )
+            else:
+                generate_image(
+                    prompt=args.prompt,
+                    image_path=None,
+                    size=size,
+                    quality=args.quality,
+                    model=args.model,
+                    n=1,
+                    output_format=output_format,
+                    output_path=dest,
+                )
+            ok = True
+            spent += unit_cost
+            print_success(f"已保存: {dest}（{size}）· 费用 {unit_cost:.2f} 元")
+        except Exception as e:
+            failures.append(f"第 {index} 张：{api.format_error(e)}")
+            print_error(failures[-1])
 
-    # 只在确实落了提交快照时才记 submissionId（失败 / --no-asset / persist 抛错 都不记），
-    # 避免账本里出现「指向不存在 submission_*.json 的孤儿 id」
-    log_submission_id = submission_id if submission_meta is not None else ""
-    log_generation(
-        prompt=args.prompt,
-        mode="img2img" if ref_paths else "txt2img",
-        refs=len(ref_paths),
-        size=size,
-        quality=args.quality,
-        status="ok" if ok else "error",
-        output=dest if ok else "",
-        cost=cost if ok else 0.0,
-        seconds=time.time() - started_at,
-        win=None,
-        submission_id=log_submission_id,
-        input_asset_ids=(submission_meta or {}).get("input_asset_ids"),
-        output_asset_ids=(submission_meta or {}).get("output_asset_ids"),
-    )
-    if not ok:
+        # 旁路：注册资产 + 落提交快照（委托 graphstore 公共函数，与 server 同源；
+        # --no-asset 或该张失败时跳过；任何失败不抛，不影响已完成的张）
+        submission_meta: dict | None = None
+        if ok and submission_id:
+            try:
+                params = {
+                    "size": size,
+                    "quality": args.quality,
+                    "outputDir": output_dir,
+                }
+                submission_meta = graphstore.persist_submission_assets(
+                    submission_id,
+                    args.prompt,
+                    params,
+                    ref_paths,
+                    [dest],
+                    0,
+                )
+            except Exception:
+                submission_meta = None
+
+        # 只在确实落了提交快照时才记 submissionId（失败 / --no-asset / persist 抛错 都不记），
+        # 避免账本里出现「指向不存在 submission_*.json 的孤儿 id」
+        log_submission_id = submission_id if submission_meta is not None else ""
+        log_generation(
+            prompt=args.prompt,
+            mode=mode,
+            refs=len(ref_paths),
+            size=size,
+            quality=args.quality,
+            status="ok" if ok else "error",
+            output=dest if ok else "",
+            cost=unit_cost if ok else 0.0,
+            seconds=time.time() - started_at,
+            win=None,
+            submission_id=log_submission_id,
+            input_asset_ids=(submission_meta or {}).get("input_asset_ids"),
+            output_asset_ids=(submission_meta or {}).get("output_asset_ids"),
+        )
+
+    if len(paths) > 1:
+        done = len(paths) - len(failures)
+        print_info(f"完成 {done}/{len(paths)} 张 · 实际费用 {spent:.2f} 元")
+    if failures:
         sys.exit(1)
 
 
@@ -636,7 +678,12 @@ def build_argument_parser():
     sub_gen.add_argument(
         "--model", default=DEFAULT_MODEL, help="模型名，默认取当前 profile"
     )
-    sub_gen.add_argument("--n", type=int, default=1, help="生成张数，默认 1")
+    sub_gen.add_argument(
+        "--n",
+        type=int,
+        default=1,
+        help="生成张数（逐张请求，每张独立落盘与记账），默认 1",
+    )
     sub_gen.add_argument(
         "--format",
         default="png",

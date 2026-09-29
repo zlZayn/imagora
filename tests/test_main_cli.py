@@ -75,6 +75,12 @@ def _ns_gen(**overrides):
     return ns
 
 
+def _ledger_rows(gen_env) -> list[dict]:
+    """读回生成账本的全部行（每张一行时用这个，单行 json.loads 会失败）。"""
+    path = Path(gen_env) / "logs" / "generation.jsonl"
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
 # ---------- _validate_gen_args ----------
 
 
@@ -271,6 +277,100 @@ class TestHandleGenCommand:
         record = json.loads(log_path.read_text(encoding="utf-8"))
         # 9:16 2K 档对应 1152x2048
         assert record["size"] == "1152x2048"
+
+
+# ---------- --n：客户端逐张请求 ----------
+
+
+class TestGenMultipleImages:
+    """`--n` 由客户端循环兑现：n 次请求、每次 n=1、每张独立落盘与入账。
+
+    这里盯的是曾被丢弃的那一半：上游按张数计费，本侧必须真存下同样多的张。
+    （`test_core_api.py` 里的 `calls["n"]` 是重试计数器，与张数无关，别照着它读。）
+    """
+
+    @staticmethod
+    def _recorder(monkeypatch, fail_on: int | None = None):
+        """替换 generate_image：记录每次调用的 (n, output_path)，写假 PNG。"""
+        calls: list[tuple[int, str]] = []
+
+        def _fake(
+            prompt,
+            image_path=None,
+            images=None,
+            size="1024x1024",
+            quality="low",
+            model="gpt-image-2",
+            n=1,
+            output_format="png",
+            output_path=None,
+        ):
+            calls.append((n, str(output_path)))
+            if fail_on is not None and len(calls) == fail_on:
+                raise RuntimeError("api boom")
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(output_path).write_bytes(b"\x89PNG-fake")
+            return output_path
+
+        monkeypatch.setattr(main, "generate_image", _fake)
+        return calls
+
+    def test_three_requests_each_asking_for_one(self, gen_env, monkeypatch):
+        calls = self._recorder(monkeypatch)
+        main.handle_gen_command(_ns_gen(output=str(gen_env / "out.png"), n=3))
+
+        assert [n for n, _ in calls] == [1, 1, 1]
+
+    def test_three_distinct_files_on_disk(self, gen_env, monkeypatch):
+        self._recorder(monkeypatch)
+        main.handle_gen_command(_ns_gen(output=str(gen_env / "out.png"), n=3))
+
+        # 第 1 张用请求的原名，之后加序号后缀（--n 1 的行为完全不变）
+        assert sorted(p.name for p in gen_env.glob("*.png")) == [
+            "out.png",
+            "out_2.png",
+            "out_3.png",
+        ]
+
+    def test_ledger_has_one_row_per_image(self, gen_env, monkeypatch):
+        self._recorder(monkeypatch)
+        main.handle_gen_command(_ns_gen(output=str(gen_env / "out.png"), n=3))
+
+        rows = _ledger_rows(gen_env)
+        assert len(rows) == 3
+        assert {r["status"] for r in rows} == {"ok"}
+        assert len({r["output"] for r in rows}) == 3
+        # 每张各自一个提交快照，互不覆盖
+        assert len(list((gen_env / "submissions").glob("*.json"))) == 3
+
+    def test_directory_output_names_every_image(self, gen_env, monkeypatch):
+        calls = self._recorder(monkeypatch)
+        out_dir = gen_env / "shots"
+        main.handle_gen_command(_ns_gen(output=f"{out_dir}/", n=2))
+
+        assert len({p for _, p in calls}) == 2
+        assert all(Path(p).parent == out_dir for _, p in calls)
+
+    def test_partial_failure_keeps_earlier_images_and_exits_1(
+        self, gen_env, monkeypatch
+    ):
+        self._recorder(monkeypatch, fail_on=2)
+        with pytest.raises(SystemExit) as exc:
+            main.handle_gen_command(_ns_gen(output=str(gen_env / "out.png"), n=3))
+        assert exc.value.code == 1
+
+        # 成功的两张留着，失败那张不落文件
+        assert sorted(p.name for p in gen_env.glob("*.png")) == ["out.png", "out_3.png"]
+        rows = _ledger_rows(gen_env)
+        assert [r["status"] for r in rows] == ["ok", "error", "ok"]
+        assert rows[1]["cost"] == 0.0
+
+    def test_default_single_image_writes_requested_name(self, gen_env, monkeypatch):
+        calls = self._recorder(monkeypatch)
+        main.handle_gen_command(_ns_gen(output=str(gen_env / "out.png")))
+
+        assert len(calls) == 1 and Path(gen_env / "out.png").exists()
+        assert not list(gen_env.glob("out_*.png"))
 
 
 # ---------- handle_config_command ----------

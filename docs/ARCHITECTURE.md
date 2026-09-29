@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
 | `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
-| `tests/` | 后端 pytest（260 用例）+ 前端 vitest（288 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
+| `tests/` | 后端 pytest（266 用例）+ 前端 vitest（288 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流、`submissions/` 经典提交图快照 |
@@ -239,12 +239,14 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 6.3 单张生成（命令行）
 
-`gen` 子命令与 web 表单完全对等，链路：`_validate_gen_args`（必填/互斥/取值校验，缺则退出码 2）→ `_resolve_output`（文件路径直接用 / 目录则生成 `ai_<时间戳>_<序号>.<后缀>`）→ `resolve_size_with_ratio` → `generate_image`（多参考图走 edits 接口）→ 旁路 `graphstore.persist_submission_assets`（注册参考图 + 结果图，落提交快照）→ `log_generation`（写全量账本，含 `submissionId`/`assetIds`，与 web 同源可互查）。
+`gen` 子命令与 web 表单对齐，链路：`_validate_gen_args`（必填/互斥/取值校验，缺则退出码 2）→ `_resolve_output_list`（按张数解析每轮一张的路径）→ `resolve_size_with_ratio` → **逐张** `generate_image`（每次请求 `n=1`，多参考图走 edits 接口）→ 每张各旁路一次 `graphstore.persist_submission_assets`（注册参考图 + 结果图，落该张自己的提交快照）→ 每张各写一行 `log_generation`（含 `submissionId`/`assetIds`，与 web 同源可互查）。
 
 - 必填参数缺失立即报错并提示运行 `config` 查看可用值（退出码 2），不进入生成；
 - `--no-asset` 跳过资产旁路与提交快照，账本无 `submissionId`/`assetIds` 字段；
-- 单次同步等待结果（不进并发池），失败写 `status=error`、退出码 1；
-- 多张并行：开多个终端各跑一条 `gen` 命令（并行调度不在项目职责内）。
+- **张数由客户端循环兑现**：`--n 3` 发 3 次请求、每次向上游要 1 张。**不许**把 `n` 透传给上游——上游会按 3 张计费而 `core/api.py` 只取 `data[0]`，等于花 3 张的钱存 1 张（issue #34）；
+- **输出命名**：传目录时每轮各取一个自动序号名（与 `server.run_generation` 同算法）；传具体文件时第 1 张用原名、第 2 张起加 `_2`、`_3` 后缀，保证 `--n 1`（默认）与历史行为逐字不变；
+- 逐张同步等待（不进并发池）；某张失败不回滚已成功的，该张写 `status=error` 且不计数，只要有一张失败整体退出码 1；
+- 多张并行仍可用"开多个终端各跑一条"，与 `--n` 的区别是后者由本工具串行跑完并逐张入账。
 
 `config` 子命令实时读 `config.json` 当前 profile，打印支持的尺寸（含费用）/ 比例 + 档位 / 质量取值 / 默认值，避免传错值被 `_validate_gen_args` 拒绝。
 
@@ -421,7 +423,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-- 后端 pytest：**260 用例**（Windows 含 5 个专属测试，CI 必须 `windows-latest`；默认 tmp 路径的 WinError 5 历史坑已随目录重建恢复，见 AGENTS「活跃坑」）
+- 后端 pytest：**266 用例**（Windows 含 5 个专属测试，CI 必须 `windows-latest`；默认 tmp 路径的 WinError 5 历史坑已随目录重建恢复，见 AGENTS「活跃坑」）
 - 前端 vitest：**288 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - 文档完整性：`python scripts/check_docs.py`（相对链接可解析 + AGENTS/tests-README/ARCHITECTURE/frontend-README 的测试计数与源码一致；改任何文档后必跑，见 [scripts/README.md](../scripts/README.md)）
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
