@@ -18,10 +18,8 @@ logs/
 # 运行产物：输出图片 / 参考图缓存 / 上次路径记录
 output/
 
-# 开发期 UI 审计截图（只指根目录那一个）。README 的门面配图在 assets/screenshots/，
-# 这里必须写成 /screenshots/ —— 裸写 screenshots/ 会把那个子目录一起吞掉，
-# 重拍时新增的图会静默不入库，GitHub 上图裂（同类坑见 AGENTS「.gitignore 一行裸文件名」条）
-/screenshots/
+# 开发期 UI 审计图：本机产物，不入库（门面配图在 assets/screenshots/）
+/_ui-audit/
 
 # 本机快捷方式：可执行入口是根目录的「启动生图工作台.exe」，快捷方式只是个人便利，
 # 且 .lnk 格式必须记录绝对路径，换机器即失效——不随仓库分发

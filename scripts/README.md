@@ -2,7 +2,7 @@
 
 **危险等级：迁移脚本是破坏性操作，`--apply` 前必须 dry-run + 人工确认（Handoff 硬边界：改迁移逻辑/存储格式必须维护者确认）。**
 
-本目录只放**跨领域运维脚本**。Windows 桌面入口与图标链（启动脚本、配色脚本、做图标、编译 exe）在
+本目录只放**跨领域运维脚本与本机工具**。Windows 桌面入口与图标链（启动脚本、配色脚本、做图标、编译 exe）在
 [desktop/](desktop/README.md)，其文件索引、命令与改后验证都在那份里，本文件不重复。
 
 ## 文件索引
@@ -29,12 +29,20 @@
 - 职责：Windows 桌面入口与图标链——`启动生图工作台.cmd`（实际启动脚本）、`window_accent.ps1`（首窗配色）、`launcher.cs` + `make_launcher.ps1`（编译根目录那个 exe）、`make_icon.py`（由品牌源图出 ICO 与指纹）
 - 索引 / 命令 / 改后验证 → [desktop/README.md](desktop/README.md)；该目录特有约束 → [desktop/AGENTS.md](desktop/AGENTS.md)
 
+### [capture.py](capture.py)
+- 职责：本机 UI 审计截图——playwright 按写死的 12 个固定状态（经典表单 / 画布 / 各模态 / 矮视口）拍图，文件名 `NN-用途.png`；默认输出项目根 `_ui-audit/`（已 git 忽略，本机产物不入库）
+- 危险级别：低（开工先清空**输出目录**的旧 png 再重拍；不碰 `assets/screenshots/` 与 `output/`）
+- 前置：7860 服务已在跑（见根 [AGENTS.md](../AGENTS.md) 常用命令）；`--out` 可换输出目录，相对路径按项目根解析
+- 改后验证：起服务后 `python scripts/capture.py --out %TEMP%\ui-audit` 跑一遍，核对打印的张数与文件名
+- 与门面配图不是一回事：[assets/screenshots/](../assets/README.md) 的 3 张是**入库**的展示图，本脚本拍的只在本机给自己比对界面
+
 ## 本地常用命令（在项目根目录执行）
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/migrate.py           # 先看报告（dry-run）
 .\.venv\Scripts\python.exe scripts/migrate.py --apply   # 确认后再落地
 python scripts/check_docs.py                            # 改文档后校验链接 + 仪表盘计数 + 图标指纹
+.\.venv\Scripts\python.exe scripts/capture.py           # 本机 UI 审计图 → _ui-audit/（需 7860 服务在跑）
 ```
 
 桌面侧命令（重做图标、重编 exe、单验配色）见 [desktop/README.md](desktop/README.md)。
@@ -53,6 +61,7 @@ python scripts/check_docs.py                            # 改文档后校验链�
   → **必须 Handoff 确认后再提交**
 - 改 `check_docs.py` → 跑一次它自己；新增校验项时同步它的「已知盲区」一节
 - 改 `desktop/` 里任何东西 → 看 [desktop/AGENTS.md](desktop/AGENTS.md)（exe 需重编、图标内嵌、`pushd` 层数）
+- 改 `capture.py` → 起 7860 服务后跑一次（先 `--out` 指临时目录验证）；它只写输出目录，审计图不进库
 
 ## 参考
 
