@@ -1417,13 +1417,7 @@ export function CanvasPage({
         </div>
       </div>
       {/* 操作帮助：单行小字，画布/节点/连线三类交互用分隔符紧凑展示（与 README「画布工作流」章节保持一致） */}
-      <div className="studio-help enter-up enter-delay-1 flex flex-wrap items-center gap-x-1 text-[10px] leading-tight text-neutral-400">
-        <span className="font-medium text-neutral-500">画布</span>拖拽图片/按钮到画布放置（松开即落点新建） · 右键框选 · Ctrl+点击加选 · 滚轮缩放 · 空白拖拽平移 · 双击连线删除 · 左下角适应视图全览 · Ctrl+A 全选 · Ctrl+Z/Y 撤销恢复 · Delete 删除选中 · Ctrl+S 保存
-        <span className="text-neutral-300">｜</span>
-        <span className="font-medium text-neutral-500">节点</span>悬停显右侧操作栏 · 选中后右上角可运行/整理/连线/设路径/删除 · 双击图片放大预览 · 拖右下角拉伸
-        <span className="text-neutral-300">｜</span>
-        <span className="font-medium text-neutral-500">连线</span>图片→提示词/图片组 · 图片组→提示词 · 提示词→图片（结果）；提示词仅一条入边，多图经图片组聚合
-      </div>
+      <div className="studio-help enter-up enter-delay-1 flex flex-wrap items-center gap-x-2 text-[11px] text-neutral-400">拖入图片 · 双击空白新建卡片 · 右键框选<details className="help-more ml-auto"><summary className="chip chip--quiet help-more__btn" title="全部快捷键">?</summary><div className="help-more__panel"><span><b>画布</b>右键框选 · Ctrl+点击加选 · 滚轮缩放 · 空白拖拽平移 · 左下角适应视图全览</span><span><b>节点</b>悬停显右侧操作栏 · 选中后右上角可运行/整理/连线/设路径/删除 · 双击图片放大预览 · 拖右下角拉伸</span><span><b>连线</b>图片→提示词/图片组 · 图片组→提示词 · 提示词→图片；提示词仅一条入边，多图经图片组聚合</span><span><b>快捷键</b>Ctrl+A 全选 · Ctrl+Z/Y 撤销恢复 · Delete 删除选中 · Ctrl+S 保存 · 双击连线删除</span></div></details></div>
 
       {/* 画布 */}
       <div className="studio-canvas panel-card enter-up enter-delay-2 relative min-h-0 flex-1 overflow-hidden">

@@ -43,7 +43,7 @@ cd frontend; npm test
 | [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
 | [`test_main_cli.py`](test_main_cli.py) | 25 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ config 输出 |
 
-## 文件索引（前端 vitest，共 222，位于 frontend/src/）
+## 文件索引（前端 vitest，共 288，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -68,6 +68,10 @@ cd frontend; npm test
 | [`accent.test.ts`](../frontend/src/accent.test.ts) | 4 | 同一编号恒定取色、`null` 回落 1 号、黄金角色相分布（含越过 360 回绕与 0 号负色相的现行为）、`brand` 与 `brandDark` 只差明度 |
 | [`windowInherit.test.ts`](../frontend/src/windowInherit.test.ts) | 10 | 写读往返且不清除、`notice` 省略即不写该键、空参考图 `filesIncluded: false`、`sessionStorage` 抛错时放弃继承不抛错、无键 / 非 JSON / 顶层形状不符 / `refs` 字段类型不符 / `notice` 非字符串一律判无继承、清除不误伤其他键 |
 | [`rerun.test.ts`](../frontend/src/rerun.test.ts) | 9 | 可重跑判定（成功记录、空提示词、缺尺寸/质量、图生图参考图丢失、参考图仍在、纯文生图）/ 分组与丢失计数 / 批量参数构造（空 path 丢弃）/ 跳过原因聚合排序 |
+| [`wallpaperStore.test.ts`](../frontend/src/wallpaperStore.test.ts) | 7 | IndexedDB 不可用降级（读 null、写 false、删不抛错）/ 全局缺失 `indexedDB` / `open` 抛异常 / `open` 触发 `onerror` 或 `onblocked` 均安静返回。成功读写路径由真机验证（jsdom 无 IndexedDB，且该全局连声明都没有，造替身必须先 `vi.stubGlobal`） |
+| [`canvasBounds.test.ts`](../frontend/src/canvasBounds.test.ts) | 9 | 画布边界开关（默认开、只有 0/false 才关、空白与非法值回落、localStorage 不可用降级） |
+| [`backgroundPreset.test.ts`](../frontend/src/backgroundPreset.test.ts) | 9 | 背景材质预设：清单 id 唯一且默认项在最前、每项标签与提示非空、不含深色预设（暗房/蓝图属独立工程）、`isBackgroundPresetId` 拒绝非字符串与未知 id、读写往返、非法存储值与非法入参均回落默认「跟随主体色」 |
+| [`surface.test.ts`](../frontend/src/surface.test.ts) | 14 | 卡片通透度：入参钳到 [0,1] 且空值回落默认、通透度越高各档 alpha 单调变小、通透度 0 落到基准（卡片 0.9/0.68）、拉到最透仍留 >0.2 白（保证文字可读）、面板始终比卡片实一档、色相参与底色并被归一、NaN 色相回落 0、读写往返与坏值回落 |
 
 ## 变更影响路由（改前必看）
 

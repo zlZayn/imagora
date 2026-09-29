@@ -27,7 +27,7 @@ describe("ResultPanel 状态面板", () => {
     render(<ResultPanel status="running" elapsed={12} meta={META} results={[]} />);
     expect(screen.getByText("生成中 12s")).toBeTruthy();
     expect(screen.getByText(/约需 1-2 分钟/)).toBeTruthy();
-    expect(screen.queryByText("生成结果将显示在这里")).toBeNull();
+    expect(screen.queryByText("还没有结果")).toBeNull();
   });
 
   it("running：参考图数量出现在参数摘要（图生图）", () => {
@@ -48,7 +48,7 @@ describe("ResultPanel 状态面板", () => {
 
   it("空态/完成：透传 Gallery（空态文案或图片网格）", () => {
     const { rerender } = render(<ResultPanel status={null} elapsed={0} meta={META} results={[]} />);
-    expect(screen.getByText("生成结果将显示在这里")).toBeTruthy();
+    expect(screen.getByText("还没有结果")).toBeTruthy();
     rerender(<ResultPanel status="done" elapsed={0} meta={META} results={[ITEM]} />);
     expect(screen.getByRole("link", { name: /已保存/ })).toBeTruthy();
   });

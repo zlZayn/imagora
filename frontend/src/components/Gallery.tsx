@@ -6,6 +6,9 @@ import { ZoomModal } from "./WorkflowModals";
 
 interface GalleryProps {
   items: ResultItem[];
+  /** 最近用过的提示词（空态展示，点一条填回输入框） */
+  recentPrompts?: string[] | undefined;
+  onPickPrompt?: ((prompt: string) => void) | undefined;
 }
 
 /**
@@ -38,11 +41,12 @@ function AspectImage({ url, alt }: { url: string; alt: string }) {
  * 单击在新窗口打开原图；双击打开放大预览（ZoomModal 与画布/生产历史同组件、同注册表 URL）。
  * 单击/双击用 250ms 延时区分（useImageZoom 公共 hook）：第二击到达即取消单击的「开原图」，再触发双击放大。
  */
-export function Gallery({ items }: GalleryProps) {
+export function Gallery({ items, recentPrompts, onPickPrompt }: GalleryProps) {
   const images = items.filter((item): item is ResultItem & { url: string } => Boolean(item.url));
   const { zoom, handleClick, handleDoubleClick, closeZoom } = useImageZoom();
 
   if (images.length === 0) {
+    const recents = recentPrompts ?? [];
     return (
       <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-2 text-neutral-400">
         <svg
@@ -60,7 +64,30 @@ export function Gallery({ items }: GalleryProps) {
           <circle cx="9" cy="9" r="2" />
           <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
         </svg>
-        <p className="text-sm">生成结果将显示在这里</p>
+        <p className="text-sm font-medium text-neutral-500">还没有结果</p>
+        <p className="max-w-[320px] text-center text-xs leading-relaxed text-neutral-400">
+          写好提示词，点「生成图片」，第一张就会出现在这里。
+        </p>
+        {/* 最近用过的提示词：点一条填回输入框，省去重新寻找那条长提示词。
+            没有历史（或接口失败）时整块不出现，空态退化为纯文字引导。 */}
+        {recents.length > 0 && onPickPrompt && (
+          <div className="mt-6 w-full max-w-[420px]">
+            <p className="mb-2 text-center text-[11px] tracking-wide text-neutral-400">最近用过的提示词</p>
+            <div className="flex flex-col gap-1.5">
+              {recents.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => onPickPrompt(p)}
+                  title={p}
+                  className="recent-prompt"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

@@ -7,15 +7,137 @@
   --color-brand-dark: #334155;
 }
 
+/* ============ 背景材质（预设 + 我的壁纸） ============
+ * 材质只声明一次：既给了页面（html[data-bg=...] → body 读变量），
+ * 也给了外观弹窗里的选择色块（.bg-swatch--xxx）——两处共用同一组声明，不会漂移。
+ *
+ * 各预设只定义三个变量：--bg-color / --bg-image / --bg-size。
+ *
+ * 注意：光晕改用 hsl(var(--accent-hue) ...) 而不是 var(--color-brand)。
+ * --color-brand 由 App 写在 .imagora-app 内联样式上，**CSS 变量只向下继承**，
+ * body 读不到它（body 只能读到 :root 的兜底灰 #475569）——
+ * 也就是说这里以前那两层光晕一直是灰的、并没跟着主体色走。用 --accent-hue 才对。
+ */
+:root {
+  --bg-color: hsl(var(--accent-hue, 0) 32% 93%);
+  --bg-image:
+    radial-gradient(circle at 10% -14%, hsl(var(--accent-hue, 0) 55% 42% / 0.22), transparent 46rem),
+    radial-gradient(circle at 92% -6%, hsl(var(--accent-hue, 0) 55% 42% / 0.12), transparent 34rem),
+    radial-gradient(circle at 88% 4%, rgba(24, 37, 56, 0.04), transparent 26rem);
+  --bg-size: auto, auto, auto;
+}
+
+/* 纸纤维 / 雾面共用的噪点纹理（fractalNoise 拉伸成纤维状）；雾面版把浓度调淡 */
+html[data-bg="paper"],
+.bg-swatch--paper {
+  --bg-color: #eae4d8;
+  --bg-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .3' numOctaves='3'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23p)' opacity='.5'/%3E%3C/svg%3E");
+  --bg-size: 320px 320px;
+}
+html[data-bg="wood"],
+.bg-swatch--wood {
+  --bg-color: #e7d8bd;
+  --bg-image:
+    repeating-linear-gradient(92deg, rgba(120, 86, 44, 0.055) 0 2px, transparent 2px 9px),
+    repeating-linear-gradient(88deg, rgba(120, 86, 44, 0.03) 0 1px, transparent 1px 13px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .3' numOctaves='3'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23p)' opacity='.34'/%3E%3C/svg%3E");
+  --bg-size: auto, auto, 320px 320px;
+}
+html[data-bg="cool"],
+.bg-swatch--cool {
+  --bg-color: #f5f6f7;
+  --bg-image: none;
+  --bg-size: auto;
+}
+html[data-bg="mist"],
+.bg-swatch--mist {
+  --bg-color: #eef0f2;
+  --bg-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .3' numOctaves='3'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23p)' opacity='.22'/%3E%3C/svg%3E");
+  --bg-size: 320px 320px;
+}
+
 body {
-  background:
-    radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--color-brand) 8%, transparent), transparent 30rem),
-    radial-gradient(circle at 88% 0%, rgba(24, 37, 56, 0.045), transparent 26rem),
-    #f4f2ee;
+  background-color: var(--bg-color);
+  background-image: var(--bg-image);
+  background-size: var(--bg-size);
+  background-repeat: repeat;
   color: #17202b;
   font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
   letter-spacing: -0.01em;
 }
+
+/* 背景预设选择器：色块直接复用上面那组材质变量，所见即所得 */
+.bg-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bg-swatch {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  background-color: var(--bg-color);
+  background-image: var(--bg-image);
+  background-size: var(--bg-size);
+  background-repeat: repeat;
+  transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+.bg-swatch:hover {
+  transform: translateY(-1px);
+}
+.bg-swatch.is-on {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(23, 32, 43, 0.45);
+}
+
+/* 预设壁纸：与材质色块并列的「大图」按钮。
+ * 图片是 public/wallpapers 下的静态文件（走站点根路径），构建期原样拷进 dist，
+ * 不经打包器改写，所以这里可以直接写字面量路径。
+ * 尺寸刻意比色块大：材质要的是「底色是什么感觉」，壁纸要的是「这张图长什么样」，
+ * 34px 的方片看不出龙和神兽的区别。
+ * 高亮框与 .bg-swatch.is-on 同一套（白内圈 + 墨外圈），两类选择器观感统一。 */
+.bg-walls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.bg-wall {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: var(--r-control);
+  background-color: #dfe3e8;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+.bg-wall:hover { transform: translateY(-1px); }
+.bg-wall.is-on {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(23, 32, 43, 0.45);
+}
+/* 名字压在图上：底部渐隐黑条保证任何亮度的图上都读得出（不做 hover 才显示，触屏没有 hover） */
+.bg-wall__name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 8px 5px;
+  background: linear-gradient(to top, rgba(12, 16, 22, 0.72), transparent);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  text-align: left;
+}
+.bg-wall--dragon { background-image: url("/wallpapers/dragon.jpg"); }
+.bg-wall--tiger { background-image: url("/wallpapers/tiger.jpg"); }
 
 /* ============ 滚动条：一处定义，全站统一（页面 / 模态 / 列表共用） ============
  * 轨道一律 transparent：滚动条的「背景」就是它所在的容器底色——
@@ -83,9 +205,21 @@ html {
   /* —— 表面（容器底色）——同级容器共用同一套 150deg 微渐变：同角度、同色系、同强度量级，
    * 层次只靠档位区分（卡片 --surface-card < 面板 --surface-panel），
    * 不再出现「同排有的纯白、有的渐变」或角度各异（145deg / 160deg）的观感断层。
-   * 卡片用半透明（透出 body 底色，更轻）；面板用近实色（承载图与日志，需稳定底色）。 */
-  --surface-card: linear-gradient(150deg, rgba(255, 255, 255, 0.9), rgba(246, 244, 239, 0.68));
-  --surface-panel: linear-gradient(150deg, #fcfbf8, #f1eee7);
+   * 卡片用半透明（透出 body 底色，更轻）；面板用近实色（承载图与日志，需稳定底色）。
+   *
+   * 两个表面都掺入主色相（--accent-hue，App 换色时写到根元素）：
+   * 卡片占整页大部分面积，只调 body 底色收益很小，把表面也带上主色才是「整页有色」的关键。
+   * 明度压在 96% 以上，仍近白，因此正文与图片的对比不受影响。 */
+  --surface-card: linear-gradient(
+    150deg,
+    hsl(var(--accent-hue, 0) 26% 99.2% / 0.66),
+    hsl(var(--accent-hue, 0) 30% 96.8% / 0.46)
+  );
+  --surface-panel: linear-gradient(
+    150deg,
+    hsl(var(--accent-hue, 0) 30% 98.4% / 0.72),
+    hsl(var(--accent-hue, 0) 34% 94.8% / 0.54)
+  );
 }
 
 /* 字段标签统一块级：inline 时标签盒随父级基线漂移，左右两栏首行会错开数 px
@@ -175,6 +309,181 @@ html {
 .chip--brand { background: color-mix(in srgb, var(--color-brand) 12%, transparent); color: var(--color-brand); }
 .chip--danger { background: #dc2626; color: #fff; }
 .chip--quiet { background: rgba(31, 41, 55, 0.06); color: rgba(23, 32, 43, 0.62); }
+
+/* ============ 最近用过的提示词（结果区空态） ============
+ * 整行按钮，一条一行：提示词常达数百字，这里单行截断，完整内容走 title 悬停。
+ * 点一下把该条填回左侧输入框，省去重新寻找那条长提示词。 */
+.recent-prompt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: var(--r-control);
+  border: 1px solid rgba(31, 41, 55, 0.12);
+  background: rgba(255, 255, 255, 0.6);
+  color: rgba(23, 32, 43, 0.72);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.recent-prompt:hover {
+  background: color-mix(in srgb, var(--color-brand) 6%, white);
+  border-color: color-mix(in srgb, var(--color-brand) 35%, transparent);
+  color: var(--color-brand);
+}
+
+/* ============ 主体色板（设置弹窗「外观」页签） ============
+ * 九色预设方块 + 色相滑杆。色块底色由组件按 accentFromHue 现算并内联，
+ * 这里只管形状、选中态与滑杆外观。 */
+.accent-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.accent-swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+.accent-swatch:hover {
+  transform: translateY(-1px);
+}
+.accent-swatch.is-on {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(23, 32, 43, 0.45);
+}
+.accent-hue {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 200px;
+  height: 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: linear-gradient(
+    90deg,
+    hsl(0 55% 42%),
+    hsl(60 55% 42%),
+    hsl(120 55% 42%),
+    hsl(180 55% 42%),
+    hsl(240 55% 42%),
+    hsl(300 55% 42%),
+    hsl(360 55% 42%)
+  );
+}
+.accent-hue::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.accent-hue::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+/* ============ 我的壁纸（整页背景层） ============
+ * 固定铺满视口、画在内容之下（z-index: -1 —— 在 body 底色之上、所有内容之下）、
+ * pointer-events: none：它只是背景，绝不能挡住任何交互。
+ * **就用用户的原图**：cover 铺满，不缩放、不模糊、不压暗、不重编码
+ * （曾做过模糊/压暗/缩放三个滑杆，维护者要求只保留原图，相关参数与取样逻辑已一并删除）。 */
+.imagora-wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.imagora-wallpaper__image {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  /* 降噪：抽掉一部分颜色、轻微压对比，让画面安静下来，前景文字才读得清。
+   * **不是遮挡**：不加白纱、不压暗、不改尺寸、不重编码——壁纸的细节与纵深全部保留。
+   * 数值与原因见 surface.ts 的 WALLPAPER_IMAGE_FILTER（那边是唯一事实来源）。 */
+  filter: saturate(0.62) contrast(0.94);
+}
+/* 壁纸生效时页面底色让位于壁纸：body 的「掺主色相浅色底」收掉（图未解码完时也不闪主色底）。
+ * 主色只留给前景元素（按钮 / 角标 / 选中态 / 聚焦环），由 --color-brand 承担。 */
+html[data-wallpaper="on"] body {
+  background: #0e1319;
+}
+
+/* 壁纸生效时给卡片里的文字补一层极淡的白色描边。text-shadow 是最廉价的「提字」手段：
+ * 不占布局、不糊背景，半透明卡片下的字缘也不会跟壁纸细节打架。
+ * 只在有壁纸时开——没壁纸时背后是纯色底，加描边纯属多余。 */
+html[data-wallpaper="on"] .panel-card,
+html[data-wallpaper="on"] .classic-result-panel {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+/* 输入控件里的字不加：它们在 .field-control 自带的浅底上，描边反而显脏 */
+html[data-wallpaper="on"] input,
+html[data-wallpaper="on"] textarea,
+html[data-wallpaper="on"] select {
+  text-shadow: none;
+}
+
+/* ============ 画布页快捷键面板（操作帮助右侧的 ?） ============
+ * 原生 details/summary，无需组件状态；面板绝对定位浮在画布上沿之上。 */
+.help-more { position: relative; }
+.help-more__btn {
+  cursor: pointer;
+  list-style: none;
+  height: var(--chip-sm-h);
+  width: var(--chip-sm-h);
+  padding: 0;
+  justify-content: center;
+  font-weight: 700;
+  user-select: none;
+}
+.help-more__btn::-webkit-details-marker { display: none; }
+.help-more[open] .help-more__btn {
+  background: color-mix(in srgb, var(--color-brand) 12%, transparent);
+  color: var(--color-brand);
+}
+.help-more__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--surface-card);
+  border: 1px solid rgba(31, 41, 55, 0.13);
+  box-shadow: 0 10px 28px rgba(31, 41, 55, 0.12);
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: rgba(23, 32, 43, 0.66);
+}
+.help-more__panel b {
+  display: inline-block;
+  min-width: 46px;
+  margin-right: 6px;
+  color: rgba(23, 32, 43, 0.82);
+  font-weight: 600;
+}
 .window-chip,
 .profile-chip {
   border: 1px solid color-mix(in srgb, var(--color-brand) 15%, rgba(255,255,255,.65));
@@ -263,11 +572,38 @@ html {
   color: #52606f;
 }
 .studio-canvas .react-flow__controls-button:hover { background: color-mix(in srgb, var(--color-brand) 10%, white); color: var(--color-brand); }
+/* 画布边界关闭（外观弹窗开关；默认开，保持既有观感）：
+ * 容器只剩内容——边框 / 底色 / 投影 / 画布自身的底色晕一起收掉，与页面背景融为一体。
+ * 网格点保留：那是画布内容，不是容器边界。 */
+html[data-canvas-bounds="off"] .studio-canvas {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
+  background: none;
+}
 
 /* Slightly more material controls across the classic form. */
 .panel-card { border-radius: 18px; }
-/* 不透明底：让输入框能完整盖住底层水印（半透明底时水印会"透"到输入框上） */
-.field-control { border-color: rgba(31, 41, 55, 0.14); background: #ffffff; }
+/* 毛玻璃：**当前恒为关闭**（JS 注入 `--surface-blur: none`）——维护者要壁纸原样清晰。
+   这里踩过两次坑，别再改回去：
+   1) 曾让模糊随通透度从 20px 涨到 80px，想用「糊匀」换可读性，结果整块卡变成奶白雾、
+      壁纸被洗成灰白大色块——比不透明更挡视线，用户反复说「看不清壁纸」；
+   2) 随后收到 8~12px 仍不够，明确要求归零。
+   所以分工定死：**透明负责让卡片退开，可读性交给壁纸降噪 + 文字描边，模糊不参与**。
+   `var()` 作为整个值时压缩器安全（见 README「表面」行），但函数内嵌 var() 会被丢弃。 */
+.panel-card,
+.classic-result-panel,
+.field-control {
+  -webkit-backdrop-filter: var(--surface-blur, none);
+  backdrop-filter: var(--surface-blur, none);
+}
+/* 输入框：半透明白 + 毛玻璃。底色由 App 按「通透度」内联注入（--field-bg），
+   缺省值仅供 JS 加载前兜底。 */
+.field-control { border-color: rgba(31, 41, 55, 0.14); background: var(--field-bg, rgba(255, 255, 255, 0.7)); }
+/* 输入框在有壁纸时也直接读 --field-bg（全透时接近透明），
+   靠 1px 描边 + 聚焦环标出边界，不再叠一层白底挡住壁纸。 */
 .field-control:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand) 13%, transparent); }
 .btn-primary { border-radius: 11px; box-shadow: 0 8px 18px color-mix(in srgb, var(--color-brand) 18%, transparent); }
 .btn-ghost { border-radius: 10px; }
@@ -583,6 +919,83 @@ html {
   }
   .btn-xs {
     @apply px-1.5 py-0.5 text-[10px];
+  }
+
+  /* ============ 开关（外观弹窗：画布边界）============
+   * 原生 checkbox 驱动，外观是「胶囊轨道 + 圆钮」：状态只走 :checked，样式与 JS 无关。
+   * 轨道比按钮小一档（22px），与 28px 顶栏控件拉开层级——它是设置项，不是行动按钮。 */
+  .switch {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    width: 40px;
+    height: 22px;
+    border-radius: var(--r-pill);
+    border: 1px solid rgba(31, 41, 55, 0.16);
+    background: rgba(31, 41, 55, 0.14);
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(23, 32, 43, 0.3);
+    transition: transform 0.2s ease;
+  }
+  .switch:checked {
+    background: var(--color-brand);
+    border-color: transparent;
+  }
+  .switch:checked::after {
+    transform: translateX(18px);
+  }
+  /* ============ 通用滑杆（外观弹窗：通透度）============
+   * 与主体色滑杆同形（胶囊轨道 + 圆形滑块），轨道保持中性：
+   * 主体色滑杆的底色是色相彩虹，只属于「选色」，其余参数不该跟着花。 */
+  .range-field {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 10px;
+    border-radius: var(--r-pill);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    background: rgba(31, 41, 55, 0.12);
+  }
+  .range-field:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .range-field::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+  }
+  .range-field::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+  }
+
+  .switch:focus-visible {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand) 18%, transparent);
   }
 
   /* 文字链接（模态说明文案里的外链） */

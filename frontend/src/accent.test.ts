@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { describe, expect, it, beforeEach } from "vitest";
 
-import { accentForWindow } from "./accent";
+import {
+  ACCENT_HUE_STORAGE_KEY,
+  ACCENT_PRESETS,
+  accentForWindow,
+  accentFromHue,
+  readAccentHue,
+  saveAccentHue,
+} from "./accent";
 
 describe("accentForWindow", () => {
   it("同一编号恒定取色（刷新不变），null 回落 1 号窗口", () => {
@@ -29,5 +37,63 @@ describe("accentForWindow", () => {
 
   it("0 号（越界输入）取余保留负号，行为由本例钉住", () => {
     expect(accentForWindow(0).brand).toBe("hsl(-137.5 55% 42%)");
+  });
+});
+
+describe("accentFromHue（用户自定义主体色）", () => {
+  it("色相归一到 [0, 360)：负数与超过 360 都回绕", () => {
+    expect(accentFromHue(-137.5)).toEqual(accentFromHue(222.5));
+    expect(accentFromHue(400)).toEqual(accentFromHue(40));
+    expect(accentFromHue(0).brand).toBe("hsl(0.0 55% 42%)");
+  });
+
+  it("与自动取色共用同一套公式：色相相同的窗口取值一致", () => {
+    expect(accentFromHue(137.508)).toEqual(accentForWindow(2));
+  });
+
+  it("非法输入（NaN/Infinity）回落 0 度，不产出坏值", () => {
+    expect(accentFromHue(Number.NaN).brand).toBe("hsl(0.0 55% 42%)");
+    expect(accentFromHue(Number.POSITIVE_INFINITY).brand).toBe("hsl(0.0 55% 42%)");
+  });
+
+  it("九个预设色相互不重复且都在合法区间", () => {
+    const hues = ACCENT_PRESETS.map((p) => p.hue);
+    expect(new Set(hues).size).toBe(hues.length);
+    expect(hues.every((h) => h >= 0 && h < 360)).toBe(true);
+  });
+});
+
+describe("自定义色相的本地存取", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("未设置时读到 null（= 回到按窗口自动配色）", () => {
+    expect(readAccentHue()).toBeNull();
+  });
+
+  it("存入后读回同一色相", () => {
+    saveAccentHue(224);
+    expect(readAccentHue()).toBe(224);
+  });
+
+  it("存入越界色相会先归一", () => {
+    saveAccentHue(400);
+    expect(readAccentHue()).toBe(40);
+  });
+
+  it("传 null 清除自定义", () => {
+    saveAccentHue(96);
+    expect(readAccentHue()).toBe(96);
+    saveAccentHue(null);
+    expect(readAccentHue()).toBeNull();
+    expect(localStorage.getItem(ACCENT_HUE_STORAGE_KEY)).toBeNull();
+  });
+
+  it("空白或非法内容视为未设置，不抛错", () => {
+    localStorage.setItem(ACCENT_HUE_STORAGE_KEY, "   ");
+    expect(readAccentHue()).toBeNull();
+    localStorage.setItem(ACCENT_HUE_STORAGE_KEY, "abc");
+    expect(readAccentHue()).toBeNull();
   });
 });

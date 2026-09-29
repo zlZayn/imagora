@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（222 用例）
+npm test           # vitest run（288 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -44,12 +44,20 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | --- | --- | --- |
 | 尺寸阶梯 | `--h-ctl` · `--h-field` · `--h-cta` | 顶栏控件 28 · 表单控件 38 · 主行动 46 |
 | 圆角阶梯 | `--r-pill` · `--r-card` · `--r-control` | 胶囊 · 容器 16 · 控件 10 |
-| 表面 | `--surface-card` · `--surface-panel` | 同级容器同一套 150deg 微渐变，层次靠档位（卡片 < 面板） |
+| 表面 | `--surface-card` · `--surface-panel` · `--field-bg` · `--surface-blur` | 由 App 用 `surfaceTokens(色相, 通透度)` 在 **JS 里算成字面量后内联注入**（与 `--color-brand` 同路）；通透度拉到 1 时卡片/面板 alpha 仅约 0.05（接近全透明），输入框另有 **`FIELD_ALPHA_FLOOR = 0.25` 底线**（框里的占位灰字压在花哨壁纸上会发飘，只抬输入框、不抬卡片/面板）；可读性靠**壁纸降噪滤镜 + 卡片文字的极淡白描边**兜底，**不用毛玻璃**（`--surface-blur` 恒为 `none`）。**模糊绝不可随通透度增长**——曾涨到 80px，整卡变成奶白雾、壁纸被洗成灰白，比不透明更挡视线（用户反复报「看不清壁纸」的真因；随后 8~12px 也被要求归零）。**不要在 CSS 里写** `blur(var(--x))` 或 `hsl(… / calc(0.66 * var(--x)))`——「函数内嵌 var()」的整条声明会被压缩器丢弃；`var()` 作为**整个值**（`backdrop-filter: var(--x, none)`）则安全 |
+| 通用滑杆 | `.range-field` | 外观弹窗的参数滑杆（通透度用它；与主色滑杆同形，轨道保持中性） |
 | 角落装饰 | `.corner-deco` · `.corner-rings` · `.corner-note` | 编号 / 弧环 / 镜像小字 |
+| 快捷键面板 | `.help-more` + `__btn` / `__panel` | 画布页操作帮助右侧的 `?`；原生 `details/summary`，无需组件状态 |
+| 最近提示词 | `.recent-prompt` | 结果区空态一键复用的提示词行：单行截断，完整内容走 title 悬停 |
 | 行内角标 | `.chip`（`--sm` `--dot` `--brand` `--quiet` `--danger`） | 顶栏 28 · 小号 18 |
 | 分段控件 | `.tabs`（模态页签） · `.mode-switch`（顶栏模式） | 同源视觉，尺寸走 `--h-ctl` |
 | 模态内容区 | `.modal-body` | 高度过渡（`--panel-h` 驱动）+ 滚动条占位 + `[data-growing]` 变高裁切 |
 | 只读值表 | `.spec-list` + `__row` / `__key` / `__val` / `__src` | 「值 + 来源」两行式排版 |
+| 背景材质 | `html[data-bg="…"]` + `.bg-swatches` / `.bg-swatch`（`--paper` `--wood` `--cool` `--mist`） | 整页背景材质预设；材质只在 `--bg-color` / `--bg-image` / `--bg-size` 三个变量里声明一次，`html[data-bg]` 与选择器色块**共用同一组声明**；铺法是 `repeat`（纹理通道），**大图不许走这里**（会平铺出接缝）；页面底色只能用 `--accent-hue`（`--color-brand` 在 `.imagora-app` 上，body 读不到） |
+| 预设壁纸 | `.bg-walls` / `.bg-wall`（`--dragon` `--tiger`） | 内置大图选项：缩略图直接 `background-image: url("/wallpapers/xxx.jpg")`（静态文件在 `frontend/public/wallpapers/`，构建期原样拷进 `dist/`，路径不经打包器改写）；选中后走**整页壁纸层**（cover 不重复），与「我的壁纸」同一层、同一套可读性处理 |
+| 我的壁纸 | `.imagora-wallpaper` + `__image` | 整页背景层：固定铺满、置底不挡交互；**按原图 cover 铺底，不缩放、不压暗、不重编码**，只加一层降噪滤镜（`saturate(.62) contrast(.94)`，常量见 `surface.ts` 的 `WALLPAPER_IMAGE_FILTER`）让前景字好读——**不许用半透明白纱**，白纱会把图提亮变灰，等于第二次「看不清」；有壁纸时 `html[data-wallpaper="on"] body` 让出页面底色、并给 `.panel-card` / `.classic-result-panel` 内的文字补极淡白色 text-shadow（该规则须排在预设之后才压得住）。**这一层同时服务内置预设壁纸**（`presetWallpaperOf` 有值时优先于自选图，见 `App.tsx` 的 `pageWallpaperUrl`）：两者共用一层才不会让可读性处理分叉 |
+| 开关 | `.switch` | 布尔开关（原生 checkbox + 轨道圆钮，状态只走 `:checked`）；画布边界开关用它 |
+| 画布边界 | `html[data-canvas-bounds="off"] .studio-canvas` | 关闭时收掉画布边框 / 底色 / 投影与渲染层底色晕，与页面背景融为一体 |
 | 滚动条 | `--sb-size` · `--sb-thumb` · `--sb-track` | 全局统管；轨道 transparent = 跟随所在容器底色 |
 
 ## 文件索引
@@ -121,7 +129,29 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 注意：后端生成消息的保存路径统一为绝对路径（server.py run_generation），前端解析展示，不再相对化
 
 ### [accent.ts](src/accent.ts)
-- 职责：窗口主题色（`accentForWindow`，黄金角取色 → 覆盖 `--color-brand`）
+- 职责：主体色（`accentFromHue` / `accentForWindow` / `hueForWindow`，黄金角或自定义色相 → 覆盖 `--color-brand`；`readAccentHue` / `saveAccentHue` 存自定义色相，`ACCENT_PRESETS` 是九色预设）
+- 被谁依赖：`App.tsx`（顶栏入口 / 外观弹窗 / 根元素 `--accent-hue`）
+- 注意：`accentForWindow` **不做色相归一**，越界编号（如 0）保留负色相——该行为由 `accent.test.ts` 钉住，改它会破坏既有契约
+
+### [backgroundPreset.ts](src/backgroundPreset.ts)
+- 职责：背景预设的纯数据与读写（`BACKGROUND_PRESETS` 七项 = 五项材质 + 两张内置壁纸、`PRESET_MATERIALS` / `PRESET_WALLPAPERS` 分组、`presetWallpaperOf` 取壁纸 URL、`readBackgroundPreset` / `saveBackgroundPreset`、`isBackgroundPresetId`）；材质由 [index.css](src/index.css) 按 `html[data-bg]` 出，内置壁纸由 App 铺进整页壁纸层（走 `wallpaper` 字段，不走 `--bg-image`：那条是 repeat 的材质通道）
+- 被谁依赖：`App.tsx`（外观弹窗的色块行 + 根元素 `html[data-bg]`）
+- 注意：**只有浅色系**（跟随主体色 / 纸纤维 / 木纹 / 干净冷灰 / 雾面）。深色的「暗房 / 蓝图」不在其中——它们要连顶栏、卡片、文字、按钮一起换深色，属独立工程；非法/空白存储值一律回落默认「跟随主体色」
+
+### [surface.ts](src/surface.ts)
+- 职责：卡片表面材质——`surfaceTokens(色相, 通透度)` 产出 `--surface-card` / `--surface-panel` / `--field-bg` 三个字面量 CSS 值 + `--surface-blur`；`blurFor` 是模糊半径的唯一出处（**当前恒返回 `none`**：壁纸要原样清晰；函数保留只为「由 JS 注入整条字面量」这条路不破）；`WALLPAPER_IMAGE_FILTER` 是壁纸降噪滤镜常量（CSS 侧同值）；`FIELD_ALPHA_FLOOR` 是输入框不透明度底线（0.25）；`readSurfaceTransparency` / `saveSurfaceTransparency` 存通透度（0 最实，1 最透）
+- 被谁依赖：`App.tsx`（外观弹窗的通透度滑杆 + 根节点内联注入）
+- 注意：**故意在 JS 里拼字符串而不是在 CSS 里用变量**——压缩器会丢弃「函数内嵌 var()」的声明；拉到最透仍留约 0.27 的白，保证文字压得住
+
+### [wallpaperStore.ts](src/wallpaperStore.ts)
+- 职责：我的壁纸存储层，**只存图**——`readWallpaperImage` / `saveWallpaperImage` / `clearWallpaperImage`，Blob 直存 IndexedDB（不把 base64 塞 localStorage）
+- 被谁依赖：`App.tsx`（外观弹窗与整页铺底；启动时调一次 `purgeLegacyWallpaperSettings`）
+- 注意：存储不可用一律安静降级（读 → `null`、写 → `false`），不抛错、不影响生图主流程。**不做任何图像处理**（按原图铺满）；曾有「模糊/压暗/缩放」三个参数、亮度取样与缩图档位（`wallpaper.ts` 纯函数模块），维护者要求「就正常的原图就行了」后已整套删除。那版留在浏览器里的 localStorage 键由 `purgeLegacyWallpaperSettings` 一次性收走（**只删该键、绝不 `clear()`**，现存设置一个不动）——这段是过渡代码，等老用户升级过一轮即可整体删除，改哪删哪写在函数注释里
+
+### [canvasBounds.ts](src/canvasBounds.ts)
+- 职责：画布边界开关偏好（`readCanvasBounds` / `saveCanvasBounds`，localStorage）
+- 被谁依赖：`App.tsx`（外观弹窗），样式落点 `html[data-canvas-bounds]`
+- 注意：默认 `true`（显示边框 + 底色，保持既有观感），只有用户显式关掉才进「融为一体」档
 
 ### [windowInherit.ts](src/windowInherit.ts)
 - 职责：新窗口继承（`saveInheritedState` / `readInheritedState` / `clearInheritedState`，sessionStorage）
@@ -165,7 +195,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ### 根文件
 
-- [`App.tsx`](src/App.tsx) — 根组件：顶栏（品牌区 3D `brand-swing` 系、`chip` 角标、`corner-note` 镜像小字）、经典/画布模式切换、**生图 API 设置弹窗**（三页签：使用中 —— 后端配置只读来源视图，值 + 来源由 `/api/config` 的 `profileView` 下发 / 个人配置 —— 覆盖值与默认值取自同一接口、前端不硬编码 / 预设 —— 存取删本地预设）。品牌区参数（`BRAND_LAYERS`/`TEXT_Z_STEP`/`LOGO_Z_STEP`/`LOGO_FACE*`）在 App.tsx 顶部——**标题与 logo 挤出深度分档**（logo 线条细，同深度会糊成红块）
+- [`App.tsx`](src/App.tsx) — 根组件：顶栏（品牌区 3D `brand-swing` 系、`chip` 角标、`corner-note` 镜像小字）、经典/画布模式切换、**外观弹窗**（主体色 / 我的壁纸 / 画布边界：壁纸图存 IndexedDB 后铺成整页背景，`html[data-wallpaper]` / `html[data-canvas-bounds]` 属性驱动「底色让位」与「画布边界开关」）、**生图 API 设置弹窗**（三页签：使用中 —— 后端配置只读来源视图，值 + 来源由 `/api/config` 的 `profileView` 下发 / 个人配置 —— 覆盖值与默认值取自同一接口、前端不硬编码 / 预设 —— 存取删本地预设）。品牌区参数（`BRAND_LAYERS`/`TEXT_Z_STEP`/`LOGO_Z_STEP`/`LOGO_FACE*`）在 App.tsx 顶部——**标题与 logo 挤出深度分档**（logo 线条细，同深度会糊成红块）
 - [`main.tsx`](src/main.tsx) — 入口（挂载 + accent 主题注入）
 - [`index.css`](src/index.css) — **唯一样式层**（Tailwind v4）：`:root` 设计 token + `@layer components` 组件类 + 动效层；导出的 token 与公共类清单见本文「样式体系」节，组件只引用类名、不写死尺寸与颜色
 - [`verify_canvas.py`](e2e/verify_canvas.py) — 画布交互 E2E（36 断言，Playwright headless）
@@ -201,6 +231,10 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 - 改 `App.tsx` 品牌区/顶栏
   → 跑 build + E2E（品牌区断言）+ 本地目验摆动
+
+- 改外观弹窗 / `wallpaperStore.ts` / `canvasBounds.ts`
+  → 跑 `npm test` + build + 本地目验（壁纸铺底、刷新后仍在、画布边界开关）
+  → 新增公共类 / 属性选择器同步本文「样式体系」节
 
 ## 参考
 

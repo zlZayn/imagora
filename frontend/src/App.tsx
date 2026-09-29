@@ -1,10 +1,23 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { getConfig, getHealthDetails, openFolder, readPersonalApiPresets, readPersonalApiSettings, rememberOutputDir, savePersonalApiPresets, savePersonalApiSettings } from "./api";
+import { generationHistory, getConfig, getHealthDetails, openFolder, readPersonalApiPresets, readPersonalApiSettings, rememberOutputDir, savePersonalApiPresets, savePersonalApiSettings } from "./api";
 import { useGenerationTask } from "./useGenerationTask";
-import { accentForWindow } from "./accent";
+import { Palette } from "lucide-react";
+import { ACCENT_PRESETS, accentForWindow, accentFromHue, hueForWindow, readAccentHue, saveAccentHue } from "./accent";
+import { clearWallpaperImage, purgeLegacyWallpaperSettings, readWallpaperImage, saveWallpaperImage } from "./wallpaperStore";
+import { readCanvasBounds, saveCanvasBounds } from "./canvasBounds";
+import {
+  PRESET_MATERIALS,
+  PRESET_WALLPAPERS,
+  presetWallpaperOf,
+  readBackgroundPreset,
+  saveBackgroundPreset,
+  type BackgroundPresetId,
+} from "./backgroundPreset";
+import { SURFACE_TRANSPARENCY_LIMITS, readSurfaceTransparency, saveSurfaceTransparency, surfaceTokens } from "./surface";
 import type { AppConfig, ConfigProfileView, GenerationTaskStatus, PersonalApiPreset, PersonalApiSettings, RefItem, ResultItem } from "./types";
 import { errMessage, generatingLabel } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
+import { pickRecentPrompts } from "./recentPrompts";
 import { UploadZone } from "./components/UploadZone";
 import { FolderPicker } from "./components/FolderPicker";
 import { ResultPanel } from "./components/ResultPanel";
@@ -43,6 +56,267 @@ function openNewWindow() {
 /** 个人 API 设置弹窗。
  *  默认值全部来自 /api/config（后端配置中心）——前端不硬编码中转站 / 模型 / 接口路径，
  *  改 config.json 即全局生效（唯一真相源）；用户填过则用用户自己的配置覆盖。 */
+/**
+ * 外观弹窗：主体色 / 我的壁纸 / 画布边界（三件都是「整页观感」，一处调完）。
+ * 与「生图 API 设置」分开：接口配置配一次就不动，外观是高频调节，
+ * 两者访问频率不同，因此各自有顶栏入口，不挤在同一个弹窗里。
+ */
+/** 弹窗内要展示的壁纸现状（由 App 持有真实状态，弹窗只读不算） */
+interface WallpaperView {
+  /** 是否已存下一张壁纸图 */
+  hasImage: boolean;
+  /** 正在读图 / 落库 */
+  busy: boolean;
+  /** 需要用户知道的一句话（如存储不可用），没有则不显示 */
+  notice: string | null;
+}
+
+
+function AppearanceModal({
+  accentHue,
+  onAccentHueChange,
+  wallpaper,
+  onWallpaperFile,
+  onWallpaperClear,
+  backgroundPreset,
+  onBackgroundPresetChange,
+  surfaceTransparency,
+  onSurfaceTransparencyChange,
+  canvasBounds,
+  onCanvasBoundsChange,
+  onClose,
+}: {
+  /** 自定义主体色相；null 表示未自定义（回到按窗口自动配色） */
+  accentHue: number | null;
+  /** 改主体色：传 null 恢复自动配色 */
+  onAccentHueChange: (hue: number | null) => void;
+  /** 壁纸现状：图有无 + 参数 + 忙碌 / 提示 */
+  wallpaper: WallpaperView;
+  /** 选好一张图（App 负责落 IndexedDB 并铺底） */
+  onWallpaperFile: (file: File) => void;
+  /** 删除壁纸 */
+  onWallpaperClear: () => void;
+  /** 当前背景材质预设 */
+  backgroundPreset: BackgroundPresetId;
+  /** 改背景材质预设 */
+  onBackgroundPresetChange: (id: BackgroundPresetId) => void;
+  /** 卡片/面板/输入框通透度 0-1 */
+  surfaceTransparency: number;
+  /** 改通透度 */
+  onSurfaceTransparencyChange: (value: number) => void;
+  /** 画布是否显示自己的边界（边框 + 底色） */
+  canvasBounds: boolean;
+  onCanvasBoundsChange: (visible: boolean) => void;
+  onClose: () => void;
+}) {
+  /** Esc 关闭（与图片预览弹窗同一套行为：模态开了就该能用 Esc 退出来） */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="studio-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <section
+        className="studio-modal corner-rings flex max-h-[min(86vh,720px)] w-[min(480px,94vw)] flex-col p-5"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold">外观</h2>
+          <button type="button" className="btn-ghost btn-sm" onClick={onClose}>
+            关闭
+          </button>
+        </div>
+
+        {/* 内容区走 .modal-body：加了壁纸与画布开关后内容变高，超出时自己滚动并预留滚动条位 */}
+        <div className="modal-body space-y-4">
+          {/* 九色预设：点一个即整页换主色（按钮/角标/选中态/连线/聚焦环全部跟随） */}
+          <div>
+            <p className="field-label mb-2">主体色</p>
+            <div className="accent-swatches">
+              {ACCENT_PRESETS.map((preset) => (
+                <button
+                  key={preset.hue}
+                  type="button"
+                  title={preset.label}
+                  aria-label={preset.label}
+                  aria-pressed={accentHue === preset.hue}
+                  className={`accent-swatch ${accentHue === preset.hue ? "is-on" : ""}`}
+                  style={{ background: accentFromHue(preset.hue).brand }}
+                  onClick={() => onAccentHueChange(preset.hue)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="field-label mb-2" htmlFor="accent-hue">
+              色相微调
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                id="accent-hue"
+                type="range"
+                min={0}
+                max={359}
+                value={accentHue ?? 0}
+                onChange={(e) => onAccentHueChange(Number(e.target.value))}
+                className="accent-hue"
+              />
+              <span className="text-muted w-16 text-right text-xs">
+                {accentHue === null ? "自动" : `${Math.round(accentHue)}°`}
+              </span>
+            </div>
+          </div>
+
+          <div className="spec-list">
+            <div className="spec-list__row">
+              <span className="spec-list__key">当前</span>
+              <span className="spec-list__val">
+                {accentHue === null ? "按窗口编号自动配色" : `自定义色相 ${Math.round(accentHue)}°`}
+              </span>
+            </div>
+            <div className="spec-list__row">
+              <span className="spec-list__key">生效范围</span>
+              <span className="spec-list__val">所有窗口</span>
+            </div>
+          </div>
+
+          {accentHue !== null && (
+            <button type="button" className="btn-ghost btn-sm" onClick={() => onAccentHueChange(null)}>
+              恢复自动配色
+            </button>
+          )}
+
+          {/* 背景：两种铺法分开写清——上面是材质（repeat 的纯色/纹理），下面是内置壁纸（cover 大图） */}
+          <div className="border-t border-neutral-200/80 pt-4">
+            <p className="field-label mb-2">背景材质</p>
+            <div className="bg-swatches">
+              {PRESET_MATERIALS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  title={preset.hint}
+                  aria-label={preset.label}
+                  aria-pressed={backgroundPreset === preset.id}
+                  className={`bg-swatch bg-swatch--${preset.id} ${backgroundPreset === preset.id ? "is-on" : ""}`}
+                  onClick={() => onBackgroundPresetChange(preset.id)}
+                />
+              ))}
+            </div>
+
+            {/* 第二组标签：不复用 .field-label 的 mt-4，避免与 Tailwind 工具类的层叠顺序打架 */}
+            <div className="mt-4 mb-2">
+              <p className="field-label">预设壁纸</p>
+            </div>
+            <div className="bg-walls">
+              {PRESET_WALLPAPERS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  title={preset.hint}
+                  aria-label={preset.label}
+                  aria-pressed={backgroundPreset === preset.id}
+                  className={`bg-wall bg-wall--${preset.id} ${backgroundPreset === preset.id ? "is-on" : ""}`}
+                  onClick={() => onBackgroundPresetChange(preset.id)}
+                >
+                  <span className="bg-wall__name">{preset.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <p className="text-caption mt-2">
+              {PRESET_MATERIALS.concat(PRESET_WALLPAPERS).find((preset) => preset.id === backgroundPreset)?.hint ?? ""}
+            </p>
+            {presetWallpaperOf(backgroundPreset) !== null && wallpaper.hasImage && (
+              <p className="text-caption mt-1">预设壁纸盖住了你的自选壁纸；删掉自选壁纸也还是这张预设图。</p>
+            )}
+          </div>
+
+          {/* 我的壁纸：按原图直接铺满，不缩放、不模糊、不压暗（图本体存 IndexedDB，只在本机） */}
+          <div className="border-t border-neutral-200/80 pt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="field-label">我的壁纸</p>
+              <span className="text-caption">{wallpaper.hasImage ? "已设置" : "未设置"}</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 原生 file input 由 label 触发：按钮仍是 btn-ghost btn-sm 体系，不另造一套 */}
+              <label className={`btn-ghost btn-sm ${wallpaper.busy ? "opacity-50" : "cursor-pointer"}`}>
+                {wallpaper.busy ? "处理中…" : wallpaper.hasImage ? "换一张" : "选择图片"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  aria-label="选择壁纸图片"
+                  disabled={wallpaper.busy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    // 先清空 value：同一张图连选两次也要能触发 change
+                    e.target.value = "";
+                    if (file) onWallpaperFile(file);
+                  }}
+                />
+              </label>
+              {wallpaper.hasImage && (
+                <button type="button" className="btn-ghost btn-sm btn-danger" onClick={onWallpaperClear}>
+                  删除壁纸
+                </button>
+              )}
+            </div>
+
+            <p className="text-caption mt-2">
+              选一张本地图片当整页背景，按原图铺满、不做任何处理（只存本机，不上传）。
+            </p>
+            {wallpaper.notice !== null && <p className="text-caption mt-1">{wallpaper.notice}</p>}
+          </div>
+
+          {/* 卡片通透度：材质字符串在 JS 里按此值算出后内联注入（不在 CSS 里嵌 var，压缩器会丢） */}
+          <div className="border-t border-neutral-200/80 pt-4">
+            <label className="field-label mb-2" htmlFor="surface-transparency">
+              卡片通透度
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                id="surface-transparency"
+                type="range"
+                className="range-field flex-1"
+                min={SURFACE_TRANSPARENCY_LIMITS.min}
+                max={SURFACE_TRANSPARENCY_LIMITS.max}
+                step={0.05}
+                value={surfaceTransparency}
+                onChange={(e) => onSurfaceTransparencyChange(Number(e.target.value))}
+              />
+              <span className="text-muted w-16 text-right text-xs">
+                {Math.round(surfaceTransparency * 100)}%
+              </span>
+            </div>
+            <p className="text-caption mt-2">越大卡片越透，越能看清背后的壁纸。拉到 100% 卡片完全让开，壁纸按原样清晰铺满（不做模糊）。</p>
+          </div>
+
+          {/* 画布边界：纯外观开关（容器边框 + 底色），不碰画布任何交互 */}
+          <div className="flex items-start justify-between gap-4 border-t border-neutral-200/80 pt-4">
+            <div>
+              <p className="field-label">画布边界</p>
+              <p className="text-caption mt-0.5">关闭后画布不显示边框与底色，与页面背景融为一体</p>
+            </div>
+            <input
+              type="checkbox"
+              className="switch mt-1"
+              checked={canvasBounds}
+              onChange={(e) => onCanvasBoundsChange(e.target.checked)}
+              aria-label="显示画布边界"
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function PersonalApiModal({
   settings,
   defaults,
@@ -58,6 +332,15 @@ function PersonalApiModal({
   onSave: (settings: PersonalApiSettings | null) => void;
   onClose: () => void;
 }) {
+  /** Esc 关闭（与图片预览弹窗同一套行为：模态开了就该能用 Esc 退出来） */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   /** 页签职责：看（当前生效）/ 改（个人配置）/ 管（预设资产）——三件事互不干扰 */
   const [tab, setTab] = useState<"active" | "edit" | "presets">("active");
   const [form, setForm] = useState<PersonalApiSettings>(settings ?? defaults);
@@ -380,6 +663,7 @@ function TitleBar({
   defaultModel,
   onOpenApi,
   personalApi,
+  onOpenAppearance,
 }: {
   windowId: number | null;
   onNewWindow: () => void;
@@ -391,6 +675,8 @@ function TitleBar({
   defaultModel?: string | undefined;
   onOpenApi: () => void;
   personalApi: PersonalApiSettings | null;
+  /** 打开外观弹窗（主体色 / 我的壁纸 / 画布边界） */
+  onOpenAppearance: () => void;
 }) {
   /** 品牌区使用单层 Logo，悬停只改变高光与阴影，避免透视挤出造成重影。 */
   const brandRootRef = useRef<HTMLAnchorElement | null>(null);
@@ -443,14 +729,15 @@ function TitleBar({
           无限画布
         </button>
       </div>
-      <span className="text-muted ml-auto hidden text-xs xl:block">
-        文生图 / 图生图 · 不传参考图即文生图 · 生成约需 1-2 分钟
-      </span>
-      <button type="button" onClick={onNewWindow} className="btn-ghost">
+      <button type="button" onClick={onNewWindow} className="btn-ghost ml-auto">
         ＋ 新窗口
       </button>
       <button type="button" onClick={onOpenApi} className={`api-settings-trigger btn-ghost ${personalApi ? "is-active" : ""}`}>
         {personalApi ? "个人 API 已启用" : "生图 API"}
+      </button>
+      {/* 外观独立入口：接口配置配一次就不动，外观是高频调节，分开才容易发现 */}
+      <button type="button" onClick={onOpenAppearance} className="btn-ghost" title="外观" aria-label="外观">
+        <Palette size={15} aria-hidden="true" />
       </button>
       {/* 右下镜像小字：与其它角落装饰同一套排版，对比度最低 */}
       <span className="corner-note">Image Workspace</span>
@@ -461,13 +748,153 @@ function TitleBar({
 export function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [windowId, setWindowId] = useState<number | null>(null);
+  /** 自定义主体色相；null = 未自定义，回到按窗口编号自动配色（对所有窗口统一生效） */
+  const [accentHue, setAccentHue] = useState<number | null>(() => readAccentHue());
+  /** 当前生效的主题色：自定义优先，否则按窗口编号 */
+  const accent = accentHue === null ? accentForWindow(windowId) : accentFromHue(accentHue);
+  /** 归一后的色相：写页面底色变量用（负色相在 CSS 里虽合法，但归一后更直观） */
+  const backgroundHue = (() => {
+    const raw = accentHue === null ? hueForWindow(windowId) : accentHue;
+    return ((raw % 360) + 360) % 360;
+  })();
+  const handleAccentHueChange = (hue: number | null) => {
+    setAccentHue(hue);
+    saveAccentHue(hue);
+  };
   const [personalApi, setPersonalApi] = useState<PersonalApiSettings | null>(() => readPersonalApiSettings());
   const [showApiSettings, setShowApiSettings] = useState(false);
+  /** 外观弹窗（主体色 / 我的壁纸 / 画布边界）：与接口配置分开，顶栏有独立入口 */
+  const [showAppearance, setShowAppearance] = useState(false);
+  /** 壁纸图本体（启动时从 IndexedDB 取回）；null = 没有壁纸 */
+  const [wallpaperBlob, setWallpaperBlob] = useState<Blob | null>(null);
+  /** 铺底用的 object URL：直接指向原图；null = 不铺底 */
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  const [wallpaperBusy, setWallpaperBusy] = useState(false);
+  /** 需要用户知道的一句话（如本地存储不可用）；null = 不显示 */
+  const [wallpaperNotice, setWallpaperNotice] = useState<string | null>(null);
+  /** 画布是否显示自己的边界（边框 + 底色）；默认开，保持既有观感 */
+  const [canvasBounds, setCanvasBounds] = useState<boolean>(() => readCanvasBounds());
+  /** 背景材质预设；默认「跟随主体色」（= 改动前的既有观感） */
+  const [backgroundPreset, setBackgroundPreset] = useState<BackgroundPresetId>(() => readBackgroundPreset());
+  /** 卡片/面板通透度 0-1；越大越透。材质字符串由 surfaceTokens 在 JS 里产出后内联注入 */
+  const [surfaceTransparency, setSurfaceTransparency] = useState<number>(() => readSurfaceTransparency());
+  /** 有自选图才算「设置了我的壁纸」（只影响外观弹窗里那句话与「删除壁纸」按钮） */
+  const wallpaperActive = wallpaperBlob !== null;
 
-/** 动态 favicon：标签页图标跟随窗口主题色（与顶栏 logo / 菜单边框同色），多开一眼可辨 */
+  /** 启动时取回壁纸图：IndexedDB 不可用 / 读失败 = 没有壁纸（静默降级，不影响生图主流程） */
+  useEffect(() => {
+    let alive = true;
+    // 顺手清掉旧版壁纸参数键（模糊/压暗/缩放那版已删，键是遗留垃圾）；
+    // 待老用户都升过一次后，这行与 purgeLegacyWallpaperSettings 可一起删。
+    purgeLegacyWallpaperSettings();
+    void readWallpaperImage().then((blob) => {
+      if (alive && blob) setWallpaperBlob(blob);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** 铺底图 URL：**直接用原图 Blob 的 object URL，不做任何处理**（不缩放、不模糊、不重编码）。
+   *  object URL 在切换 / 卸载时必须 revoke，否则内存泄漏。 */
+  useEffect(() => {
+    if (wallpaperBlob === null) {
+      setWallpaperUrl(null);
+      return undefined;
+    }
+    let created: string | null = null;
+    try {
+      created = URL.createObjectURL(wallpaperBlob);
+      setWallpaperUrl(created);
+    } catch {
+      setWallpaperUrl(null);
+    }
+    return () => {
+      if (created !== null) URL.revokeObjectURL(created);
+    };
+  }, [wallpaperBlob]);
+
+  /** 预设壁纸（内置大图）的 URL；选的是材质时为 null */
+  const presetWallpaperUrl = presetWallpaperOf(backgroundPreset);
+
+  /**
+   * 铺在整页底下的那张图：**预设壁纸优先于我的壁纸**。
+   *
+   * 优先级为什么这么定：预设壁纸是「用户刚点的那一下」，自选壁纸是更早留下的文件。
+   * 点了预设却看不到任何变化，会让人以为坏了；反过来（自选盖住预设）至少用户知道
+   * 自己存过一张图，弹窗里也有一句话告诉他怎么回到预设。
+   *
+   * 两者铺的是**同一层、同一套处理**（cover 原图 + 降噪 + 卡片文字描边 + 卡片全透），
+   * 所以「内置预设」和「我的壁纸」观感完全一致，不额外分叉。
+   */
+  const pageWallpaperUrl = presetWallpaperUrl ?? wallpaperUrl;
+  const pageWallpaperActive = pageWallpaperUrl !== null;
+
+  /** 有壁纸（预设或自选）时：页面底色让位于壁纸（CSS 读 html[data-wallpaper]），前景元素照旧跟随主体色。
+   *  颜色与观感全在 index.css，这里只翻一个属性，不在 JS 里算颜色。 */
+  useEffect(() => {
+    const root = document.documentElement;
+    if (pageWallpaperActive) root.dataset.wallpaper = "on";
+    else delete root.dataset.wallpaper;
+  }, [pageWallpaperActive]);
+
+  /** 背景材质：写到根元素，index.css 按 html[data-bg] 出对应材质变量 */
+  useEffect(() => {
+    document.documentElement.dataset.bg = backgroundPreset;
+  }, [backgroundPreset]);
+
+  /** 画布边界开关：写到根元素，样式由 index.css 的 html[data-canvas-bounds] 接管 */
+  useEffect(() => {
+    document.documentElement.dataset.canvasBounds = canvasBounds ? "on" : "off";
+  }, [canvasBounds]);
+
+  const handleBackgroundPresetChange = (id: BackgroundPresetId) => {
+    setBackgroundPreset(id);
+    saveBackgroundPreset(id);
+  };
+
+  /** 选图：直接落 IndexedDB，原图铺底，不做任何处理。
+   *  存不进去（IndexedDB 不可用）就当没设置，只留一句说明，不抛错、不影响生图。 */
+  const handleWallpaperFile = async (file: File) => {
+    setWallpaperBusy(true);
+    setWallpaperNotice(null);
+    try {
+      const saved = await saveWallpaperImage(file);
+      if (!saved) {
+        setWallpaperNotice("当前浏览器无法本地保存图片（IndexedDB 不可用），壁纸未设置");
+        return;
+      }
+      setWallpaperBlob(file);
+    } finally {
+      setWallpaperBusy(false);
+    }
+  };
+
+  /** 删壁纸：图与铺底图一起清 */
+  const handleWallpaperClear = () => {
+    setWallpaperBlob(null);
+    setWallpaperUrl(null);
+    setWallpaperNotice(null);
+    void clearWallpaperImage();
+  };
+
+  /** 画布边界开关：纯外观偏好，不碰画布交互 */
+  const handleCanvasBoundsChange = (visible: boolean) => {
+    setCanvasBounds(visible);
+    saveCanvasBounds(visible);
+  };
+
+  /** 卡片/面板/输入框的表面材质：按主色相 + 通透度在 JS 里算出字面量再内联注入。
+   *  不在 CSS 里写 `hsl(… / calc(0.66 * var(--x)))`——压缩器会丢弃「函数内嵌 var()」的声明。 */
+  const surface = surfaceTokens(backgroundHue, surfaceTransparency);
+  const handleSurfaceTransparencyChange = (value: number) => {
+    setSurfaceTransparency(value);
+    saveSurfaceTransparency(value);
+  };
+
+  /** 动态 favicon：标签页图标跟随窗口主题色（与顶栏 logo / 菜单边框同色），多开一眼可辨 */
 useEffect(() => {
-  const { brand } = accentForWindow(windowId);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="${brand}">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="${accent.brand}">
     <path d="M755.242667 396.224L643.84 168.32l-0.064-0.106667Q634.176 149.333333 612.373333 149.333333t-31.424 18.901334l-0.917333 1.813333v0.213333l-124.906667 255.488-0.064 0.128q-2.709333 6.037333 1.045334 11.52 3.541333 5.205333 9.92 5.290667h45.802666q8.682667 0.042667 12.501334-7.658667l88.106666-180.330666 60.906667 124.714666H597.76q-8.832-0.085333-12.586667 7.829334l-18.709333 38.506666-0.042667 0.128q-2.709333 6.037333 1.024 11.52 3.562667 5.205333 9.92 5.290667h146.389334q18.453333 0.405333 28.8-14.549333 10.581333-15.253333 2.688-31.914667z m-2.922667-237.44l-0.725333-1.557333q-3.776-7.872-12.565334-7.872h-21.290666l0.021333 0.021333h-24.085333q-6.506667 0.042667-10.069334 5.333333-3.754667 5.568-0.917333 11.648l130.474667 274.709334q3.754667 7.850667 12.565333 7.850666h45.376q6.357333 0.064 10.005333-5.184 3.818667-5.546667 1.024-11.626666l-0.064-0.106667-126.101333-265.557333-3.626667-7.658667zM471.466667 247.402667l3.626666-0.170667 0.213334-0.021333q15.808-1.557333 26.24-13.034667 10.56-11.690667 9.728-27.136-0.853333-15.402667-12.586667-25.962667Q487.125333 170.666667 471.253333 170.666667H208.106667l-4.778667 0.128h-0.128q-35.114667 1.877333-59.328 26.090666Q119.466667 221.290667 119.466667 254.954667v573.952l0.128 4.544v0.149333q2.026667 33.578667 27.84 56.618667Q173.034667 913.066667 208.213333 913.066667h607.701334l4.757333-0.128h0.128q35.114667-1.877333 59.328-26.090667 24.405333-24.405333 24.405333-58.069333V501.12l-0.213333-3.52v-0.234667q-1.706667-15.338667-13.994667-25.28-12.117333-9.792-27.946666-9.024-15.872 0.768-26.88 11.712-10.346667 10.261333-11.157334 24.234667l-4.757333 4.970667q-70.741333 72.768-140.992 116.053333-60.394667 37.226667-91.925333 37.226667-30.442667 0-69.717334-27.477334l-5.802666-4.096-0.106667 0.128q-1.066667-1.024-2.474667-2.048l-6.613333-4.864q-10.24-7.488-15.701333-11.392l-9.024-6.186666-0.085334-0.064q-14.72-9.621333-27.605333-14.890667-18.773333-7.722667-37.248-7.722667-52.992 0-212.565333 110.336V255.232l0.106666-1.514667q1.066667-6.314667 8.362667-6.314666H471.466667z m-129.493334 441.514666l0.021334-0.021333 5.717333-3.349333q51.733333-30.08 64.426667-30.272 3.178667 0.170667 6.058666 1.493333l0.213334 0.085333 4.565333 1.770667q3.093333 1.344 5.909333 3.456l41.984 30.165333Q530.56 733.866667 586.666667 733.866667q95.338667 0 237.610666-126.890667v221.504l-0.106666 1.514667q-1.066667 6.314667-8.362667 6.314666H208.426667l-1.706667-0.106666q-7.04-1.024-7.018667-7.445334v-44.821333q86.613333-62.08 142.250667-95.04z"/>
   </svg>`;
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.createElement("link");
@@ -475,7 +902,13 @@ useEffect(() => {
   link.type = "image/svg+xml";
   link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
   if (!link.parentElement) document.head.appendChild(link);
-}, [windowId]);
+  // 依赖 accent.brand（字符串）而非 accent 对象：换主体色时图标跟着变，且不会每渲染都重跑
+}, [windowId, accent.brand]);
+
+/** 页面底色跟随主体色：把归一后的色相写到根元素，index.css 的 body 底色读它 */
+useEffect(() => {
+  document.documentElement.style.setProperty("--accent-hue", String(backgroundHue));
+}, [backgroundHue]);
   /** 界面模式：经典表单 / 无限画布（?mode=canvas 直达画布） */
   const [mode, setMode] = useState<"classic" | "canvas">(() =>
     new URLSearchParams(window.location.search).get("mode") === "canvas" ? "canvas" : "classic",
@@ -508,6 +941,8 @@ useEffect(() => {
   /** 待导入画布的提交 id（传给 CanvasPage 触发整图导入，完成后清空） */
   const [pendingSubmissionImport, setPendingSubmissionImport] = useState<string | null>(null);
   const [healthIssues, setHealthIssues] = useState<string[]>([]);
+  /** 最近用过的提示词（结果区空态展示，点一条填回输入框）；取不到就为空数组，不影响主流程 */
+  const [recentPrompts, setRecentPrompts] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
 
   // 日志更新后自动滚动到底部，配合逐行淡入
@@ -564,6 +999,13 @@ useEffect(() => {
     getHealthDetails()
       .then((health) => setHealthIssues(health.issues))
       .catch((err) => setHealthIssues([`启动自检失败：${errMessage(err)}`]));
+  }, []);
+
+  // 最近用过的提示词：只读生成历史的前若干条，失败静默（空态退化为纯文字引导）
+  useEffect(() => {
+    generationHistory({ limit: 30 })
+      .then((res) => setRecentPrompts(pickRecentPrompts(res.items)))
+      .catch(() => setRecentPrompts([]));
   }, []);
 
   // 尺寸 / 质量下拉选项（由后端配置派生）
@@ -680,8 +1122,6 @@ useEffect(() => {
     }, 300);
   };
 
-  const accent = accentForWindow(windowId);
-
   /** 个人 API 的默认值 = 后端当前 profile（config.json / .env 合并结果）：
    *  前端不硬编码中转站 / 模型 / 接口路径，改 config.json 即全局生效（唯一真相源）。 */
   const apiDefaults = useMemo<PersonalApiSettings>(
@@ -721,8 +1161,25 @@ useEffect(() => {
   return (
     <div
       className="imagora-app mx-auto max-w-[1500px] px-6 py-4"
-      style={{ "--color-brand": accent.brand, "--color-brand-dark": accent.brandDark } as CSSProperties}
+      style={
+        {
+          "--color-brand": accent.brand,
+          "--color-brand-dark": accent.brandDark,
+          "--surface-card": surface.card,
+          "--surface-panel": surface.panel,
+          "--field-bg": surface.field,
+          "--surface-blur": surface.blur,
+        } as CSSProperties
+      }
     >
+      {/* 整页壁纸（内置预设图或我的自选图）：原图铺满、置于内容之下、不接收事件（只是背景，不挡任何交互）。
+          降噪滤镜（去饱和 + 微压对比）只为让前景文字读得清，不遮挡、不压暗、不改尺寸。
+          两者共用这一层，因此观感完全一致——别为预设图另开一层，否则可读性处理会分叉。 */}
+      {pageWallpaperUrl !== null && (
+        <div className="imagora-wallpaper" aria-hidden="true">
+          <div className="imagora-wallpaper__image" style={{ backgroundImage: `url("${pageWallpaperUrl}")` }} />
+        </div>
+      )}
       <TitleBar
         windowId={windowId}
         onNewWindow={handleNewWindow}
@@ -732,7 +1189,24 @@ useEffect(() => {
         defaultModel={config?.defaultModel}
         onOpenApi={() => setShowApiSettings(true)}
         personalApi={personalApi}
+        onOpenAppearance={() => setShowAppearance(true)}
       />
+      {showAppearance && (
+        <AppearanceModal
+          accentHue={accentHue}
+          onAccentHueChange={handleAccentHueChange}
+          wallpaper={{ hasImage: wallpaperActive, busy: wallpaperBusy, notice: wallpaperNotice }}
+          onWallpaperFile={(file) => void handleWallpaperFile(file)}
+          onWallpaperClear={handleWallpaperClear}
+          backgroundPreset={backgroundPreset}
+          onBackgroundPresetChange={handleBackgroundPresetChange}
+          surfaceTransparency={surfaceTransparency}
+          onSurfaceTransparencyChange={handleSurfaceTransparencyChange}
+          canvasBounds={canvasBounds}
+          onCanvasBoundsChange={handleCanvasBoundsChange}
+          onClose={() => setShowAppearance(false)}
+        />
+      )}
       {showApiSettings && (
         <PersonalApiModal
           settings={personalApi}
@@ -767,11 +1241,10 @@ useEffect(() => {
             : "classic-main grid grid-cols-[6fr_4fr] items-start gap-5"
         }
       >
-        {/* 左栏：输入面板。卡片保留简洁的中文标题与右上步骤编号。 */}
+        {/* 左栏：输入面板。卡片只保留中文标题，不再印编号水印。 */}
         <section className="classic-input-column">
           <div className="space-y-4">
-            <div className="panel-card corner-deco enter-up space-y-3">
-              <span className="corner-deco__clip" aria-hidden="true"><span className="corner-deco__step">1</span></span>
+            <div className="panel-card enter-up space-y-3">
               <label className="field-label" htmlFor="prompt">
                 提示词
               </label>
@@ -786,10 +1259,7 @@ useEffect(() => {
               <UploadZone refs={refs} onChange={setRefs} />
             </div>
 
-            <div className="panel-card corner-deco enter-up enter-delay-1 relative z-30">
-              <span className="corner-deco__clip" aria-hidden="true">
-                <span className="corner-deco__step">2</span>
-              </span>
+            <div className="panel-card enter-up enter-delay-1 relative z-30">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label" htmlFor="size-select">
@@ -818,10 +1288,7 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="panel-card corner-deco enter-up enter-delay-2 space-y-3">
-              <span className="corner-deco__clip" aria-hidden="true">
-                <span className="corner-deco__step">3</span>
-              </span>
+            <div className="panel-card enter-up enter-delay-2 space-y-3">
               <label className="field-label" htmlFor="output-dir">
                 输出路径
               </label>
@@ -870,6 +1337,8 @@ useEffect(() => {
               meta={{ refCount: refs.length, size, quality, outputDir }}
               error={taskError}
               results={results}
+              recentPrompts={recentPrompts}
+              onPickPrompt={setPrompt}
             />
           </section>
         </section>

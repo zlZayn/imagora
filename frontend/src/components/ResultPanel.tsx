@@ -20,6 +20,10 @@ interface ResultPanelProps {
   /** 失败原因（failed 时显示；完整错误仍留在日志区） */
   error?: string | null;
   results: ResultItem[];
+  /** 最近用过的提示词（空态展示，点一条填回输入框）；不传则空态退化为纯文字引导 */
+  recentPrompts?: string[] | undefined;
+  /** 选中某条最近提示词的回调 */
+  onPickPrompt?: ((prompt: string) => void) | undefined;
 }
 
 /** 状态切换时旧面板保留淡出的时长（须长于 swap-out 动画） */
@@ -63,7 +67,7 @@ function StatusRing({ tone, children }: { tone: "queued" | "running" | "failed" 
 
 /** 根据状态渲染当前面板内容（含主/副两层） */
 function renderScene(props: ResultPanelProps): ReactNode {
-  const { status, elapsed, meta, error, results } = props;
+  const { status, elapsed, meta, error, results, recentPrompts, onPickPrompt } = props;
   if (status === "queued" || status === "running") {
     const running = status === "running";
     return (
@@ -128,7 +132,7 @@ function renderScene(props: ResultPanelProps): ReactNode {
     );
   }
 
-  return <Gallery items={results} />;
+  return <Gallery items={results} recentPrompts={recentPrompts} onPickPrompt={onPickPrompt} />;
 }
 
 /**
