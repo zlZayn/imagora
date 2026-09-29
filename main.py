@@ -50,7 +50,7 @@ _SEQ = count(1)
 
 
 def accent_for_window(window_id: int | None) -> str:
-    """窗口主题色（与 frontend/src/accent.ts 同算法）：
+    """窗口主体色（与 frontend/src/accent.ts 同算法）：
     hue = (windowId-1)*137.508 % 360，saturation 55%，lightness 42%。
     返回 #rrggbb，供菜单面板边框随窗口编号变色（多开一眼可辨）。
     """
@@ -545,7 +545,7 @@ def handle_menu_command(args):
         pid = find_port_pid(args.port)
         win_count = fetch_window_count()
         running = pid is not None
-        # 边框颜色随窗口主题色（accent.ts 同算法）：不同窗口号不同色相
+        # 边框颜色随窗口主体色（accent.ts 同算法）：不同窗口号不同色相
         accent = accent_for_window(win_count)
         table = Table(show_header=False, box=None, padding=(0, 2))
         table.add_column(style="bold", justify="right", width=10)
@@ -577,7 +577,7 @@ def handle_menu_command(args):
                 resp = requests.get(f"{url}/api/window/next", timeout=5)
                 win = resp.json()["windowId"]
                 webbrowser.open(f"{url}/?win={win}")
-                # "已打开窗口 #N" 用该窗口主题色（与 accent.ts / cmd 首窗同算法），[OK] 标签保持绿色
+                # "已打开窗口 #N" 用该窗口主体色（与 accent.ts / cmd 首窗同算法），[OK] 标签保持绿色
                 win_accent = accent_for_window(win)
                 console.print(
                     f"[bold green][OK][/bold green] [bold {win_accent}]已打开窗口 #{win}[/bold {win_accent}]"

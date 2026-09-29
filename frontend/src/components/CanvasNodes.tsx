@@ -176,7 +176,7 @@ export function GroupNode({
 }: NodeProps<GroupFlowNode> & GroupNodeExtraProps & { lod?: boolean | undefined }) {
   const mb = data.totalSize > 0 ? (data.totalSize / (1024 * 1024)).toFixed(1) : "0.0";
   // 去重标签：组链聚合含重复图片时（同一张图经多条路径到达），数字已是去重后实际张数，仅打标提示；
-  // 配色跟随动态主题色（bg-brand/10 + text-brand，与组卡 bg-brand/5 同族，不引入孤立色相）
+  // 配色跟随动态主体色（bg-brand/10 + text-brand，与组卡 bg-brand/5 同族，不引入孤立色相）
   const dup = data.duplicateCount ?? 0;
   const dupBadge = dup > 0 ? (
     <span

@@ -109,7 +109,7 @@ if not defined WIN (
 )
 start "" "%URL%/?win=!WIN!"
 
-REM ---- 首窗提示用该窗口主题色（与 frontend/src/accent.ts、main.py accent_for_window 同算法，
+REM ---- 首窗提示用该窗口主体色（与 frontend/src/accent.ts、main.py accent_for_window 同算法，
 REM       统一实现见同目录的 window_accent.ps1，勿复制算法进本脚本）----
 set "AIG_WIN=!WIN!"
 set "ACCENT_PS=%~dp0window_accent.ps1"

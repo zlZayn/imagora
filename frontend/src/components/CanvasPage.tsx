@@ -1424,7 +1424,7 @@ export function CanvasPage({
         {/* 选中操作栏：任意选中 ≥1 个节点即出现；「运行所选/设置输出路径」只作用于提示词卡片，
             图片与图片组自动忽略（混合选区不误伤）；「自动整理」局部重排选中节点；「自动连线」只补选中节点间的边；
             「删除所选」作用于全部。半透明毛玻璃面板 + 透明按钮（走 btn-ghost/btn-danger 两档体系，
-            常态透明、主题色描边文字，hover 涟漪填充反白——不遮挡画布内容也能一眼看出可点）。 */}
+            常态透明、主体色描边文字，hover 涟漪填充反白——不遮挡画布内容也能一眼看出可点）。 */}
         {selectedCount >= 1 && (
           <div className="studio-inspector absolute right-3 top-3 z-40 flex items-center gap-1 rounded-lg border border-white/40 bg-white/20 p-1 shadow-sm backdrop-blur-md">
             {selectedPromptCount > 0 && (

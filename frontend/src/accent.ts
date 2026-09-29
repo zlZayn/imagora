@@ -1,5 +1,5 @@
 /**
- * 主体色（窗口主题色）
+ * 主体色（按窗口编号取色，每个窗口一份）
  *
  * 两种来源，优先级：用户自定义 > 按窗口编号自动取色。
  * - 自动：编号不同 -> 色相差异大；同一编号 -> 颜色恒定（刷新不变）。
@@ -19,7 +19,7 @@ function normalizeHue(hue: number): number {
   return ((hue % 360) + 360) % 360;
 }
 
-/** 由一个「已定稿的色相字符串」拼出整套主题色（正色 + 加深档），两处取色共用 */
+/** 由一个「已定稿的色相字符串」拼出整套主体色（正色 + 加深档），两处取色共用 */
 function accentFromHueText(hueText: string): { brand: string; brandDark: string } {
   return {
     brand: `hsl(${hueText} ${SATURATION}% ${BRAND_LIGHTNESS}%)`,
@@ -27,7 +27,7 @@ function accentFromHueText(hueText: string): { brand: string; brandDark: string 
   };
 }
 
-/** 由一个色相算出整套主题色（入参会被归一到 [0, 360)，供用户自定义色相使用） */
+/** 由一个色相算出整套主体色（入参会被归一到 [0, 360)，供用户自定义色相使用） */
 export function accentFromHue(hue: number): { brand: string; brandDark: string } {
   return accentFromHueText(normalizeHue(hue).toFixed(1));
 }

@@ -749,7 +749,7 @@ export function App() {
   const [windowId, setWindowId] = useState<number | null>(null);
   /** 自定义主体色相；null = 未自定义，回到按窗口编号自动配色（对所有窗口统一生效） */
   const [accentHue, setAccentHue] = useState<number | null>(() => readAccentHue());
-  /** 当前生效的主题色：自定义优先，否则按窗口编号 */
+  /** 当前生效的主体色：自定义优先，否则按窗口编号 */
   const accent = accentHue === null ? accentForWindow(windowId) : accentFromHue(accentHue);
   /** 归一后的色相：写页面底色变量用（负色相在 CSS 里虽合法，但归一后更直观） */
   const backgroundHue = (() => {
@@ -891,7 +891,7 @@ export function App() {
     saveSurfaceTransparency(value);
   };
 
-  /** 动态 favicon：标签页图标跟随窗口主题色（与顶栏 logo / 菜单边框同色），多开一眼可辨 */
+  /** 动态 favicon：标签页图标跟随窗口主体色（与顶栏 logo / 菜单边框同色），多开一眼可辨 */
 useEffect(() => {
   const svg = brandLogoSvg(accent.brand);
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.createElement("link");

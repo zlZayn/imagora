@@ -14,7 +14,7 @@ interface GalleryProps {
 /**
  * 单图展示：自动包裹图片实际边缘。
  * 图片 `w-full h-auto`，高度由自身比例决定——不设固定占位比例、不 object-cover 裁切，
- * 加载完成前显示主题色浅调占位，图片就位后淡入（img-reveal），无比例跳变。
+ * 加载完成前显示主体色浅调占位，图片就位后淡入（img-reveal），无比例跳变。
  * hover 由父级 group 驱动：图片轻微放大 + 阴影加深 + 整块上浮（transform 留给 transition，
  * 与入场 animation 互不干扰）。cursor-zoom-in 提示双击放大（与画布预览同款交互）。
  */

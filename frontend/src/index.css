@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* 品牌色默认值（兜底）：运行时 App.tsx 按窗口编号动态覆盖 --color-brand，
-   此处仅为 JS 加载前的默认，用中性 slate 避免误导为固定主题色 */
+   此处仅为 JS 加载前的默认，用中性 slate 避免误导为固定主体色 */
 @theme {
   --color-brand: #475569;
   --color-brand-dark: #334155;
@@ -187,7 +187,7 @@ html {
 
 /* ============ 角落装饰体系（统一锚点，每层一个类） ============
  * 右上 .corner-deco__step  编号水印（长在 .corner-deco 容器内，浓度走 --mark-ink）
- * 右上 .corner-rings       SVG 同心弧环（mask 上色）：跟随窗口主题色，溢出角外被容器裁切
+ * 右上 .corner-rings       SVG 同心弧环（mask 上色）：跟随窗口主体色，溢出角外被容器裁切
  * 右下 .corner-note        镜像小字：对比度最低，只给大容器（顶栏 / 模态）
  * 行内 .chip               角标家族：顶栏 28px / 小号 --sm 18px / --dot 正方 / 三色修饰
  * 溢出由裁切层 .corner-deco__clip 截断；装饰一律 pointer-events:none，不参与交互、不影响布局。 */
@@ -253,7 +253,7 @@ html {
 /* 容器内容压在裁切层之上：水印退到最底层，输入框等不透明内容会自然盖住它（不干扰输入区） */
 .corner-deco > *:not(.corner-deco__clip) { position: relative; z-index: 1; }
 
-/* —— 右上：SVG 同心弧环（几何装饰；mask 上色 → 颜色始终跟随窗口主题色）—— */
+/* —— 右上：SVG 同心弧环（几何装饰；mask 上色 → 颜色始终跟随窗口主体色）—— */
 .corner-rings { position: relative; }
 /* 圆心贴住容器右上角（overflow:hidden 只留容器内的 1/4 弧）——
  * 若把圆心推到容器外（如 top/right: -86px），穿过角落的那段弧已近似直线，看着像划痕。 */
@@ -830,9 +830,9 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   }
 
   /* ============ 行动按钮体系：两档 + 状态类 ============
-   * 视觉语言统一：胶囊圆角（rounded-full）+ 品牌色（var(--color-brand)，跟随窗口主题色）+ 涟漪反转动效。
+   * 视觉语言统一：胶囊圆角（rounded-full）+ 品牌色（var(--color-brand)，跟随窗口主体色）+ 涟漪反转动效。
    * 两档同源（均无边框胶囊 + 涟漪反转）：btn-primary 常态实底白字，hover 白色涟漪从中心向左右展开
-   *   （白底 + 主题色字）= 主行动（视觉重）；btn-ghost 常态透明底 + 主题色文字，hover 主题色涟漪填充 + 反白 = 次要行动（视觉轻）。
+   *   （白底 + 主体色字）= 主行动（视觉重）；btn-ghost 常态透明底 + 主体色文字，hover 主体色涟漪填充 + 反白 = 次要行动（视觉轻）。
    * 涟漪层（::before）为按钮同形层（inset:0，圆角 inherit），scaleX(0)→1 从中心向左右横向展开——
    * 任意宽度（如 flex-1 撑满的「生成图片」）都完整覆盖，扩展方向是「中间往两边」而非四周放射。
    * 状态类：btn-busy 生成中呼吸、btn-draggable 可拖出、btn-danger 危险色。
@@ -856,7 +856,7 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
     transform: scaleX(1);
   }
 
-  /* 主行动：常态实底白字，hover 白涟漪反转 → 白底 + 主题色字（无缩放） */
+  /* 主行动：常态实底白字，hover 白涟漪反转 → 白底 + 主体色字（无缩放） */
   .btn-primary {
     @apply relative overflow-hidden rounded-full bg-brand py-3 font-semibold text-white shadow-sm;
     --btn-fill: #ffffff;
@@ -876,7 +876,7 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
     @apply cursor-not-allowed opacity-50;
   }
 
-  /* 次要行动：与 primary 同源——无边框透明胶囊，常态主题色文字，hover 涟漪填充 + 反白（无缩放）
+  /* 次要行动：与 primary 同源——无边框透明胶囊，常态主体色文字，hover 涟漪填充 + 反白（无缩放）
      （--btn-fill 固定基础色，hover 反白不影响涟漪颜色；danger 变体覆盖 color/--btn-fill 即红系） */
   .btn-ghost {
     @apply relative overflow-hidden whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold;
@@ -1113,7 +1113,7 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   animation: log-toast 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* 生成中按钮呼吸光晕（颜色跟随窗口主题色） */
+/* 生成中按钮呼吸光晕（颜色跟随窗口主体色） */
 .btn-busy {
   animation: pulse-glow 1.6s ease-in-out infinite;
 }
@@ -1182,7 +1182,7 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-brand) 14%, transparent); }
 }
 
-/* 结果区生成中图标：本身颜色的自然呼吸光（drop-shadow 跟随主题色，晕随图标轮廓） */
+/* 结果区生成中图标：本身颜色的自然呼吸光（drop-shadow 跟随主体色，晕随图标轮廓） */
 .icon-breathe {
   animation: icon-breathe 2.2s ease-in-out infinite;
 }
@@ -1364,7 +1364,7 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 /* 悬停/选中提示词节点时：入边加粗变色 + 关联图片节点描边（一眼核对参考图集合）。
    标记位置：node-selected 加在节点根 div（.panel-card/.node-pop）自身（组件 selected prop 驱动）；
    node-related 加在 React Flow 外层 .react-flow__node 的 className（applyHighlight 驱动）。
-   两者统一为主题色 outline 描边，图片 / 提示词 / 图片组三种节点一致。 */
+   两者统一为主体色 outline 描边，图片 / 提示词 / 图片组三种节点一致。 */
 .react-flow__edge.edge-highlight .react-flow__edge-path {
   stroke: var(--color-brand) !important;
   stroke-width: 3 !important;
@@ -1389,7 +1389,7 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 }
 
 /* 覆盖 React Flow 对内置 group 类型的默认选中阴影（黑框）：
-   图片组节点与图片/提示词节点一样，选中态统一为主题色 outline 描边。 */
+   图片组节点与图片/提示词节点一样，选中态统一为主体色 outline 描边。 */
 .react-flow__node-group.selectable.selected {
   box-shadow: none;
 }
@@ -1420,7 +1420,7 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   outline-offset: 2px;
 }
 
-/* 拖拽连线时的临时连接线跟随当前窗口主题色。 */
+/* 拖拽连线时的临时连接线跟随当前窗口主体色。 */
 .react-flow__connection .react-flow__connection-path {
   stroke: var(--color-brand) !important;
   stroke-width: 3 !important;

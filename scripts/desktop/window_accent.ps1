@@ -2,7 +2,7 @@ param(
     [int]$WindowId = 1
 )
 <#
-窗口主题色 —— 黄金角 137.508 分布 / HSL(色相 55% 42%) → RGB，输出 "R G B"（供 cmd ANSI 24-bit 着色）。
+窗口主体色 —— 黄金角 137.508 分布 / HSL(色相 55% 42%) → RGB，输出 "R G B"（供 cmd ANSI 24-bit 着色）。
 
 与 frontend/src/accent.ts（浏览器页面 --color-brand）和 main.py accent_for_window（rich 菜单）
 是同一算法的三处实现，改色相/饱和/明度必须三处同步，勿单独改动。

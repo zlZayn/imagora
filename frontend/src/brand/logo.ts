@@ -21,7 +21,7 @@ export const BRAND_LOGO_VIEWBOX = VIEW_BOX;
 
 /**
  * 整枚 SVG 字符串（动态 favicon 用）：只换根元素的 `fill`，
- * 形状与 viewBox 原样带过去。`fill` 由调用方给（窗口主题色），多窗口一眼可辨。
+ * 形状与 viewBox 原样带过去。`fill` 由调用方给（窗口主体色），多窗口一眼可辨。
  */
 export function brandLogoSvg(fill: string): string {
   return logoSvg.replace(/(<svg\b[^>]*?)\s+fill="[^"]*"/, `$1 fill="${fill}"`);
