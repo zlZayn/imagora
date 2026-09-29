@@ -18,11 +18,11 @@
 
 ## 界面一览
 
-![无限画布：图片与提示词节点、连线、结果回流](assets/canvas-overview.png)
+![无限画布：图片与提示词节点、连线、结果回流](assets/screenshots/canvas-overview.png)
 
 | 经典表单 | 多窗口并行 |
 | --- | --- |
-| ![经典表单页](assets/form-view.png) | ![多窗口并行菜单](assets/terminal-window.png) |
+| ![经典表单页](assets/screenshots/form-view.png) | ![多窗口并行菜单](assets/screenshots/terminal-window.png) |
 
 界面已多次调整，上面几张图待重拍。
 

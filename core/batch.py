@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """批量生图编排 —— 读项目目录下的 batch_prompts.json 逐张调用
 
-路径基准 = 配置文件所在目录（assets/、output/ 均相对配置）。
+路径基准 = 配置文件所在目录（清单里的相对路径——参考图、输出目录——都从这里解析）。
 CLI 入口在 main.py（python main.py batch --config <项目>/batch_prompts.json）。
 输出用 rich 统一美化：任务预览表格、逐张进度条、完成总结面板。
 """

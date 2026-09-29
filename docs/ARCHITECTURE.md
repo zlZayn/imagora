@@ -49,8 +49,20 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
 | `tests/` | 后端 pytest（266 用例）+ 前端 vitest（288 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
+| `assets/` | **文档配图**（只服务 markdown 渲染，不是应用资源）：`screenshots/` 放 README「界面一览」的界面截图；**双件**：assets/AGENTS.md + assets/README.md |
 | `logs/` | 生成日志 `generation.jsonl`（git 忽略） |
 | `output/` | 全部运行产物（git 忽略）：`win{N}` 窗口分区、`.refs` 参考图缓存、`.assets` 资产库与注册表、`workflows` 工作流、`submissions/` 经典提交图快照 |
+
+**四个都叫 `assets` 的东西，别混**（这组歧义曾在批量说明里让读者分不清图该放哪）：
+
+| 名字 | 是什么 | 在不在仓库里 |
+| --- | --- | --- |
+| `assets/`（本目录） | 文档配图，给 README 用 | 在 |
+| `output/.assets/` | 程序的资产库与注册表（图片三源归一后复制进来） | 不在（git 忽略） |
+| 批量清单里的 `assets/` | 别人项目目录下的参考图子目录，相对 `batch_prompts.json` 解析 | 不在 |
+| 代码术语「资产 / `ASSET_DIR` / `register_asset` 系」 | 指上面第二个，不是本目录 | — |
+
+写作约定：指程序那个一律写「**资产库（`output/.assets/`）**」，指本目录写「文档配图」或带全路径；裸写 `assets/` 只允许出现在本目录自己的双件里。
 
 ### 2.2 后端 core/ 模块
 
@@ -306,7 +318,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | 基准 | 定义 | 使用处 |
 | --- | --- | --- |
 | `WORK_ROOT` | `Path.cwd()`，进程启动时固定 | 默认输出目录、`display_path` 相对显示 |
-| 配置文件目录 | `batch_prompts.json` 所在目录 | 批量任务里 assets/、output/ 相对解析 |
+| 配置文件目录 | `batch_prompts.json` 所在目录 | 批量清单里写的相对路径（参考图、输出目录）在此解析 |
 | `__file__` | 代码文件位置 | `.env`、`frontend/dist` 定位 |
 
 - 默认输出目录 `WORK_ROOT/output`（config 的 DEFAULT_OUTPUT_DIR，api 与 server 共用）。
