@@ -18,7 +18,7 @@
 - 改 [server.py](server.py) 路由 → 查 [core/README.md](core/README.md)（registry/graphstore/history/cost 节）→ 跑 `pytest tests/test_server_*.py` → 同步 [frontend/src/types.ts](frontend/src/types.ts) + [frontend/src/api.ts](frontend/src/api.ts) + ARCHITECTURE 7.1 表
 - 改成本统计 / 预算保护（[core/cost.py](core/cost.py)）→ 跑 `pytest tests/test_core_cost.py tests/test_server_cost.py` → 预算落在 `output/.budget.json`（git 忽略，勿改成进仓库的配置）
 - 改 frontend/src/ 纯函数 → 查 [frontend/README.md](frontend/README.md) 文件索引 → 跑 `npm test`（有单测即够，无需文档）
-- 改 frontend/components/ UI → 查 [frontend/README.md](frontend/README.md) 组件索引 → 跑 `npm test` + [E2E](frontend/e2e/verify_canvas.py) → 样式改 [index.css](frontend/src/index.css)（公共类先登记到 README「样式体系」节）
+- 改 frontend/components/ UI → 查 [frontend/README.md](frontend/README.md) 组件索引 → 跑 `npm test` + [E2E](frontend/e2e/verify_canvas.py) → 样式改 [index.css](frontend/src/index.css)（公共类先登记到 [frontend/README.md](frontend/README.md)「样式体系」节，不是根 README）
 - 改 [scripts/migrate.py](scripts/migrate.py) 或存储格式 → 查 [scripts/README.md](scripts/README.md) → 跑 `pytest tests/test_core_migrate.py` → **必须先 Handoff 确认（硬边界）**
 - 改测试文件 → 查 [tests/README.md](tests/README.md) → 按模块筛选跑 → 增/删用例后更新本文档「仪表盘」数字
 
@@ -65,6 +65,7 @@ CI 在 push 后自动跑，红叉处理顺序：`gh run view <id>` 看哪个 job
 - 改后端（`server.py` / `core`）后行为没变：清 `__pycache__` 再重启服务（`Remove-Item -Recurse -Force __pycache__, core\__pycache__`）——曾出现旧字节码被复用、新接口字段不下发
 - E2E 只测画布交互、不触发生成链路；未来覆盖「生成→回流」前必须先 mock [core/api.py](core/api.py) 的 `generate_image`（ci.yml 注释 TODO）
 - 迁移脚本/存储格式改动属硬边界——必须维护者确认，不自行决断
+- 早于「提交时登记参考图」机制的历史失败记录（本机 8-19 之前）没有参考图记录，「重跑失败项」对它们只能显示原因、无法重跑：重跑只对该机制之后的失败有效，别把它当数据修复手段，也别为此改判定去"凑齐"参考图
 
 ## 文档地图
 
