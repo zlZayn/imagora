@@ -14,6 +14,7 @@ ARCHITECTURE / frontend/README 多处，人工同步易漏（曾出现 221→222
 """
 
 import argparse
+import hashlib
 import pathlib
 import re
 import sys
@@ -151,6 +152,42 @@ def check_counts(
     return problems
 
 
+LOGO_SOURCE = ROOT / "frontend" / "src" / "brand" / "logo.svg"
+ICON_SIDECAR = ROOT / "scripts" / "icon-source.sha256"
+ICON_FILE = ROOT / "scripts" / "启动生图工作台.ico"
+
+
+def check_icon_freshness() -> list[str]:
+    """桌面图标产物是否与源图同步（内容指纹比对，不看 mtime——git 不保留时间）。
+
+    不在这里重跑渲染：make_icon.py 需要 playwright + chromium，
+    而前端 Job 里没有 Python 依赖；改为比对 make_icon.py 写下的源图指纹。
+    """
+    problems: list[str] = []
+    if not LOGO_SOURCE.exists():
+        return [f"{LOGO_SOURCE.relative_to(ROOT)}: 品牌源图不见了（形状的唯一来源）"]
+    if not ICON_SIDECAR.exists() or not ICON_FILE.exists():
+        missing = [
+            str(f.relative_to(ROOT))
+            for f in (ICON_SIDECAR, ICON_FILE)
+            if not f.exists()
+        ]
+        return [
+            f"{'、'.join(missing)}: 桌面图标或其指纹缺失，跑 scripts/make_icon.py 重建"
+        ]
+    want = hashlib.sha256(LOGO_SOURCE.read_bytes()).hexdigest()
+    got = ICON_SIDECAR.read_text(encoding="utf-8").strip()
+    if want != got:
+        problems.append(
+            f"{ICON_SIDECAR.relative_to(ROOT)}: 指纹 {got[:12]}… 与 "
+            f"{LOGO_SOURCE.relative_to(ROOT)} 当前内容 {want[:12]}… 不一致"
+            " —— 源图改了但图标没重生成，exe 仍是旧形状。"
+            "依次跑：scripts/make_icon.py，再 powershell -File scripts/make_launcher.ps1"
+            "（编译前先关掉正在运行的启动器）"
+        )
+    return problems
+
+
 def main() -> int:
     # GBK 控制台（Windows 默认 cp936）无法打印 ✔/❌，统一按 utf-8 输出
     try:
@@ -169,7 +206,7 @@ def main() -> int:
     frontend_total = count_frontend_tests()
     count_problems = check_counts(backend_total, per_file, frontend_total)
 
-    problems = link_problems + count_problems
+    problems = link_problems + count_problems + check_icon_freshness()
     for p in problems:
         print(f"❌ {p}")
     if not problems:

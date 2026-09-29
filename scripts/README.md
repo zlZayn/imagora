@@ -19,7 +19,7 @@
 - 改后验证：`powershell -File scripts\window_accent.ps1 -WindowId 1` 对照 `python -c "import main; print(main.accent_for_window(1))"` 的 #rrggbb
 
 ### [check_docs.py](check_docs.py)
-- 职责：文档完整性校验——相对 markdown 链接可解析 + 仪表盘测试计数与源码一致（后端数 `def test_`、前端数 `it()`，逐处比对 AGENTS / tests/README / ARCHITECTURE / frontend/README 的声明数字）
+- 职责：仓库完整性只读校验——相对 markdown 链接可解析 + 仪表盘测试计数与源码一致（后端数 `def test_`、前端数 `it()`，逐处比对 AGENTS / tests/README / ARCHITECTURE / frontend/README 的声明数字）+ 桌面图标产物与品牌源图同步（比 `icon-source.sha256`）
 - 危险级别：**低**（只读，不写任何文件）
 - 命令：`python scripts/check_docs.py`（`--quiet` 只出问题）；退出码 0=通过 / 1=有断链或计数漂移
 - 落点：已接进 CI —— [.github/workflows/ci.yml](../.github/workflows/ci.yml) 前端 job 的第一步（checkout 之后、`npm ci` 之前，不装依赖所以判红快），CI 上写作 `python3`（ubuntu runner），本地仍是 `python`
@@ -30,12 +30,13 @@
 - 背景：计数分散多处人工同步易漏（曾出现 221→222 漏改、frontend 145 过时数字），脚本把「数字与源码一致」从纪律变成可执行检查
 
 ### [make_icon.py](make_icon.py)
-- 职责：由 `frontend/public/favicon.svg` 生成同目录 [`启动生图工作台.ico`](启动生图工作台.ico)——透明底 + 灰黑线条；`getBBox()` 取紧致取景、逐尺寸交给浏览器渲染、标准库按 ICO 规范（PNG 嵌入）打包成 16/24/32/48/64/128/256
-- 危险级别：**低**（只写 ICO）；**不改动 favicon.svg 源文件**
+- 职责：由**品牌源图** `frontend/src/brand/logo.svg` 生成同目录 [`启动生图工作台.ico`](启动生图工作台.ico)——透明底 + 灰黑线条；`getBBox()` 取紧致取景、逐尺寸交给浏览器渲染、标准库按 ICO 规范（PNG 嵌入）打包成 16/24/32/48/64/128/256
+- 同时写 [`icon-source.sha256`](icon-source.sha256)：生成那一刻源图的内容指纹。`check_docs.py` 拿它比对，源改了而产物没重生成就会红（用内容比对，不看修改时间——git 不保留时间，clone 后所有文件时间一样，判不出来）
+- 危险级别：**低**（只写 ICO 与指纹两个文件）；**不改动品牌源图**
 - 命令：`.\\.venv\\Scripts\\python.exe scripts\\make_icon.py`（可传输出路径做预览，不覆盖正式文件）
 - 依赖：仅项目已有的 playwright（不引入新依赖）
 - 改后验证：`python -c` 用 Pillow 读回 ICO 的 `sizes` 与 alpha 极值；或直接看资源管理器里入口图标的观感
-- 注意：脚本按 `#475569` 匹配 favicon.svg 的填充色，源色一变即报错退出，不静默产出错色图标；入口图标为何用快捷方式而非 exe，见[决策记录](../.agents/notes/2026-09-28-launcher-icon-and-shortcut.md)
+- 注意：脚本按 `#475569` 匹配 `logo.svg` 的填充色，源色一变即报错退出，不静默产出错色图标；入口图标为何用快捷方式而非 exe，见[决策记录](../.agents/notes/2026-09-28-launcher-icon-and-shortcut.md)
 
 ### [migrate.py](migrate.py)
 - 职责：存储迁移统一入口——注册表升级/重建/回填/迁目录（委托 `registry.migrate(apply, rebuild, backfill)`）、工作流升级（委托 `graphstore.migrate_workflows`）、历史账本回填（委托 `history.backfill_output_asset_ids`）

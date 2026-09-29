@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/favicon.svg" alt="Imagora" width="72" height="72">
+  <img src="frontend/src/brand/logo.svg" alt="Imagora" width="72" height="72">
 </p>
 
 <h1 align="center">Imagora</h1>

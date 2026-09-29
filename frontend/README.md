@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（288 用例）
+npm test           # vitest run（292 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -165,6 +165,11 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 ### [api-guards.ts](src/api-guards.ts)
 - 职责：`/api` 响应形状守卫（`isAppConfig` / `isHistoryResponse`）；只校验消费面读的字段、多出的键放行，由 `api.ts` 的 `requestJson(url, init, validate?)` 消费 —— 形状不符在 api 边界抛错（含端点路径），不让坏数据流到渲染层
 - 注意：逐端点增量接入；未接的端点行为与以往逐字一致
+
+### [brand/logo.ts](src/brand/logo.ts)
+- 职责：品牌图形的**唯一取处**——形状只写在 [brand/logo.svg](src/brand/logo.svg) 一份里，本模块用 `?raw` 在构建期内联，导出 `BRAND_LOGO_PATH` / `BRAND_LOGO_VIEWBOX`（顶栏 `<svg>` 用）与 `brandLogoSvg(fill)`（动态 favicon 用：只换根元素 `fill`，颜色仍按窗口走）
+- 被谁依赖：`App.tsx`（顶栏品牌区 + 标签页图标注入）；`scripts/make_icon.py` 也读同一份 svg 生成桌面图标
+- 注意：`logo.svg` 必须**只有一处 `fill`** 且带 `<path d="…">` 与 `viewBox`（`brand/logo.test.ts` 钉着），取不到就在 import 期抛错，不静默渲染成空白图标。**别再抄第二份形状**：历史上手抄过三份（svg + 顶栏 + favicon 模板），改一次要动三处且没有任何校验
 
 ### Hooks（组件级逻辑）
 
