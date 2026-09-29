@@ -59,6 +59,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 开关 | `.switch` | 布尔开关（原生 checkbox + 轨道圆钮，状态只走 `:checked`）；画布边界开关用它 |
 | 画布边界 | `html[data-canvas-bounds="off"] .studio-canvas` | 关闭时收掉画布边框 / 底色 / 投影与渲染层底色晕，与页面背景融为一体 |
 | 滚动条 | `--sb-size` · `--sb-thumb` · `--sb-track` | 全局统管；轨道 transparent = 跟随所在容器底色 |
+| 主色选择 | `.accent-swatches` / `.accent-swatch`（选中态 `.is-on`） · `.accent-hue` | 外观弹窗的九色预设方块 + 自定义色相滑杆：**色块底色由组件按 `accentFromHue` 现算并内联注入**，CSS 只管形状（28 方块、圆角 8）、hover 抬升与选中态的双层外圈；`.accent-hue` 是主色滑杆本体（`--r-pill` 轨道 + 自定义 thumb，「通用滑杆」`.range-field` 与它同形）。取到的色相写到根元素 `--accent-hue`，背景材质与页面光晕都读它 |
 
 ## 文件索引
 
@@ -152,6 +153,11 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 职责：画布边界开关偏好（`readCanvasBounds` / `saveCanvasBounds`，localStorage）
 - 被谁依赖：`App.tsx`（外观弹窗），样式落点 `html[data-canvas-bounds]`
 - 注意：默认 `true`（显示边框 + 底色，保持既有观感），只有用户显式关掉才进「融为一体」档
+
+### [recentPrompts.ts](src/recentPrompts.ts)
+- 职责：最近提示词挑选（`pickRecentPrompts(items, limit = 5, prefixLen = 40)`）——从生成历史里挑可直接复用的条目：按前 `prefixLen` 字归并近似版本并保留最新那条、丢弃空白与缺失项、取满 `limit` 即停；只做挑选不截断长度（视觉截断归展示层）
+- 被谁依赖：`App.tsx`（拉到历史后算出列表并存进 state）；再以 `recentPrompts` prop 经 `components/ResultPanel.tsx` 转给 `components/Gallery.tsx` 渲染成空态那一行（两个组件本身不 import 本模块）
+- 注意：**入参已按时间倒序**（`/api/history` 的返回顺序），本函数不再排序；归并键先把连续空白归一，所以只差空格数量的两条算一条 —— 精确去重会让列表出现多条肉眼无法分辨的项。该口径由 `recentPrompts.test.ts` 钉住
 
 ### [windowInherit.ts](src/windowInherit.ts)
 - 职责：新窗口继承（`saveInheritedState` / `readInheritedState` / `clearInheritedState`，sessionStorage）
