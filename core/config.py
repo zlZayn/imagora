@@ -50,10 +50,15 @@ _DEFAULTS = {
         {"value": "1792x1024", "label": "1792x1024 (横版长图)", "cost": 0.10},
     ],
     "quality_options": ["low", "medium", "high"],
-    "default_model": "gpt-image-2",
+    "default_model": "gpt‑image‑2",
     "default_quality": "high",
     "default_size": "1024x1024",
     "default_tier": "2K",
+    # 多模型清单：每个模型自带 ratios / size_options / output_formats。
+    # 空列表表示不启用多模型（回退 profile 级的 ratios / size_options 单模型模式）。
+    "models": [],
+    # 供应商展示名（如「火山方舟官方」/「aiwanwu 中转站」）
+    "label": "",
 }
 
 # profile 允许的键（白名单：未知键打警告，防 typo 静默失效）
@@ -187,19 +192,188 @@ def get_api_key():
     )
 
 
+# ---------- 多模型清单（可选） ----------
+# 每个模型自带 ratios / size_options / output_formats；为空则回退 profile 级单模型模式。
+# 归一化：给每个模型补 label（缺省用 id）、output_formats（缺省 ["png","jpeg"]）。
+PROFILE_LABEL = _get("label") if isinstance(_get("label"), str) else ""
+
+
+def normalize_models(raw) -> list[dict]:
+    """纯函数：把 profile.models 归一化成统一结构（缺字段补默认值）。
+
+    - label 缺省用 id
+    - output_formats 缺省 ["png","jpeg"]
+    - size_options / ratios 缺省用空（调用方回退 profile 级）
+    """
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw:
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+        model_id = str(item["id"])
+        out.append(
+            {
+                "id": model_id,
+                "label": str(item.get("label") or model_id),
+                "note": str(item.get("note") or ""),
+                "output_formats": list(item.get("output_formats") or ["png", "jpeg"]),
+                "size_options": list(item.get("size_options") or []),
+                "ratios": dict(item.get("ratios") or {}),
+            }
+        )
+    return out
+
+
+MODELS = normalize_models(_get("models"))
+
+
+# 各种「看起来像减号」的字符：中转站在同一条产品线上混用了半角与全角连字符，
+# 肉眼完全分辨不出。比对模型 ID 前统一折叠，避免把用户挡在 model_not_found 外面。
+_DASH_CODEPOINTS = frozenset(
+    [0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212, 0xFE58, 0xFE63, 0xFF0D]
+)
+
+
+def fold_model_id(model_id: str | None) -> str:
+    """把模型 ID 里各类连字符折叠成半角 `-`，仅用于**比对**，不改变语义。
+
+    例：`gpt‑image‑2.5`（U+2011）与 `gpt-image-2.5`（U+002D）折叠后相同。
+    """
+    if not model_id:
+        return ""
+    return "".join("-" if ord(ch) in _DASH_CODEPOINTS else ch for ch in model_id)
+
+
+def normalize_model_id(model_id: str | None) -> str | None:
+    """把用户给的模型 ID 纠正为配置里的**真实 ID**，无法匹配则原样返回。
+
+    背景：中转站的 `gpt‑image‑2.5` 用的是全角连字符 U+2011，与键盘能打出的
+    半角 `gpt-image-2.5` 在界面上毫无区别。用户手打、或沿用历史记录时必然
+    拿到半角版本，请求会被上游直接判为 model_not_found（404）。
+    这里做一次折叠比对，命中已知模型就换回配置里的正确 ID。
+    """
+    if not model_id:
+        return model_id
+    folded = fold_model_id(model_id)
+    for known in all_known_models():
+        if fold_model_id(known) == folded:
+            return known
+    return model_id
+
+
+def get_model(model_id: str | None) -> dict | None:
+    """按 id 取模型配置；找不到返回 None（调用方回退 profile 级默认）
+
+    比对时会折叠连字符（见 fold_model_id）：模型 ID 里混用了半角 `-` 与
+    全角 `‑`，肉眼完全一样，不做折叠会漏掉本该命中的模型。
+    """
+    if not model_id:
+        return None
+    folded = fold_model_id(model_id)
+    for m in MODELS:
+        if fold_model_id(m["id"]) == folded:
+            return m
+    return None
+
+
+def find_model_anywhere(model_id: str | None) -> dict | None:
+    """在 **全部 profile** 里查找模型，返回 {"profile": 名, "model": 模型定义}。
+
+    与 get_model() 的区别：后者只看当前 ACTIVE_PROFILE。
+    典型用途是「我的接口」的连通性测试 —— 用户可能在 wanwu profile 下
+    去测试一条豆包配置，此时必须跨 profile 才能查到它的尺寸档位。
+
+    优先返回当前 profile 的命中（同名模型在不同 profile 下配置可能不同）。
+    连字符同样折叠后再比对。
+    """
+    if not model_id:
+        return None
+    folded = fold_model_id(model_id)
+    # 当前 profile 优先
+    for m in MODELS:
+        if fold_model_id(m["id"]) == folded:
+            return {"profile": ACTIVE_PROFILE, "model": m}
+    for name, prof in (_cfg.get("profiles") or {}).items():
+        if name == ACTIVE_PROFILE or not isinstance(prof, dict):
+            continue
+        for m in normalize_models(prof.get("models")):
+            if fold_model_id(m["id"]) == folded:
+                return {"profile": name, "model": m}
+    return None
+
+
+def all_known_models() -> list[str]:
+    """全部 profile 里出现过的模型 id（去重、保持顺序）——用于「找不到模型」时的提示。"""
+    seen: list[str] = []
+    for m in MODELS:
+        if m["id"] and m["id"] not in seen:
+            seen.append(m["id"])
+    for prof in (_cfg.get("profiles") or {}).values():
+        if not isinstance(prof, dict):
+            continue
+        for m in normalize_models(prof.get("models")):
+            if m["id"] and m["id"] not in seen:
+                seen.append(m["id"])
+    return seen
+
+
+def _model_anywhere(model_id: str | None) -> dict | None:
+    """跨 profile 取模型定义（找不到返回 None）。
+
+    这些查询一律走 find_model_anywhere 而不是 get_model：
+    「我的接口」可以在任意 profile 下测试/切换另一家的配置，
+    只看当前 profile 会查不到模型、静默回退到**当前** profile 的
+    尺寸与价格，把另一家的单价算错（曾把中转站的 0.05 显示成豆包的 0.2）。
+    """
+    found = find_model_anywhere(model_id)
+    return found["model"] if found else None
+
+
+def model_sizes(model_id: str | None) -> list[dict]:
+    """该模型的尺寸选项；模型无自带尺寸时回退 profile 级 size_options。"""
+    m = _model_anywhere(model_id)
+    if m and m["size_options"]:
+        return m["size_options"]
+    return SIZE_OPTIONS
+
+
+def model_ratios(model_id: str | None) -> dict:
+    """该模型的 ratios；模型无自带时回退 profile 级 RATIOS。"""
+    m = _model_anywhere(model_id)
+    if m and m["ratios"]:
+        return m["ratios"]
+    return RATIOS
+
+
+def model_output_formats(model_id: str | None) -> list[str]:
+    """该模型支持的输出格式；未知模型回退 ["png","jpeg"]。"""
+    m = _model_anywhere(model_id)
+    return m["output_formats"] if m else ["png", "jpeg"]
+
+
+def model_label(model_id: str | None) -> str:
+    """模型展示名（下拉框用）；未知返回 id 本身。"""
+    m = _model_anywhere(model_id)
+    return m["label"] if m else (model_id or "")
+
+
 # ---------- 尺寸映射 / UI 选项 / 默认参数（全部来自当前 profile） ----------
 RATIOS = _get("ratios")
 SIZE_OPTIONS = _get("size_options")
 
 
-def cost_for_size(size: str) -> float:
-    """按尺寸查单张费用（唯一来源：当前 profile 的 size_options，由 config.json 管理）。
+def cost_for_size(size: str, model_id: str | None = None) -> float:
+    """按尺寸查单张费用。
 
-    未知尺寸返回 0.0——不在此处硬编码兜底价格，计费一律以配置文件为准。
+    优先在该模型的 size_options 里查（不同模型单价可能不同）；
+    查不到再回退 profile 级 size_options。未知尺寸返回 0.0——不硬编码兜底价，
+    计费一律以配置文件为准。
     """
-    for option in SIZE_OPTIONS:
-        if option.get("value") == size:
-            return float(option.get("cost", 0.0))
+    for options in (model_sizes(model_id), SIZE_OPTIONS):
+        for option in options:
+            if option.get("value") == size:
+                return float(option.get("cost", 0.0))
     return 0.0
 
 
@@ -318,3 +492,49 @@ def describe_config() -> dict:
         env_file_keys=_ENV_FILE_KEYS,
         api_key_name=get_api_key_source(),
     )
+
+
+# ---------- 服务来源目录（只读）：供前端按「当前实际使用的接口地址」解析尺寸/单价 ----------
+def build_provider_catalog(cfg: dict) -> list[dict]:
+    """纯函数：把 config.json 里**全部** profile 归一化成「来源目录」。
+
+    为什么需要：价目表按 profile 分家（火山官方 0.2/0.3 元，中转站 0.05/0.1 元），
+    而「个人配置」只覆盖接口地址 / 模型 / 路径。若前端仍按 default_profile 的
+    size_options 渲染尺寸下拉，切到中转站后就会出现「用着 0.05 的接口、显示 0.2 的价」，
+    甚至列出该模型根本不支持的档位（把 1728x2304 发给 gpt-image 系列）。
+    把各 profile 的 base_url + sizes + models 一并下发，前端才能按地址自己换表；
+    profile 增删来源时前端零改动。
+
+    每项：{name, label, baseUrl, defaultModel, defaultQuality, defaultSize, sizes, models}
+    """
+    profiles = cfg.get("profiles")
+    if not isinstance(profiles, dict):
+        return []
+    catalog: list[dict] = []
+    for name, profile in profiles.items():
+        if not isinstance(profile, dict):
+            continue
+        catalog.append(
+            {
+                "name": str(name),
+                "label": str(profile.get("label") or name),
+                "baseUrl": str(profile.get("base_url") or _DEFAULTS["base_url"]),
+                "defaultModel": str(
+                    profile.get("default_model") or _DEFAULTS["default_model"]
+                ),
+                "defaultQuality": str(
+                    profile.get("default_quality") or _DEFAULTS["default_quality"]
+                ),
+                "defaultSize": str(
+                    profile.get("default_size") or _DEFAULTS["default_size"]
+                ),
+                "sizes": list(profile.get("size_options") or _DEFAULTS["size_options"]),
+                "models": normalize_models(profile.get("models")),
+            }
+        )
+    return catalog
+
+
+def provider_catalog() -> list[dict]:
+    """薄包装：本机 config.json 的来源目录（只读；无 profiles 时返回空列表）。"""
+    return build_provider_catalog(_cfg)

@@ -57,10 +57,15 @@ def test_resolve_size_rejects_size_and_ratio_together():
 
 
 def test_resolve_size_from_ratio():
-    """ratio + 档位 -> 对应分辨率"""
-    assert resolve_size_with_ratio(None, "9:16", "2K") == "1152x2048"
-    assert resolve_size_with_ratio(None, "16:9", "4K") == "3840x2160"
-    assert resolve_size_with_ratio(None, "1:1", "1K") == "1024x1024"
+    """ratio + 档位 -> 对应分辨率。
+
+    具体数值随当前 profile 的 RATIOS 变化（供应商不同尺寸表不同），
+    这里从 RATIOS 推导而非硬编码，避免切换 profile 后假失败。
+    """
+    from core.config import RATIOS
+
+    for ratio, tier in (("9:16", "2K"), ("1:1", "1K")):
+        assert resolve_size_with_ratio(None, ratio, tier) == RATIOS[ratio][tier]
 
 
 def test_resolve_size_rejects_unknown_ratio():

@@ -275,8 +275,10 @@ class TestHandleGenCommand:
         )
         log_path = gen_env / "logs" / "generation.jsonl"
         record = json.loads(log_path.read_text(encoding="utf-8"))
-        # 9:16 2K 档对应 1152x2048
-        assert record["size"] == "1152x2048"
+        # 9:16 2K 档的具体像素随 profile 变化，从 RATIOS 推导而非硬编码
+        from core.config import RATIOS
+
+        assert record["size"] == RATIOS["9:16"]["2K"]
 
 
 # ---------- --n：客户端逐张请求 ----------

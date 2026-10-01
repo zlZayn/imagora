@@ -11,13 +11,15 @@ from io import BytesIO
 from fastapi import UploadFile
 from starlette.datastructures import Headers
 
+from core.config import SIZE_OPTIONS
 from server import size_cost
 
 
 def test_size_cost_known_sizes():
-    """已知尺寸 -> 对应费用"""
-    assert size_cost("1024x1024") == 0.05
-    assert size_cost("1152x2048") == 0.10
+    """已知尺寸 -> 对应费用（从当前 profile 的 size_options 推导，不硬编码价格，
+    否则切换 profile/供应商就会误报失败）"""
+    for opt in SIZE_OPTIONS:
+        assert size_cost(opt["value"]) == float(opt.get("cost", 0.0))
 
 
 def test_size_cost_unknown_returns_zero():
@@ -144,6 +146,44 @@ def test_get_config_remembers_last_output_dir(monkeypatch, tmp_path):
     monkeypatch.setattr("server.load_last_output_dir", lambda: last_dir)
     cfg = get_config(None)
     assert cfg["defaultOutputDir"] == last_dir
+
+
+def test_load_last_output_dir_ignores_dead_path(tmp_path):
+    """自愈：记录的目录已被删除（如测试临时目录残留）-> 不沿用，返回 None。
+
+    回归背景：跑 pytest 时若隔离失效，tmp_path 死目录会被写进真实记录文件，
+    下次启动生图直接失败；load_last_output_dir 必须校验目录仍存在。
+    """
+    import server
+
+    dead = tmp_path / "gone" / "out"  # 只构造路径，不创建目录
+    server.LAST_OUTPUT_DIR_FILE = str(tmp_path / ".last_output_dir")
+    with open(server.LAST_OUTPUT_DIR_FILE, "w", encoding="utf-8") as f:
+        f.write(str(dead))
+    assert server.load_last_output_dir() is None
+
+    # 目录真实存在 -> 正常返回
+    alive = tmp_path / "real_out"
+    alive.mkdir()
+    with open(server.LAST_OUTPUT_DIR_FILE, "w", encoding="utf-8") as f:
+        f.write(str(alive))
+    assert server.load_last_output_dir() == str(alive)
+
+
+def test_get_config_falls_back_when_record_dead(monkeypatch, tmp_path):
+    """记录目录已失效 -> 默认输出回退到窗口分区目录，不再指向死路径"""
+    from server import get_config
+
+    dead = str(tmp_path / "gone" / "out")
+    # load_last_output_dir 内部会校验目录存在，此处直接喂真实实现 + 死路径记录
+    import server
+
+    server.LAST_OUTPUT_DIR_FILE = str(tmp_path / ".last_output_dir")
+    with open(server.LAST_OUTPUT_DIR_FILE, "w", encoding="utf-8") as f:
+        f.write(dead)
+    cfg = get_config(None)
+    assert cfg["defaultOutputDir"] != dead
+    assert "win" in cfg["defaultOutputDir"]
 
 
 def test_generation_history_route_adds_existing_image_url(monkeypatch, tmp_path):

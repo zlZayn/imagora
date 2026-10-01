@@ -6,6 +6,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core import cost
@@ -138,8 +140,11 @@ def test_today_spent_only_success_and_today():
 
 
 def test_estimate_cost_known_size():
-    """单价取 config.cost_for_size（1024x1024 = 0.05 元/张）"""
-    assert cost.estimate_cost(3, "1024x1024") == 0.15
+    """单价取 config.cost_for_size（价格随当前 profile 变化，从配置推导而非硬编码）"""
+    from core.config import cost_for_size
+
+    unit = cost_for_size("1024x1024")
+    assert cost.estimate_cost(3, "1024x1024") == pytest.approx(unit * 3)
 
 
 def test_estimate_cost_unknown_size_is_zero():

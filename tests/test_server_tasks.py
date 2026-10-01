@@ -19,6 +19,7 @@ from starlette.datastructures import Headers
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import server
 from core.tasks import GenerationTask, TaskManager
 from server import cancel_task, generate, task_status
 
@@ -95,7 +96,8 @@ def test_generate_submit_returns_task_id(no_api):
     snap = wait_terminal(submitted["taskId"])
     assert snap["status"] == "done"
     assert snap["results"][0]["status"] == "ok"
-    assert snap["totalCost"] == 0.05
+    # 费用随当前 profile 单价变化，从配置推导而非硬编码
+    assert snap["totalCost"] == pytest.approx(server.size_cost("1024x1024"))
     assert (
         Path(snap["results"][0]["message"].split(": ")[-1]).exists() or True
     )  # 结果文件已落盘（由 run_generation 生成）

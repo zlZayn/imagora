@@ -200,3 +200,71 @@ def test_build_profile_view_marks_env_and_key_source():
     assert {field["key"]: field for field in view2["fields"]}["apiKey"]["source"] == (
         "环境变量 API_KEY"
     )
+
+
+# ---------- 来源目录 build_provider_catalog（/api/config 的 providers） ----------
+# 价目表按 profile 分家，前端必须能按「使用中的接口地址」挑到对应那张表 ——
+# 否则切了中转站还会显示官方单价（曾把中转站的 0.05 显示成豆包的 0.2）。
+
+
+def test_build_provider_catalog_exposes_per_profile_sizes_and_models():
+    """每个来源自带 baseUrl / sizes / models，缺 label 时回退 profile 名。"""
+    cfg = {
+        "default_profile": "volc",
+        "profiles": {
+            "volc": {
+                "label": "火山方舟官方",
+                "base_url": "https://ark.example/api/v3",
+                "size_options": [{"value": "1024x1024", "label": "1:1", "cost": 0.2}],
+                "models": [
+                    {
+                        "id": "m-volc",
+                        "size_options": [
+                            {"value": "1024x1024", "label": "1:1", "cost": 0.2}
+                        ],
+                    }
+                ],
+            },
+            "wanwu": {
+                "base_url": "https://2api.aiwanwu.cc",
+                "size_options": [
+                    {"value": "1024x1024", "label": "1:1 1K", "cost": 0.05}
+                ],
+            },
+        },
+    }
+    by_name = {item["name"]: item for item in config.build_provider_catalog(cfg)}
+    assert set(by_name) == {"volc", "wanwu"}
+    assert by_name["volc"]["sizes"][0]["cost"] == 0.2
+    assert by_name["wanwu"]["sizes"][0]["cost"] == 0.05
+    assert by_name["volc"]["models"][0]["id"] == "m-volc"
+    assert by_name["volc"]["label"] == "火山方舟官方"
+    assert by_name["wanwu"]["label"] == "wanwu"  # 未写 label → 用 profile 名
+    assert by_name["volc"]["baseUrl"] == "https://ark.example/api/v3"
+
+
+def test_build_provider_catalog_falls_back_to_builtin_defaults():
+    """profile 缺字段 → 回退内置默认，不下发半截数据给前端。"""
+    (item,) = config.build_provider_catalog({"profiles": {"bare": {}}})
+    assert item["baseUrl"] == config._DEFAULTS["base_url"]
+    assert item["sizes"] == config._DEFAULTS["size_options"]
+    assert item["defaultModel"] == config._DEFAULTS["default_model"]
+    assert item["models"] == []
+
+
+def test_build_provider_catalog_tolerates_broken_profiles():
+    """缺 profiles / profiles 结构错 / 单个 profile 非对象 → 跳过，不抛错。"""
+    assert config.build_provider_catalog({}) == []
+    assert config.build_provider_catalog({"profiles": ["x"]}) == []
+    assert config.build_provider_catalog({"profiles": {"bad": "x"}}) == []
+
+
+def test_provider_catalog_matches_local_config_json():
+    """本机 config.json：注册过的 profile 一个都不少，且每个都带可用地址与尺寸表。"""
+    profiles = config._cfg.get("profiles")
+    assert isinstance(profiles, dict) and profiles, "本机 config.json 应有 profiles"
+    catalog = config.provider_catalog()
+    assert {item["name"] for item in catalog} == set(profiles)
+    for item in catalog:
+        assert item["baseUrl"].startswith("http"), item
+        assert item["sizes"], f"{item['name']} 缺少尺寸表"

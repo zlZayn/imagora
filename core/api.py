@@ -25,6 +25,7 @@ from core.config import (
     DEFAULT_SIZE,
     RATIOS,
     get_api_key,
+    normalize_model_id,
 )
 from core.console import print_success
 
@@ -93,6 +94,53 @@ def write_file_with_retry(
             time.sleep(backoff[min(attempt, len(backoff) - 1)])
 
 
+def _extract_image_item(payload: dict) -> dict:
+    """从响应体里稳健地取出「含图片数据」的那一项。
+
+    兼容多种上游格式（不同中转站/官方口径不一）：
+      - OpenAI 风格：{"data": [{"b64_json"|"url": ...}]}
+      - 部分中转站：{"data": {"images": [...]}} / {"images": [...]}
+      - 火山方舟：{"data": [{"url": ..., "output_format": ...}], "usage": {...}}
+    找第一个含 b64_json / url 的条目；找不到时抛出带原始响应的错误，便于排查。
+    """
+
+    def _find_in(seq):
+        for it in seq:
+            if isinstance(it, dict) and ("b64_json" in it or "url" in it):
+                return it
+            # 嵌套形态：{"images": [{"url": ...}]}
+            if isinstance(it, dict):
+                for v in it.values():
+                    if isinstance(v, list):
+                        hit = _find_in(v)
+                        if hit:
+                            return hit
+                    elif isinstance(v, str) and v.startswith("http"):
+                        return {"url": v}
+        return None
+
+    data = payload.get("data")
+    if isinstance(data, list):
+        hit = _find_in(data)
+        if hit:
+            return hit
+    if isinstance(data, dict):
+        hit = _find_in([data])
+        if hit:
+            return hit
+    for key in ("images", "output", "result"):
+        val = payload.get(key)
+        if isinstance(val, list):
+            hit = _find_in(val)
+            if hit:
+                return hit
+    # 兜底：整个响应里扫一遍 http url
+    hit = _find_in([payload])
+    if hit:
+        return hit
+    raise RuntimeError(f"接口响应没有图片数据：{str(payload)[:300]}")
+
+
 def generate_image(
     prompt,
     image_path=None,
@@ -107,6 +155,8 @@ def generate_image(
     api_key=None,
     generations_path=None,
     edits_path=None,
+    watermark=False,
+    seed=None,
 ):
     """文生图 / 图生图。
 
@@ -119,12 +169,18 @@ def generate_image(
         image_path: 单张底图路径（None 则看 images）
         images: 多张底图路径列表，一次请求全部作为参考（用途由提示词决定）
         size: 分辨率字符串，如 "1024x1024"
-        quality: low / medium / high
+        quality: low / medium / high（火山 Seedream 会忽略，但不报错）
         model: 模型名
         n: 生成张数
         output_format: png / jpg / webp
         output_path: 保存路径（None 时自动生成）
+        watermark: 是否带 AI 生成水印（火山 Seedream 支持，默认 False 关闭）
+        seed: 随机种子（火山 Seedream 支持，同 seed 可复现；None 则不传）
     """
+    # 模型 ID 里的连字符有半角(U+002D)与全角(U+2011)之分，肉眼完全一样 ——
+    # 中转站同一条产品线上两种都在用，用户手打或沿用历史记录时必踩。
+    # 发请求前统一纠正成配置里的真实 ID，否则上游只回一个 model_not_found。
+    model = normalize_model_id(model) or model
     base_url = (api_base_url or BASE_URL).rstrip("/")
     headers = {"Authorization": f"Bearer {api_key or get_api_key()}"}
     payload = {
@@ -135,6 +191,11 @@ def generate_image(
         "n": n,
         "output_format": output_format,
     }
+    # 火山方舟 Seedream 专属可选参数：水印开关 / 随机种子
+    # （非火山上游若严格校验未知字段可能报错，故仅在显式需要时附加 seed）
+    payload["watermark"] = bool(watermark)
+    if seed is not None:
+        payload["seed"] = seed
     output_path = build_default_output_path(output_path, output_format)
 
     image_paths = images if images else ([image_path] if image_path else [])
@@ -160,14 +221,18 @@ def generate_image(
             f"接口请求失败（HTTP {response.status_code}）：{response.text[:200]}"
         )
 
-    item = response.json()["data"][0]
-    if "b64_json" in item:
+    item = _extract_image_item(response.json())
+    if item.get("b64_json"):
         raw = base64.b64decode(item["b64_json"])
         write_file_with_retry(output_path, raw)
-    elif "url" in item:
-        raw = requests.get(item["url"], timeout=300).content
-        write_file_with_retry(output_path, raw)
+    elif item.get("url"):
+        img_resp = requests.get(item["url"], timeout=300)
+        if img_resp.status_code != 200:
+            raise RuntimeError(
+                f"下载结果图失败（HTTP {img_resp.status_code}）：{item['url'][:120]}"
+            )
+        write_file_with_retry(output_path, img_resp.content)
     else:
-        raise RuntimeError("接口响应没有图片数据")
+        raise RuntimeError(f"接口响应没有图片数据：{str(item)[:200]}")
 
     print_success(f"已保存: {output_path}")

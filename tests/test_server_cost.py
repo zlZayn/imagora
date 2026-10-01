@@ -28,6 +28,10 @@ from server import (
 
 TODAY = time.strftime("%Y-%m-%d")
 
+# 1024x1024 单价从当前 profile 的 size_options 推导——不硬编码 0.05，
+# 否则切换供应商 profile（价格不同）时这些预算断言会假失败。
+UNIT = server.size_cost("1024x1024")
+
 
 def _ledger_row(status="ok", cost_value=0.05, size="1024x1024", prompt="p", day=None):
     return json.dumps(
@@ -132,35 +136,31 @@ def test_budget_set_then_read(ledger):
 
 
 def test_budget_check_by_count(ledger):
-    set_budget({"dailyLimit": 0.20})
-    result = check_budget_route(
-        {"count": 3, "size": "1024x1024"}
-    )  # 0.15，今日已花 0.15 → 0.30 > 0.20
-    assert result["estimate"] == 0.15
+    # 预算按当前单价缩放：3 张预估 = 3*UNIT，日限设为略低于「预估+已花」以触发超限
+    set_budget({"dailyLimit": UNIT})  # 已花 UNIT（ledger）+ 预估 3*UNIT > UNIT
+    result = check_budget_route({"count": 3, "size": "1024x1024"})
+    assert result["estimate"] == pytest.approx(3 * UNIT)
     assert result["over"] is True and result["allowed"] is False
     assert "当日预算" in result["reason"]
 
 
 def test_budget_check_by_items_allows_within_limit(ledger):
-    set_budget({"dailyLimit": 1.0})
+    set_budget({"dailyLimit": 100.0})
     result = check_budget_route(
         {"items": [{"size": "1024x1024"}, {"size": "1024x1024"}]}
     )
     assert (
-        result["estimate"] == 0.10
+        result["estimate"] == pytest.approx(2 * UNIT)
         and result["over"] is False
         and result["allowed"] is True
     )
 
 
 def test_budget_check_single_limit(ledger):
-    set_budget({"singleRunLimit": 0.10})
-    assert (
-        check_budget_route({"count": 3, "size": "1024x1024"})["over"] is True
-    )  # 0.15 > 0.10
-    assert (
-        check_budget_route({"count": 2, "size": "1024x1024"})["over"] is False
-    )  # 0.10 == 0.10
+    set_budget({"singleRunLimit": UNIT})  # 单次上限 = 1 张单价
+    assert check_budget_route({"count": 3, "size": "1024x1024"})["over"] is True
+    assert check_budget_route({"count": 2, "size": "1024x1024"})["over"] is True
+    assert check_budget_route({"count": 1, "size": "1024x1024"})["over"] is False
 
 
 # ---------------- /api/generate 预算闸门 ----------------
@@ -241,7 +241,7 @@ def test_generate_batch_submits_valid_and_skips_invalid(
     result = generate_batch(body)
     assert len(result["submitted"]) == 1
     assert result["submitted"][0]["size"] == "1024x1024"
-    assert result["estimate"] == 0.05
+    assert result["estimate"] == pytest.approx(UNIT)
     reasons = [row["reason"] for row in result["skipped"]]
     assert any("提示词为空" in r for r in reasons)
     assert any("参考图不可用" in r for r in reasons)

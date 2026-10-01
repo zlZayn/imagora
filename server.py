@@ -54,6 +54,8 @@ from core.config import (
     DEFAULT_OUTPUT_DIR,
     DEFAULT_QUALITY,
     DEFAULT_SIZE,
+    MODELS,
+    PROFILE_LABEL,
     QUALITY_OPTIONS,
     SIZE_OPTIONS,
     get_api_key,
@@ -99,11 +101,20 @@ _UI_LOCK = threading.Lock()
 
 
 def load_last_output_dir() -> str | None:
-    """读取上次使用的输出路径（跨服务重启记住）；无记录 / 读取失败返回 None"""
+    """读取上次使用的输出路径（跨服务重启记住）；无记录 / 读取失败返回 None。
+
+    自愈：路径存在但目录已不存在（被删除 / 测试临时目录残留 / 移动磁盘）时
+    视为无效记录返回 None，让调用方回退默认目录，避免生成写到死路径直接失败。
+    """
     try:
         with open(LAST_OUTPUT_DIR_FILE, encoding="utf-8") as f:
             path = f.read().strip()
-            return path or None
+            if not path:
+                return None
+            # 目录不存在 → 记录已失效，不沿用（否则生成必然 404/写文件失败）
+            if not os.path.isdir(path):
+                return None
+            return path
     except OSError:
         return None
 
@@ -189,10 +200,12 @@ def _directory_writable(path: str) -> bool:
     except OSError:
         return False
     finally:
+        # 清理探测文件失败不应让整个探测失败：某些托管/沙箱环境会拦截 unlink
+        # （抛 SystemExit 等 BaseException），此处一律吞掉，只影响哨兵文件残留。
         if probe:
             try:
                 os.unlink(probe)
-            except OSError:
+            except BaseException:
                 pass
 
 
@@ -259,6 +272,12 @@ def get_config(win: int | None = None):
         "apiPath": API_PATHS.get("generations", ""),
         "defaultModel": DEFAULT_MODEL,
         "activeProfile": ACTIVE_PROFILE,
+        # 当前 profile 的可选模型清单（每个带自己的尺寸/价格）；空则前端回退单模型。
+        "models": MODELS,
+        "profileLabel": PROFILE_LABEL,
+        # 全部来源（profile）目录：前端按「使用中的接口地址」换尺寸/单价表 ——
+        # 个人配置切了中转站，尺寸下拉不能继续沿用 default_profile 那张价目表。
+        "providers": config.provider_catalog(),
         # 配置来源视图：前端据此呈现「该值来自 config.json / .env / 内置默认」。
         # profile 增字段时前端自动多一行，无需逐处适配（唯一真相源 = core/config.py）。
         "profileView": config.describe_config(),
@@ -650,9 +669,78 @@ def select_folder(body: dict):
         return {"path": current}
 
 
-def size_cost(size: str) -> float:
-    """按尺寸查单张费用（唯一来源 config.cost_for_size，即 config.json 的 size_options）"""
-    return config.cost_for_size(size)
+def size_cost(size: str, model_id: str | None = None) -> float:
+    """按尺寸查单张费用（唯一来源 config.cost_for_size，即 config.json 的 size_options）。
+
+    传了 model_id 就按**该模型**所属 profile 的价目表算 —— 跨供应商时
+    这一步不能省：否则测中转站的图会按豆包的单价显示（曾把 0.05 显示成 0.2）。
+    """
+    return config.cost_for_size(size, model_id)
+
+
+# 上游报错关键字 → 一句中文「该怎么办」。
+# 上游只给英文原文，而「Your account ... has not activated the model」并不能直接告诉用户去哪开通。
+_ERROR_ACTIONS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (
+        ("modelnotopen", "has not activated the model"),
+        "→ 火山账号还没开通该模型：到方舟控制台「开通管理」里开通后再试。",
+    ),
+    (
+        (
+            "model_not_found",
+            "is not supported by any configured account",
+            "model not exist",
+        ),
+        "→ 这个来源不认识该模型名：中转站与豆包的模型 ID 互不通用，按来源选对应模型。",
+    ),
+    (
+        ("invalid api key", "authenticationerror", "api key format is incorrect"),
+        "→ Key 无效或与来源不匹配：火山方舟是 ark- 开头，中转站是 sk- 开头。",
+    ),
+    (
+        ("insufficient", "quota", "overdue", "balance"),
+        "→ 账号额度不足：充值后再试。",
+    ),
+    (
+        ("too many requests", "rate limit"),
+        "→ 请求太频繁：稍等一会儿再试。",
+    ),
+)
+
+
+def _action_hint(message: str) -> str:
+    """按上游错误关键字给一句中文行动建议；认不出则返回空串。"""
+    low = message.lower()
+    for keys, hint in _ERROR_ACTIONS:
+        if any(k in low for k in keys):
+            return hint
+    return ""
+
+
+def _humanize_error(message: str) -> str:
+    """把异常整理成用户看得懂的话（可能含换行）。
+
+    1. 去掉「RuntimeError: 」这类 Python 类名前缀 —— 界面上是纯噪音；
+    2. 能识别出上游常见错误时，补一行中文「该怎么办」。
+    """
+    text = message
+    for prefix in (
+        "RuntimeError: ",
+        "ValueError: ",
+        "KeyError: ",
+        "TypeError: ",
+        "OSError: ",
+        "Exception: ",
+        "HTTPError: ",
+        "TimeoutError: ",
+        "ConnectionError: ",
+        "RequestException: ",
+    ):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    hint = _action_hint(text)
+    return f"{text}\n{hint}" if hint else text
 
 
 def run_generation(task: GenerationTask) -> None:
@@ -668,7 +756,7 @@ def run_generation(task: GenerationTask) -> None:
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     started_at = time.time()
-    cost = size_cost(task.size)
+    cost = size_cost(task.size, task.api_model or None)
     results: list[dict] = []
     messages: list[str] = []
     dest = ""
@@ -724,9 +812,10 @@ def run_generation(task: GenerationTask) -> None:
         ok = True
     except Exception as e:
         msg = format_error(e)
-        task.error = msg
-        results.append({"status": "error", "message": msg})
-        messages.append(f"失败 · {msg}")
+        task.error = msg  # 日志保留原始异常（便于排查）
+        human = _humanize_error(msg)  # 给用户看的 message 附上中文「该怎么办」
+        results.append({"status": "error", "message": human})
+        messages.append(f"失败 · {human}")
 
     total_cost = sum(r.get("cost", 0) for r in results if r.get("status") == "ok")
     ok_count = sum(1 for r in results if r.get("status") == "ok")
