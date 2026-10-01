@@ -235,6 +235,8 @@ interface PromptNodeExtraProps {
   /** 尺寸/质量选项（由画布 config 派生传入） */
   sizeOptions: { value: string; label: string }[];
   qualityOptions: { value: string; label: string }[];
+  /** 当前模型是否认质量档位（豆包 Seedream 不认 → 不渲染那一栏）；缺省按 true 处理 */
+  qualityEffective?: boolean | undefined;
 }
 
 type PromptNodeProps = NodeProps<PromptFlowNode> & PromptNodeExtraProps;
@@ -322,6 +324,7 @@ export const PromptNode = memo(function PromptNode({
   onDelete,
   sizeOptions,
   qualityOptions,
+  qualityEffective = true,
 }: PromptNodeProps & { lod?: boolean | undefined }) {
   const running = data.status === "running";
   const queued = data.status === "queued";
@@ -370,7 +373,7 @@ export const PromptNode = memo(function PromptNode({
         placeholder="英文提示词，例如：a red apple on white background"
         className="nodrag field-control resize-y text-xs leading-relaxed"
       />
-      <div className="nodrag mt-2 grid grid-cols-[7fr_3fr] gap-2">
+      <div className={`nodrag mt-2 grid gap-2 ${qualityEffective ? "grid-cols-[7fr_3fr]" : "grid-cols-1"}`}>
         <div className="min-w-0">
           <label className="field-label text-[10px]">尺寸</label>
           <Select
@@ -380,15 +383,17 @@ export const PromptNode = memo(function PromptNode({
             className="mt-0.5"
           />
         </div>
-        <div className="min-w-0">
-          <label className="field-label text-[10px]">质量</label>
-          <Select
-            options={qualityOptions}
-            value={data.quality}
-            onChange={(v) => onUpdate(id, { quality: v })}
-            className="mt-0.5"
-          />
-        </div>
+        {qualityEffective && (
+          <div className="min-w-0">
+            <label className="field-label text-[10px]">质量</label>
+            <Select
+              options={qualityOptions}
+              value={data.quality}
+              onChange={(v) => onUpdate(id, { quality: v })}
+              className="mt-0.5"
+            />
+          </div>
+        )}
       </div>
       <div className="nodrag mt-2">
         <label className="field-label text-[10px]">输出路径</label>

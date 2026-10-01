@@ -143,6 +143,8 @@ function CanvasLog({ logs }: { logs: { id: number; text: string }[] }) {
 
 interface CanvasPageProps {
   config: AppConfig;
+  /** 当前模型是否认「质量」档位（豆包 Seedream 不认 → 提示词节点不渲染那一栏）。默认 true。 */
+  qualityEffective?: boolean;
   /** 待整图导入画布的提交 id（经典结果导入触发；导入完成后回调清空） */
   importSubmissionId?: string | null;
   onSubmissionImported?: () => void;
@@ -150,6 +152,7 @@ interface CanvasPageProps {
 
 export function CanvasPage({
   config,
+  qualityEffective = true,
   importSubmissionId,
   onSubmissionImported,
 }: CanvasPageProps) {
@@ -247,8 +250,8 @@ export function CanvasPage({
     [config],
   );
   const qualityOptions = useMemo(
-    () => config.qualities.map((q) => ({ value: q, label: q })),
-    [config],
+    () => (qualityEffective ? config.qualities : []).map((q) => ({ value: q, label: q })),
+    [config, qualityEffective],
   );
 
   /** 日志追加（画布内运行反馈） */
@@ -1326,6 +1329,7 @@ export function CanvasPage({
           onDelete={handleDeleteNode}
           sizeOptions={sizeOptions}
           qualityOptions={qualityOptions}
+          qualityEffective={qualityEffective}
         />
       ),
     }),
@@ -1338,6 +1342,7 @@ export function CanvasPage({
       handleZoom,
       sizeOptions,
       qualityOptions,
+      qualityEffective,
     ],
   );
 

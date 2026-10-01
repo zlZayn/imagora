@@ -69,11 +69,15 @@ export function Select({ options, value, onChange, className = "", id }: SelectP
         </svg>
       </button>
 
-      {/* 展开面板 */}
+      {/* 展开面板：关闭时用 display:none（而不是 invisible/opacity-0）——
+       * 隐藏但仍占布局的绝对定位面板会算进祖先滚动容器的 scrollHeight，
+       * 哪怕用户根本看不到它，也会让外层「莫名多出一截可滚区域 / 冒出滚动条」
+       * （实测：「生图 API 设置」弹窗里豆包的 6 项模型列表凭空撑出 102px）。
+       * 代价是失去展开动画，换来的是各处滚动容器不再有幽灵高度。 */}
       <ul
         role="listbox"
-        className={`absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg transition-all duration-150 ${
-          open ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0"
+        className={`absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg ${
+          open ? "block" : "hidden"
         }`}
       >
         {options.map((option) => (

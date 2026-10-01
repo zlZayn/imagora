@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { generationHistory, getConfig, getHealthDetails, openFolder, readPersonalApiPresets, readPersonalApiSettings, rememberOutputDir, savePersonalApiPresets, savePersonalApiSettings } from "./api";
 import { useGenerationTask } from "./useGenerationTask";
 import { Palette } from "lucide-react";
@@ -14,10 +14,12 @@ import {
   type BackgroundPresetId,
 } from "./backgroundPreset";
 import { SURFACE_TRANSPARENCY_LIMITS, readSurfaceTransparency, saveSurfaceTransparency, surfaceTokens } from "./surface";
-import type { AppConfig, ConfigProfileView, GenerationTaskStatus, PersonalApiPreset, PersonalApiSettings, RefItem, ResultItem } from "./types";
+import type { AppConfig, ConfigProfileView, GenerationTaskStatus, ModelOption, PersonalApiPreset, PersonalApiSettings, ProviderCatalog, RefItem, ResultItem } from "./types";
 import { errMessage, generatingLabel } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
 import { pickRecentPrompts } from "./recentPrompts";
+import { applyProviderToForm } from "./providerSwitch";
+import { findProvider as findCatalogProvider, priceSummary, qualityAppliesTo, resolveSizes } from "./apiCatalog";
 import { BRAND_LOGO_PATH, BRAND_LOGO_VIEWBOX, brandLogoSvg } from "./brand/logo";
 import { UploadZone } from "./components/UploadZone";
 import { FolderPicker } from "./components/FolderPicker";
@@ -322,6 +324,8 @@ function PersonalApiModal({
   settings,
   defaults,
   profileView,
+  models,
+  providers,
   onSave,
   onClose,
 }: {
@@ -330,6 +334,10 @@ function PersonalApiModal({
   defaults: PersonalApiSettings;
   /** 配置来源视图：后端配置只读展示（值 + 来自哪一层），让人看清自己覆盖的是哪一层 */
   profileView?: ConfigProfileView | undefined;
+  /** 后端下发的可选模型清单（每个带尺寸/价格）；模型名称字段据此渲染为下拉框 */
+  models?: ModelOption[] | undefined;
+  /** 全部来源目录（各 profile 的地址 + 尺寸 + 模型）：价格按「这套接口」解析 */
+  providers?: ProviderCatalog[] | undefined;
   onSave: (settings: PersonalApiSettings | null) => void;
   onClose: () => void;
 }) {
@@ -342,127 +350,217 @@ function PersonalApiModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  /** 页签职责：看（当前生效）/ 改（个人配置）/ 管（预设资产）——三件事互不干扰 */
+  /** 页签职责：看（当前生效）/ 改（个人配置）/ 管（我的接口）——三件事互不干扰 */
   const [tab, setTab] = useState<"active" | "edit" | "presets">("active");
   const [form, setForm] = useState<PersonalApiSettings>(settings ?? defaults);
+  /** 「我的接口」记录（复用 presets 存储键，兼容老数据） */
   const [presets, setPresets] = useState<PersonalApiPreset[]>(() => readPersonalApiPresets());
-  const [selectedPresetId, setSelectedPresetId] = useState("");
-  const [presetName, setPresetName] = useState("");
-
-  /** 内容区高度：量出当前页签面板的自然高度写进 --panel-h，
-   *  CSS 用它做显式像素端点 —— 只有两端都是像素，transition 才真的插值。
-   *  ResizeObserver 保证页签切换与页内内容变化（如新增预设）都能跟上。 */
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  /** 上一次量到的内容高度：判断这次是变高还是变矮；
-   *  必须存 ref 而非 effect 内局部变量——effect 跟随 [tab] 重建，局部量会归零，
-   *  于是「切到更高的一页」时判不出变高，滚动条照样闪。 */
-  const prevContentRef = useRef(0);
-  useLayoutEffect(() => {
-    const body = bodyRef.current;
-    const panel = panelRef.current;
-    if (!body || !panel) return undefined;
-    let timer = 0;
-    const sync = () => {
-      // 用小数精度量内容高度：offsetHeight 会取整丢掉零头（实测面板是 304.5 / 366.5），
-      // 那不到 1px 的缺口会让 scrollHeight 比 clientHeight 大 1px ——
-      // 正是「几乎拖不动」的滚动条来源（个人配置 / 预设两页内容矮，最明显）。
-      const content = panel.getBoundingClientRect().height;
-      // 容器高度 = 向上取整 + 1px 余量：保证内容永远放得下，不产生 1px 溢出
-      const next = Math.ceil(content) + 1;
-      const grew = prevContentRef.current > 0 && content > prevContentRef.current + 0.5;
-      prevContentRef.current = content;
-      body.style.setProperty("--panel-h", `${next}px`);
-      // 变高的一瞬容器还装不下新内容，滚动条会闪出又消失 → 过渡窗口内先裁切
-      if (grew) {
-        body.dataset.growing = "true";
-        window.clearTimeout(timer);
-        timer = window.setTimeout(() => {
-          delete body.dataset.growing;
-        }, 260);
-      }
-    };
-    sync();
-    const observer = new ResizeObserver(sync);
-    observer.observe(panel);
-    return () => {
-      observer.disconnect();
-      window.clearTimeout(timer);
-    };
-  }, [tab]);
 
   /** 当前真正生效的一份：个人配置优先，否则用后端 profile 派生的默认值 */
   const usingPersonal = Boolean(settings);
   const activeSettings = settings ?? defaults;
 
-  /** 载入预设 → 落到「个人配置」页，改了什么立刻看得见 */
-  const applyPreset = (preset: PersonalApiPreset) => {
-    setForm(preset.settings);
-    setPresetName(preset.name);
-    setSelectedPresetId(preset.id);
-    setTab("edit");
-  };
-  /** 保存预设：同名视为覆盖，避免存出一堆同名条目 */
-  const savePreset = () => {
-    const name = presetName.trim();
-    if (!name || !form.baseUrl.trim() || !form.apiKey.trim()) return;
-    const existing = presets.find((item) => item.name === name);
-    const preset: PersonalApiPreset = {
-      id: existing?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      settings: { ...form, baseUrl: form.baseUrl.trim().replace(/\/$/, "") },
-    };
-    const next = existing
-      ? presets.map((item) => (item.id === existing.id ? preset : item))
-      : [...presets, preset];
-    setPresets(next);
-    savePersonalApiPresets(next);
-    setSelectedPresetId(preset.id);
+  /** 一键切换到某条记录：直接生效并关闭弹窗（无需再进「个人配置」页） */
+  const switchToPreset = (preset: PersonalApiPreset) => {
+    savePersonalApiSettings(preset.settings);
+    onSave(preset.settings);
+    onClose();
   };
   const removePreset = (id: string) => {
     const next = presets.filter((item) => item.id !== id);
     setPresets(next);
     savePersonalApiPresets(next);
-    if (selectedPresetId === id) setSelectedPresetId("");
   };
   const clearPersonal = () => {
     savePersonalApiSettings(null);
     onSave(null);
     onClose();
   };
+  /** 把一份配置记进「我的接口」：按 baseUrl+model+key 去重，命中则更新 lastUsed 并置顶。
+   *  name 为空时自动生成（来源标签 + 模型），用户无需手动命名。 */
+  const recordUsage = (settings: PersonalApiSettings) => {
+    const key = `${settings.baseUrl}|${settings.model}|${settings.apiKey}`;
+    const name = autoName(settings);
+    const existing = presets.find(
+      (p) => `${p.settings.baseUrl}|${p.settings.model}|${p.settings.apiKey}` === key,
+    );
+    const entry: PersonalApiPreset = {
+      id: existing?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: existing?.name || name,
+      settings,
+      lastUsed: Date.now(),
+    };
+    // 最近使用置顶（去重后的列表，最新在前）
+    const next = [entry, ...presets.filter((p) => p.id !== entry.id)];
+    setPresets(next);
+    savePersonalApiPresets(next);
+    return entry;
+  };
   const saveAndUse = () => {
     const next = { ...form, baseUrl: form.baseUrl.trim().replace(/\/$/, "") };
     savePersonalApiSettings(next);
+    recordUsage(next); // 自动记进「我的接口」，方便随时切回
     onSave(next);
     onClose();
   };
-  /** 预设下拉项：空值 = 不使用预设（与经典表单同款 Select 组件） */
-  const presetOptions = [
-    { value: "", label: presets.length ? "不使用预设" : "暂无预设" },
-    ...presets.map((preset) => ({ value: preset.id, label: preset.name })),
-  ];
   /** 后端各字段的「值 + 来源」（由 /api/config 的 profileView 提供，前端不自行推断分层规则） */
   const backendField = (key: string) => profileView?.fields.find((field) => field.key === key);
-  /** 生效值逐项标注来源：个人配置优先，否则回落到后端那一层 */
+  /** 使用中这套接口的尺寸表：按地址命中来源、按模型取档位 —— 价目表按来源分家，
+   *  切到中转站就该显示中转站的价（见 apiCatalog.ts）。命中不了就不显示，不猜价。 */
+  const activeCatalogProvider = findCatalogProvider(providers, activeSettings.baseUrl);
+  const activeCatalogSizes = resolveSizes({
+    providers,
+    baseUrl: activeSettings.baseUrl,
+    modelId: activeSettings.model,
+  });
+  /** 生效值：标签 → 值（等宽只用在真正要逐字核对的地址 / 路径 / Key 上）。
+   *  来源只在**与主流来源不同**时才显示 —— 同一句「个人配置」重复四遍纯属噪音。 */
+  const dominantSource = usingPersonal ? "个人配置" : (backendField("baseUrl")?.source ?? "");
   const activeRows = [
     { key: "接口地址", value: activeSettings.baseUrl, mono: true, source: usingPersonal ? "个人配置" : (backendField("baseUrl")?.source ?? "") },
     { key: "接口路径", value: activeSettings.apiPath, mono: true, source: usingPersonal ? "个人配置" : (backendField("apiPath")?.source ?? "") },
     { key: "模型", value: activeSettings.model, mono: false, source: usingPersonal ? "个人配置" : (backendField("model")?.source ?? "") },
+    ...(activeCatalogSizes.length
+      ? [
+          {
+            key: "尺寸单价",
+            value: priceSummary(activeCatalogSizes),
+            mono: false,
+            // 价目表来自哪家：挪到下方「可选尺寸」标题里说，行内再标一次会撑宽这一行
+            source: "",
+          },
+        ]
+      : []),
     {
       key: "API Key",
+      // 不写「（本机浏览器）」——顶部已经说过「仅本机浏览器」，同一件事说两遍
       value: usingPersonal
-        ? (activeSettings.apiKey ? "已保存（本机浏览器）" : "未填写")
+        ? (activeSettings.apiKey ? "已保存" : "未填写")
         : (backendField("apiKey")?.configured ? "已配置" : "未配置"),
       mono: false,
       source: usingPersonal ? "个人配置" : (backendField("apiKey")?.source ?? ""),
     },
   ];
-  /** 字段统一形态：label（.field-label）+ 控件（.field-control），与经典表单同源 */
+  /** 服务来源预设：选定后自动带出接口地址 / 路径 / 模型，用户只需填 API Key。
+   *  两个来源互斥：豆包 Seedream 走火山官方；其余 OpenAI 兼容服务走 wanwu 中转站。
+   *  modelList 是该来源支持的模型（下拉框选项），首项为默认模型。 */
+  const PROVIDERS: {
+    id: string;
+    label: string;
+    baseUrl: string;
+    apiPath: string;
+    model: string;
+    hint: string;
+    modelList: { value: string; label: string; note: string }[];
+  }[] = [
+    {
+      id: "doubao",
+      label: "豆包 Seedream（火山方舟官方）",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      apiPath: "/images/generations",
+      model: "doubao-seedream-5-0-pro-260628",
+      hint: "填入火山方舟控制台获取的 ark- 开头 Key",
+      // 豆包主流生图模型（火山方舟官方 ID，均经账号可用性核验）
+      // 排在前面的是「建议用」：5.0 系列分辨率最全、支持 4K 之外的 1.5K 档；4.0 系列唯一可出 4K
+      modelList: [
+        { value: "doubao-seedream-5-0-pro-260628", label: "Seedream 5.0 pro", note: "1K/1.5K/2K，画质最细腻，仅文生图/单图" },
+        { value: "doubao-seedream-5-0-flash-260915", label: "Seedream 5.0 flash", note: "1K/1.5K/2K，更快更省，批量出图首选" },
+        { value: "doubao-seedream-4-0-20260415", label: "Seedream 4.0（2026版）", note: "1K/2K/4K，要 4K 选它，仅 jpeg" },
+        { value: "doubao-seedream-5-0-260128", label: "Seedream 5.0", note: "1K/1.5K/2K（退役中，建议换 5.0 pro）" },
+        { value: "doubao-seedream-4-5-251128", label: "Seedream 4.5", note: "2K/4K，仅 jpeg（退役中，建议换 4.0 2026版）" },
+        { value: "doubao-seedream-4-0-250828", label: "Seedream 4.0", note: "1K/2K/4K，仅 jpeg（退役中，建议换 4.0 2026版）" },
+      ],
+    },
+    {
+      id: "wanwu",
+      label: "wanwu 中转站（OpenAI 兼容）",
+      baseUrl: "https://2api.aiwanwu.cc",
+      apiPath: "/v1/images/generations",
+      model: "gpt-image-2.5-flare",
+      hint: "填入中转站获取的 sk- 开头 Key",
+      modelList: [
+        { value: "gpt-image-2.5-flare", label: "GPT Image 2.5 Flare", note: "1K/2K，中转站主力（已实测可用）" },
+        { value: "gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst", note: "1K/2K，中转站变体" },
+        { value: "gpt‑image‑2", label: "GPT Image 2", note: "1K/2K，仅登记别名，调用会报错" },
+        { value: "gpt‑image‑2.5", label: "GPT Image 2.5", note: "1K/2K，仅登记别名，调用会报错" },
+      ],
+    },
+  ];
+  /** 按 baseUrl 反推当前选中的来源（用户手改地址后可能对不上任何预设） */
+  const matchProvider = (url: string) =>
+    PROVIDERS.find((p) => url.trim().replace(/\/$/, "") === p.baseUrl)?.id ?? "";
+  /** 来源展示名：命中预设用其 label，否则用域名（用户手填的自定义地址） */
+  const providerLabelOf = (url: string) => {
+    const hit = PROVIDERS.find((p) => url.trim().replace(/\/$/, "") === p.baseUrl);
+    if (hit) return hit.label.replace(/（.*?）/g, "");
+    try {
+      return new URL(url).host;
+    } catch {
+      return url || "自定义接口";
+    }
+  };
+  /** 自动命名：来源 + 模型（用户不填名字时用），便于在列表里一眼认出 */
+  const autoName = (settings: PersonalApiSettings) =>
+    [providerLabelOf(settings.baseUrl), settings.model].filter(Boolean).join(" · ");
+  /** 接口主机（列表第二行用）：预设名里只有「来源标签」，主机名才能区分同标签的不同地址 */
+  const hostOf = (url: string) => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url || "—";
+    }
+  };
+  /** 相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前 */
+  const formatRelativeTime = (ts: number) => {
+    const diff = Date.now() - ts;
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return "刚刚使用";
+    if (min < 60) return `${min} 分钟前`;
+    const hour = Math.floor(min / 60);
+    if (hour < 24) return `${hour} 小时前`;
+    return `${Math.floor(hour / 24)} 天前`;
+  };
+  /** 当前来源的模型选项：命中预设用其内置清单（切换来源即切换模型列表）；
+   *  未命中（自定义地址）则回退后端 /api/config 下发的 models。 */
+  const currentModelChoices = () => {
+    const provider = PROVIDERS.find((p) => p.id === providerId);
+    if (provider) return provider.modelList;
+    return (models ?? []).map((m) => ({
+      value: m.id,
+      label: m.label,
+      note: (m.note || "") + (m.output_formats?.length ? `，输出 ${m.output_formats.join("/")}` : ""),
+    }));
+  };
+  /** 把模型清单转成 Select 选项：标签带「模型名 ｜ 能力说明」 */
+  const modelOptionsFor = (list: { value: string; label: string; note?: string }[]) =>
+    list.map((m) => ({ value: m.value, label: m.note ? `${m.label} ｜ ${m.note}` : m.label }));
+  const [providerId, setProviderId] = useState(() => matchProvider(form.baseUrl));
+  /** API Key 是否明文显示（默认密文，点小眼睛才露出） */
+  const [showApiKey, setShowApiKey] = useState(false);
+  /** 打开弹窗时是否带着「已保存的 Key」——用于给出提示，避免用户以为是占位符。
+   *  只在来源与已保存配置一致时算「载入的」，换了来源后就不该再这么说。 */
+  const loadedSavedKey =
+    Boolean(settings?.apiKey) && form.apiKey === settings?.apiKey && form.baseUrl === settings?.baseUrl;
+  /** 选来源：一键带出地址 / 路径 / 模型。
+   *  Key 规则见 applyProviderToForm：换了来源就清空（两套 Key 不通用）。 */
+  const applyProvider = (id: string) => {
+    const provider = PROVIDERS.find((p) => p.id === id);
+    if (!provider) {
+      setProviderId(id);
+      return;
+    }
+    setForm((prev) => applyProviderToForm(prev, provider, providerId));
+    if (providerId !== id) setShowApiKey(false);
+    setProviderId(id);
+  };
+
+  /** 字段统一形态：label（.field-label）+ 控件（.field-control），与经典表单同源。
+   *  标签只留最短的可辨认词（"图片接口路径" → "接口路径"），少占一行宽度、少一处换行。 */
   const fields: { id: string; label: string; key: "baseUrl" | "apiKey" | "model" | "apiPath"; mono?: boolean; type?: string; placeholder?: string }[] = [
     { id: "api-base-url", label: "接口地址", key: "baseUrl", placeholder: "https://api.example.com" },
     { id: "api-key", label: "API Key", key: "apiKey", mono: true, type: "password", placeholder: "sk-..." },
-    { id: "api-model", label: "模型名称", key: "model" },
-    { id: "api-path", label: "图片接口路径", key: "apiPath", mono: true },
+    { id: "api-model", label: "模型", key: "model" },
+    { id: "api-path", label: "接口路径", key: "apiPath", mono: true },
   ];
   return (
     <div className="studio-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -470,14 +568,15 @@ function PersonalApiModal({
         className="studio-modal api-settings-modal corner-rings flex max-h-[min(86vh,720px)] w-[min(560px,94vw)] flex-col p-5"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold">生图 API 设置</h2>
-          <span className="chip chip--sm chip--quiet">仅当前浏览器</span>
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-base font-medium">生图 API 设置</h2>
+          {/* 一处隐私说明就够（覆盖三个页签），不再在每个页签里重复 */}
+          <span className="text-xs text-neutral-400">仅本机浏览器</span>
         </div>
 
         {/* 分段控件：看 / 改 / 管 各占一页（与顶栏模式切换同一套视觉，尺寸走 --h-ctl） */}
         <div className="tabs mb-4" role="tablist">
-          {([["active", "使用中"], ["edit", "个人配置"], ["presets", "预设"]] as const).map(([id, label]) => (
+          {([["active", "使用中"], ["edit", "个人配置"], ["presets", "我的接口"]] as const).map(([id, label]) => (
             <button
               key={id}
               type="button"
@@ -492,141 +591,248 @@ function PersonalApiModal({
         </div>
 
         {/* 内容区：全模态只此一处滚动——页签内容再长也不会把操作栏顶出视口。
-            高度由内容决定（.modal-body 负责高度过渡与滚动条占位），不用 flex-1 撑满，
-            因此三页之间切换时模态高度是平滑变化的。 */}
-        <div ref={bodyRef} className="modal-body pr-1">
+            三页共用同一固定高度（见 index.css 的 .api-settings-modal .modal-body）：
+            高度随页签变化会让弹窗「跳大小」、底部按钮跟着上下窜，所以这里不按内容自适应。 */}
+        <div className="modal-body pr-1">
           {tab === "active" && (
-            <div ref={panelRef} key="active" className="tab-panel space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={`chip chip--sm ${usingPersonal ? "chip--brand" : "chip--quiet"}`}>
-                  {usingPersonal ? "个人配置生效中" : "后端配置生效中"}
-                </span>
-                <span className="text-[11px] text-neutral-400">
-                  {usingPersonal ? "优先级最高，仅本机浏览器" : "来自 config.json / .env"}
-                </span>
-              </div>
+            /* 整页撑满固定高度：规格清单在上，来源说明用 mt-auto 压到底部 ——
+               内容少的时候留白集中在中间一段，不会出现"上面挤成一条、下面空一大片" */
+            <div key="active" className="tab-panel flex h-full flex-col gap-2.5">
+              {/* 生效状态一行说清。后端生效时把 profile 名并进这一行 ——
+                  原来它在底部又占一行，和这句说的是同一件事 */}
+              <p className="flex items-center gap-2 text-[13px] text-neutral-500">
+                <span
+                  className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                    usingPersonal ? "bg-[var(--color-brand)]" : "bg-neutral-300"
+                  }`}
+                />
+                {usingPersonal
+                  ? "个人配置生效中"
+                  : `后端配置生效中（${
+                      profileView?.nameSource?.startsWith(".env") ? ".env" : "config.json"
+                    }${profileView?.name ? ` · profile ${profileView.name}` : ""}）`}
+              </p>
 
-              {/* 生效值：每行给出「值 + 它来自哪一层」（后端来源由 profileView 提供） */}
-              <dl className="spec-list">
+              <dl className="spec-list spec-list--roomy">
                 {activeRows.map((row) => (
                   <div key={row.key} className="spec-list__row">
                     <dt className="spec-list__key">{row.key}</dt>
                     <dd className={`spec-list__val ${row.mono ? "spec-list__val--mono" : ""}`}>
-                      <span className="block truncate">{row.value}</span>
-                      <span className="spec-list__src truncate">{row.source}</span>
+                      <span className="flex items-baseline justify-end gap-2">
+                        <span className="min-w-0 truncate">{row.value}</span>
+                        {row.source && row.source !== dominantSource && (
+                          <span className="shrink-0 text-[11px] text-neutral-400">{row.source}</span>
+                        )}
+                      </span>
                     </dd>
                   </div>
                 ))}
               </dl>
 
-              {/* 后端 profile 诊断：谁提供的 profile、本机注册过哪些 */}
-              {profileView && (
-                <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-3 py-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="chip chip--sm chip--quiet">
-                      {profileView.name ? `profile · ${profileView.name}` : "未指定 profile"}
-                    </span>
-                    <span className="font-mono text-[10px] text-neutral-400">{profileView.nameSource}</span>
+              {/* 这台接口能出哪些尺寸：省得回主界面翻下拉。价目来自哪家也在这里交代 */}
+              {activeCatalogSizes.length > 0 && (
+                <div>
+                  <p className="mb-1 text-[12px] text-neutral-400">
+                    可选尺寸
+                    {activeCatalogProvider && (
+                      <span className="text-neutral-300"> · 价目来自 {activeCatalogProvider.label}</span>
+                    )}
+                  </p>
+                  <div className="size-pills">
+                    {activeCatalogSizes.map((s) => (
+                      <span key={s.value} className="size-pill">{s.value}</span>
+                    ))}
                   </div>
-                  {profileView.registeredProfiles.length > 0 && (
-                    <p className="mt-2 text-[10px] text-neutral-400">
-                      本机 config.json 注册：{profileView.registeredProfiles.join(" · ")}
-                    </p>
-                  )}
                 </div>
               )}
 
-              <p className="text-[11px] text-neutral-400">
-                任意 OpenAI 图片接口兼容服务均可。
-                <a className="link ml-1" href="https://www.aiwanwu.cc/" target="_blank" rel="noreferrer">获取 API ↗</a>
-              </p>
+              <div className="mt-auto space-y-1.5">
+                <p className="text-[12px] text-neutral-400">
+                  获取 Key：
+                  <a className="link ml-1" href="https://www.aiwanwu.cc/" target="_blank" rel="noreferrer">aiwanwu 中转站 ↗</a>
+                  <span className="mx-1.5 text-neutral-300">·</span>
+                  <a className="link" href="https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey" target="_blank" rel="noreferrer">火山方舟控制台 ↗</a>
+                </p>
+              </div>
             </div>
           )}
 
           {tab === "edit" && (
-            <div ref={panelRef} key="edit" className="tab-panel space-y-3">
-              <div className="grid grid-cols-[1fr_auto] items-end gap-2">
-                <div>
-                  <label className="field-label text-xs" htmlFor="api-preset">从预设载入</label>
-                  <Select
-                    id="api-preset"
-                    className="mt-1"
-                    options={presetOptions}
-                    value={selectedPresetId}
-                    onChange={(id) => {
-                      setSelectedPresetId(id);
-                      const preset = presets.find((item) => item.id === id);
-                      if (preset) setForm(preset.settings);
-                    }}
-                  />
-                </div>
-                <button type="button" className="btn-ghost btn-sm" onClick={() => setTab("presets")}>管理预设</button>
+            <div key="edit" className="tab-panel space-y-3">
+              <div>
+                {/* 「我的接口」按钮已去掉：顶部页签就是它，同一个入口没必要出现两次 */}
+                <label className="field-label text-[13px]" htmlFor="api-provider">来源</label>
+                <Select
+                  id="api-provider"
+                  className="mt-1"
+                  options={[
+                    { value: "", label: "请选择来源" },
+                    ...PROVIDERS.map((p) => ({ value: p.id, label: p.label })),
+                  ]}
+                  value={providerId}
+                  onChange={applyProvider}
+                />
               </div>
 
-              {fields.map((field) => (
-                <div key={field.id}>
-                  <label className="field-label text-xs" htmlFor={field.id}>{field.label}</label>
-                  <input
-                    id={field.id}
-                    className={`field-control mt-1 ${field.mono ? "font-mono" : ""}`}
-                    type={field.type ?? "text"}
-                    value={form[field.key]}
-                    onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                    {...(field.placeholder ? { placeholder: field.placeholder } : {})}
-                  />
-                </div>
-              ))}
+              {/* 来源提示不再单占一行：Key 为空时它就是 Key 字段的填写指引（见下方 helper）*/}
 
-              <p className="text-[11px] text-neutral-400">
-                默认值取自后端 profile（改 config.json 即全局生效）；保存后本机浏览器优先使用这里填的。
-              </p>
+              {fields.map((field) => {
+                // 来源选定后，地址 / 路径 / 模型由预设带出——Key 仍需用户填，故不禁用
+                const autoFilled =
+                  providerId !== "" && (field.key === "baseUrl" || field.key === "apiPath" || field.key === "model");
+                // 模型名称：有模型清单时渲染为下拉框，避免手打错模型 ID
+                const isModelField = field.key === "model";
+                const isKeyField = field.key === "apiKey";
+                const modelChoices = isModelField ? modelOptionsFor(currentModelChoices()) : [];
+                return (
+                  <div key={field.id}>
+                    <label className="field-label text-[13px]" htmlFor={field.id}>{field.label}</label>
+                    {modelChoices.length > 0 ? (
+                      <Select
+                        id={field.id}
+                        className="mt-1"
+                        options={[
+                          // 当前值不在清单里时也保留一行（用户手填过自定义模型）
+                          ...(modelChoices.some((m) => m.value === form.model)
+                            ? []
+                            : [{ value: form.model, label: form.model || "—" }]),
+                          ...modelChoices,
+                        ]}
+                        value={form.model}
+                        onChange={(model) => setForm({ ...form, model })}
+                      />
+                    ) : isKeyField ? (
+                      // Key 字段：右侧挂小眼睛，按一下切换明文/密文
+                      <div className="relative mt-1">
+                        <input
+                          id={field.id}
+                          className={`field-control ${field.mono ? "font-mono" : ""} pr-9`}
+                          type={showApiKey ? "text" : "password"}
+                          value={form.apiKey}
+                          autoComplete="off"
+                          spellCheck={false}
+                          onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                          {...(field.placeholder ? { placeholder: field.placeholder } : {})}
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                          aria-label={showApiKey ? "隐藏密钥" : "显示密钥"}
+                          aria-pressed={showApiKey}
+                          title={showApiKey ? "隐藏密钥" : "显示密钥"}
+                          onClick={() => setShowApiKey((v) => !v)}
+                        >
+                          {showApiKey ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                              <path d="M6.61 6.61A18.15 18.15 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61" />
+                              <line x1="2" y1="2" x2="22" y2="22" />
+                            </svg>
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8Z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    ) : (
+                      <input
+                        id={field.id}
+                        className={`field-control mt-1 ${field.mono ? "font-mono" : ""}`}
+                        type={field.type ?? "text"}
+                        value={form[field.key]}
+                        readOnly={autoFilled}
+                        onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                        {...(field.placeholder ? { placeholder: field.placeholder } : {})}
+                      />
+                    )}
+                    {/* Key 的填写指引就挂在这一行：来源的 Key 前缀提示（如 ark- / sk-）在
+                        Key 为空时最有价值，单独占一行纯属浪费 */}
+                    {isKeyField && (
+                      <p className="mt-1.5 flex items-center gap-1.5 text-xs text-neutral-400">
+                        <span>
+                          {form.apiKey
+                            ? loadedSavedKey
+                              ? "已载入本机保存的 Key"
+                              : "已填入"
+                            : (PROVIDERS.find((p) => p.id === providerId)?.hint ?? "请粘贴你的 API Key")}
+                        </span>
+                        {form.apiKey && (
+                          <button
+                            type="button"
+                            className="shrink-0 underline decoration-dotted underline-offset-2 transition-colors hover:text-[var(--color-brand)]"
+                            onClick={() => {
+                              setForm({ ...form, apiKey: "" });
+                              setShowApiKey(false);
+                            }}
+                          >
+                            清空
+                          </button>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {tab === "presets" && (
-            <div ref={panelRef} key="presets" className="tab-panel space-y-3">
+            <div key="presets" className="tab-panel space-y-3">
+              <p className="text-xs text-neutral-400">「切换」即时启用。</p>
+
               {presets.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-neutral-200 px-3 py-6 text-center text-xs text-neutral-400">
-                  还没有预设。到「个人配置」页填好接口与 Key，再回到这里保存。
+                <p className="rounded-xl border border-dashed border-neutral-200 px-3 py-8 text-center text-xs text-neutral-400">
+                  还没有记录。到「个人配置」保存一次就会出现在这里。
                 </p>
               ) : (
                 <ul className="space-y-2">
-                  {presets.map((preset) => (
-                    <li
-                      key={preset.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200/80 px-3 py-2"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-xs font-medium text-neutral-700">{preset.name}</span>
-                        <span className="block truncate font-mono text-[10px] text-neutral-400">
-                          {preset.settings.model || "未填模型"} · {preset.settings.baseUrl}
-                        </span>
-                      </span>
-                      <span className="flex shrink-0 gap-1">
-                        <button type="button" className="btn-ghost btn-xs" onClick={() => applyPreset(preset)}>载入</button>
-                        <button type="button" className="btn-ghost btn-xs btn-danger" onClick={() => removePreset(preset.id)}>删除</button>
-                      </span>
-                    </li>
-                  ))}
+                  {[...presets]
+                    .sort((a, b) => (b.lastUsed ?? 0) - (a.lastUsed ?? 0))
+                    .map((preset) => {
+                      const active =
+                        settings != null &&
+                        `${settings.baseUrl}|${settings.model}|${settings.apiKey}` ===
+                          `${preset.settings.baseUrl}|${preset.settings.model}|${preset.settings.apiKey}`;
+                      return (
+                        <li
+                          key={preset.id}
+                          className={`rounded-xl border px-3 py-2 ${
+                            active ? "border-[var(--color-brand)]/40 bg-[var(--color-brand)]/5" : "border-neutral-200/80"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="flex min-w-0 items-baseline gap-2">
+                              <span className="truncate text-[13px] font-medium text-neutral-700">{preset.name}</span>
+                              {active && (
+                                <span className="shrink-0 rounded-full bg-[var(--color-brand)]/10 px-2 py-0.5 text-xs font-medium text-[var(--color-brand)]">
+                                  使用中
+                                </span>
+                              )}
+                            </span>
+                            <span className="flex shrink-0 gap-1">
+                              <button
+                                type="button"
+                                className="btn-ghost btn-xs"
+                                onClick={() => switchToPreset(preset)}
+                              >
+                                切换
+                              </button>
+                              <button type="button" className="btn-ghost btn-xs btn-danger" onClick={() => removePreset(preset.id)}>删除</button>
+                            </span>
+                          </div>
+                          {/* 第二行只补名字里没有的：接口主机 + 最近使用时间。
+                              名字本身已是「来源 · 模型」，再重复一遍纯属噪音 */}
+                          <p className="mt-0.5 truncate text-xs text-neutral-400">
+                            {hostOf(preset.settings.baseUrl)}
+                            {preset.lastUsed ? ` · ${formatRelativeTime(preset.lastUsed)}` : ""}
+                          </p>
+                        </li>
+                      );
+                    })}
                 </ul>
               )}
-
-              <div className="grid grid-cols-[1fr_auto] gap-2">
-                <input
-                  className="field-control"
-                  value={presetName}
-                  onChange={(e) => setPresetName(e.target.value)}
-                  placeholder="预设名称（同名覆盖）"
-                />
-                <button
-                  type="button"
-                  className="btn-ghost btn-sm"
-                  onClick={savePreset}
-                  disabled={!presetName.trim() || !form.baseUrl.trim() || !form.apiKey.trim()}
-                >
-                  保存当前配置
-                </button>
-              </div>
             </div>
           )}
         </div>
@@ -647,6 +853,7 @@ function PersonalApiModal({
           </div>
         </div>
       </section>
+
     </div>
   );
 }
@@ -1005,15 +1212,66 @@ useEffect(() => {
       .catch(() => setRecentPrompts([]));
   }, []);
 
-  // 尺寸 / 质量下拉选项（由后端配置派生）
-  const sizeOptions = useMemo(
-    () => (config?.sizes ?? []).map((s) => ({ value: s.value, label: `${s.label}（${s.cost}元）` })),
-    [config],
+  // 尺寸 / 质量下拉选项。尺寸表必须跟着「使用中的接口 + 模型」走：价目表按来源分家
+  // （火山官方 0.2/0.3 元，中转站 0.05/0.1 元），沿用 default_profile 那张表就会出现
+  // 「用着中转站的接口、显示豆包的价」，还会列出该模型不支持的档位。解析见 apiCatalog.ts。
+  const providerCatalog = config?.providers;
+  const activeApiBaseUrl = personalApi?.baseUrl ?? config?.baseUrl ?? "";
+  const activeModelId = personalApi?.model || config?.defaultModel || "";
+  const activeProvider = useMemo(
+    () => findCatalogProvider(providerCatalog, activeApiBaseUrl),
+    [providerCatalog, activeApiBaseUrl],
   );
+  const activeSizes = useMemo(
+    () =>
+      resolveSizes({
+        providers: providerCatalog,
+        baseUrl: activeApiBaseUrl,
+        modelId: activeModelId,
+        // 兜底：自定义地址未在 config.json 登记时，沿用后端 profile 的尺寸表
+        fallbackSizes: config?.sizes,
+      }),
+    [providerCatalog, activeApiBaseUrl, activeModelId, config],
+  );
+  const sizeOptions = useMemo(
+    () => activeSizes.map((s) => ({ value: s.value, label: `${s.label}（${s.cost}元）` })),
+    [activeSizes],
+  );
+  /** 质量档位对当前模型是否真的生效。
+   *  豆包 Seedream 的图片接口没有 quality 参数（火山官方参数表里就没有），发了被静默忽略 ——
+   *  三档出图完全一样，那就不该给用户一个骗人的选项：为真才渲染这一栏。
+   *  中转站（GPT Image）认 quality，决定输出 token 数与耗时；按张计费所以不变贵。 */
+  const qualityEffective = qualityAppliesTo(activeModelId, activeApiBaseUrl);
   const qualityOptions = useMemo(
     () => (config?.qualities ?? []).map((q) => ({ value: q, label: q })),
     [config],
   );
+
+  /** 换了接口 / 模型 → 尺寸表整体换掉：旧尺寸不在新表里就落到首项，
+   *  否则会把 A 家的尺寸（如 1728x2304）发给 B 家的模型，上游直接报错。 */
+  useEffect(() => {
+    if (activeSizes.length && !activeSizes.some((s) => s.value === size)) {
+      setSize(activeSizes[0]!.value);
+    }
+  }, [activeSizes, size]);
+
+  /** 生效配置：把「按使用中的 API 解析出的尺寸表 / 模型清单」并回 config，
+   *  供画布等下游组件共用同一套价格口径（不必各自再写一份解析）。 */
+  const effectiveConfig = useMemo<AppConfig | undefined>(() => {
+    if (!config) return undefined;
+    return {
+      ...config,
+      sizes: activeSizes.length ? activeSizes : config.sizes,
+      // 命中来源才替换来源相关字段（exactOptionalPropertyTypes 下不能显式写 undefined）
+      ...(activeProvider
+        ? {
+            models: activeProvider.models,
+            profileLabel: activeProvider.label,
+            activeProfile: activeProvider.name,
+          }
+        : {}),
+    };
+  }, [config, activeSizes, activeProvider]);
 
   // 后端自检只知道项目默认 Key；启用个人 API 后，个人 Key 同样可以满足生图条件。
   const visibleHealthIssues = personalApi
@@ -1182,8 +1440,8 @@ useEffect(() => {
         onNewWindow={handleNewWindow}
         mode={mode}
         onModeChange={switchMode}
-        activeProfile={config?.activeProfile}
-        defaultModel={config?.defaultModel}
+        activeProfile={activeProvider?.name ?? config?.activeProfile}
+        defaultModel={activeModelId || config?.defaultModel}
         onOpenApi={() => setShowApiSettings(true)}
         personalApi={personalApi}
         onOpenAppearance={() => setShowAppearance(true)}
@@ -1209,6 +1467,8 @@ useEffect(() => {
           settings={personalApi}
           defaults={apiDefaults}
           profileView={config?.profileView}
+          models={config?.models}
+          providers={providerCatalog}
           onSave={setPersonalApi}
           onClose={() => setShowApiSettings(false)}
         />
@@ -1221,10 +1481,11 @@ useEffect(() => {
       )}
 
       {/* 无限画布：首次进入后保持挂载，切换模式仅显隐（内容保留，退出窗口才清空） */}
-      {canvasMounted && config && (
+      {canvasMounted && effectiveConfig && (
         <div className={mode === "canvas" ? "block" : "hidden"}>
           <CanvasPage
-            config={config}
+            config={effectiveConfig}
+            qualityEffective={qualityEffective}
             importSubmissionId={pendingSubmissionImport}
             onSubmissionImported={() => setPendingSubmissionImport(null)}
           />
@@ -1257,7 +1518,8 @@ useEffect(() => {
             </div>
 
             <div className="panel-card enter-up enter-delay-1 relative z-30">
-              <div className="grid grid-cols-2 gap-3">
+              {/* 质量栏按当前模型显隐：豆包没有质量参数，留着只会让人以为能调 */}
+              <div className={qualityEffective ? "grid grid-cols-2 gap-3" : "grid grid-cols-1 gap-3"}>
                 <div>
                   <label className="field-label" htmlFor="size-select">
                     尺寸
@@ -1270,19 +1532,26 @@ useEffect(() => {
                     className="mt-1"
                   />
                 </div>
-                <div>
-                  <label className="field-label" htmlFor="quality-select">
-                    质量
-                  </label>
-                  <Select
-                    id="quality-select"
-                    options={qualityOptions}
-                    value={quality}
-                    onChange={setQuality}
-                    className="mt-1"
-                  />
-                </div>
+                {qualityEffective && (
+                  <div>
+                    <label className="field-label" htmlFor="quality-select">
+                      质量
+                    </label>
+                    <Select
+                      id="quality-select"
+                      options={qualityOptions}
+                      value={quality}
+                      onChange={setQuality}
+                      className="mt-1"
+                    />
+                  </div>
+                )}
               </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
+                {qualityEffective
+                  ? "low 最快最省 / medium 均衡 / high 最细（细节与文字更稳，只是更慢；按张计费，价格不变）"
+                  : "豆包 Seedream 接口没有质量参数，这一栏已隐藏 —— 它出图不区分 low / medium / high"}
+              </p>
             </div>
 
             <div className="panel-card enter-up enter-delay-2 space-y-3">
