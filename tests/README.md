@@ -5,7 +5,7 @@ FastAPI 路由级 + 纯逻辑测试，**不调真实上游 API、不花钱**。�
 ## 本地常用命令（在项目根目录执行）
 
 ```powershell
-# 后端全量（266 用例）
+# 后端全量（272 用例）
 .\.venv\Scripts\python.exe -m pytest
 # 按模块筛选
 .\.venv\Scripts\python.exe -m pytest tests/test_core_config.py tests/test_server_helpers.py
@@ -22,13 +22,13 @@ cd frontend; npm test
 - **测试数字是 AGENTS 仪表盘数据源**：增/删测试用例必须同步 AGENTS「当前仪表盘」；数字意外变化（非新增导致）必须报告维护者
 - **别按变量名读断言**：`test_core_api.py` 里的 `calls["n"] == 3` 是**重试次数**计数器，与生成张数无关。看名字以为"多张已覆盖"过一次误判（CLI `--n` 的真覆盖在 `test_main_cli.py`，见 issue #34）
 
-## 文件索引（后端 pytest，共 266）——每个 test_*.py 测什么
+## 文件索引（后端 pytest，共 272）——每个 test_*.py 测什么
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
 | [`test_core_api.py`](test_core_api.py) | 18 | 尺寸解析 / 默认输出路径（并发唯一）/ 错误格式化 / 写文件瞬时锁重试 |
 | [`test_core_batch.py`](test_core_batch.py) | 10 | 配置读取 / 路径解析 / 模块过滤 / dry-run |
-| [`test_core_config.py`](test_core_config.py) | 17 | API Key 跟随 profile / profile 解析优先级与缺失回退 / 白名单校验 / RATIOS 表结构 / **配置来源视图（值 + 来自哪一层、.env 与系统环境变量区分、密钥不回传值）** |
+| [`test_core_config.py`](test_core_config.py) | 21 | API Key 跟随 profile / profile 解析优先级与缺失回退 / 白名单校验 / RATIOS 表结构 / **配置来源视图（值 + 来自哪一层、.env 与系统环境变量区分、密钥不回传值）** |
 | [`test_core_cost.py`](test_core_cost.py) | 21 | 账本聚合（成功/失败计数、成功率、费用只算成功行、按天窗口与倒序、按尺寸/模式、坏行与脏类型容错、空账本）/ 今日花费 / 预估费用（已知/未知尺寸、非法张数）/ 预算规范化与读写（缺失/损坏/原子写无残留）/ 超预算判定（不限放行、单次上限、当日已花+预估、双限、remaining） |
 | [`test_core_logging.py`](test_core_logging.py) | 8 | 日志写入 / 并发串行 / 路径相对化 |
 | [`test_core_history.py`](test_core_history.py) | 16 | 历史读取 / 坏行容忍 / 筛选 / **搜索换行归一（CRLF 粘贴可命中）** / **同参数聚合（失败去重只留最新、成功吸收失败、时间不算参数、任一参数不同不合并、inputAssetIds 参与判定）** / **分页（聚合后切片与 total、offset 越界、与搜索/状态一致）** / backfill（报告·补齐·幂等·跳过无法反查·坏行保留） |
@@ -37,14 +37,14 @@ cd frontend; npm test
 | [`test_core_migrate.py`](test_core_migrate.py) | 19 | 注册表 detect/升级/重建/回填/迁目录 / 工作流升级 / CLI 端到端 |
 | [`test_core_tasks.py`](test_core_tasks.py) | 11 | 任务状态机 / 并发上限 / 取消 / 快照 / TTL 清理 |
 | [`test_core_pathtrust.py`](test_core_pathtrust.py) | 2 | 路径白名单（match_roots 双根/单根/跨盘） |
-| [`test_server_helpers.py`](test_server_helpers.py) | 24 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 + inputRefs/inputRefMissing / **/api/history 分页 hasMore** / _persist_submission 含 temp_bases / 导入与展示同源（注册表副本 + 账本 output 原路径双收，含画布回流回归） |
+| [`test_server_helpers.py`](test_server_helpers.py) | 26 | 窗口分配 / 安全路径白名单 / upload-ref / delete-ref / generate 同步性 / history 注册表解析 + inputRefs/inputRefMissing / **/api/history 分页 hasMore** / _persist_submission 含 temp_bases / 导入与展示同源（注册表副本 + 账本 output 原路径双收，含画布回流回归） |
 | [`test_server_canvas.py`](test_server_canvas.py) | 18 | canvas 路由 / workflow 往返（v2）/ missing 收集 / ref_paths 放行 |
 | [`test_server_tasks.py`](test_server_tasks.py) | 10 | generate 提交即返回 / multipart 临时文件清理 + temp 参考图注册账本 / **参考图提交时注册（源文件删后账本仍完整）** / 保存消息为绝对路径 / 路径校验 / 任务路由 |
 | [`test_server_cost.py`](test_server_cost.py) | 15 | /api/history/stats 聚合与 days 窗口、空账本 / 预算读写（默认不限、落盘回读）/ /api/budget/check 预检（按张数、按 items、单次上限边界）/ /api/generate 预算闸门（超限 409 → 确认后放行、不限不拦）/ /api/generate/batch（合法提交 + 空提示词/坏参考图逐条跳过、空 items 400、全非法不提交、超预算未确认不提交、确认后提交） |
 | [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
 | [`test_main_cli.py`](test_main_cli.py) | 31 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ **`--n` 逐张请求（每次 `n=1`、各存各的账、部分失败保留已成功、默认单张行为不变）** / config 输出 |
 
-## 文件索引（前端 vitest，共 292，位于 frontend/src/）
+## 文件索引（前端 vitest，共 323，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -64,9 +64,14 @@ cd frontend; npm test
 | [`HistoryGallery.test.tsx`](../frontend/src/components/HistoryGallery.test.tsx) | 16 | 列表行渲染 / 参考图缺失琥珀提示 / 失败文案 / 提示词截断浮层（仅截断弹、跟随、离开消失） / **分页（首屏第 0 页、点加载更多按 offset 追加、搜索与状态筛选重置第 0 页、滚动接近底部自动追加、远离底部不触发）** / **成本看板指标、失败行「重跑」与成功行按钮差异、参考图丢失禁用+条数提示、批量重跑确认弹窗（预估费用/校验调用/提交参数）、超预算警示与 allowOverBudget、保存预算回读** |
 | [`promptImportFormat.test.ts`](../frontend/src/promptImportFormat.test.ts) | 19 | 导入格式解析容错 / 尺寸映射 / 建卡 |
 | [`cost.test.ts`](../frontend/src/cost.test.ts) | 6 | 金额/比例/耗时格式化（非法值回退 -）/ 预算摘要（不限与设限两种、兼容预检结果的 settings 形态）/ 看板主指标行顺序与文案 |
-| [`api-guards.test.ts`](../frontend/src/api-guards.test.ts) | 9 | `/api` 响应形状守卫（必填字段类型、可选字段「在但类型错」、多出的键放行） |
+| [`api-guards.test.ts`](../frontend/src/api-guards.test.ts) | 10 | `/api` 响应形状守卫（必填字段类型、可选字段「在但类型错」、多出的键放行）/ **providers 来源目录（缺字段放行、类型错拦下）** |
+| [`apiCatalog.test.ts`](../frontend/src/apiCatalog.test.ts) | 18 | 按接口地址命中来源 / 跨来源按 id 找模型（全角 U+2011 连字符折叠）/ 尺寸解析优先级（模型自带 > 来源级 > 后端兜底）/ 单价摘要与提示 / **qualityAppliesTo：豆包 Seedream 不认质量档（含中转站代理豆包的情形）** |
+| [`apiErrors.test.ts`](../frontend/src/apiErrors.test.ts) | 2 | 405 翻成人话（提示服务端是旧版本、需重开）；非 405 保持原始信息不误伤真实上游报错 |
+| [`providerSwitch.test.ts`](../frontend/src/providerSwitch.test.ts) | 6 | 跨来源切换清空 Key / 空表单→选来源保留 / 重复点同一项保留 |
+| [`usedApis.test.ts`](../frontend/src/usedApis.test.ts) | 4 | 「我的接口」记录读写往返 / lastUsed 保留 / 按最近使用排序 / 去重键稳定 |
 | [`format.test.ts`](../frontend/src/format.test.ts) | 6 | `formatBytes` 三档与 1024 边界 / `generatingLabel` 文案 / `errMessage`（Error 与非 Error、超长才截断、恰好等于上限不截、limit 可覆盖） |
 | [`accent.test.ts`](../frontend/src/accent.test.ts) | 13 | 同一编号恒定取色、`null` 回落 1 号、黄金角色相分布（含越过 360 回绕与 0 号负色相的现行为）、`brand` 与 `brandDark` 只差明度 / 色相归一到 [0,360) / NaN·Infinity 回落 0 不产出坏值 / 自定义色相与自动取色共用同一公式 / 九个预设互不重复且在合法区间 / 读写往返（未设置读 `null`、存后读回、存越界先归一、传 `null` 清除、空白或非法视为未设置） |
+| [`brand/logo.test.ts`](../frontend/src/brand/logo.test.ts) | 4 | 形状与 viewBox 取自 `logo.svg` 单一源 / 源文件只有一处 fill 声明（否则换色会漏改）/ `brandLogoSvg` 只换根元素 fill / 换色不动 xmlns 与 viewBox（favicon 缺 xmlns 不显示）|
 | [`windowInherit.test.ts`](../frontend/src/windowInherit.test.ts) | 10 | 写读往返且不清除、`notice` 省略即不写该键、空参考图 `filesIncluded: false`、`sessionStorage` 抛错时放弃继承不抛错、无键 / 非 JSON / 顶层形状不符 / `refs` 字段类型不符 / `notice` 非字符串一律判无继承、清除不误伤其他键 |
 | [`rerun.test.ts`](../frontend/src/rerun.test.ts) | 9 | 可重跑判定（成功记录、空提示词、缺尺寸/质量、图生图参考图丢失、参考图仍在、纯文生图）/ 分组与丢失计数 / 批量参数构造（空 path 丢弃）/ 跳过原因聚合排序 |
 | [`wallpaperStore.test.ts`](../frontend/src/wallpaperStore.test.ts) | 10 | IndexedDB 不可用降级（读 null、写 false、删不抛错）/ 全局缺失 `indexedDB` / `open` 抛异常 / `open` 触发 `onerror` 或 `onblocked` 均安静返回。成功读写路径由真机验证（jsdom 无 IndexedDB，且该全局连声明都没有，造替身必须先 `vi.stubGlobal`） |
