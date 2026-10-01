@@ -178,7 +178,13 @@ def check_icon_freshness() -> list[str]:
         ]
     want = hashlib.sha256(LOGO_SOURCE.read_bytes()).hexdigest()
     got = ICON_SIDECAR.read_text(encoding="utf-8").strip()
-    if want != got:
+    # Windows 上 core.autocrlf=true 会把工作区的 logo.svg 转成 CRLF，字节与仓库里的
+    # blob（LF）不同 —— 指纹因此在这台机器上永远"不一致"，属误报。
+    # 两边都接受：原样字节 或 归一成 LF 后的字节（CI 的 LF 检出两种都命中）。
+    want_lf = hashlib.sha256(
+        LOGO_SOURCE.read_bytes().replace(b"\r\n", b"\n")
+    ).hexdigest()
+    if got not in (want, want_lf):
         problems.append(
             f"{ICON_SIDECAR.relative_to(ROOT)}: 指纹 {got[:12]}… 与 "
             f"{LOGO_SOURCE.relative_to(ROOT)} 当前内容 {want[:12]}… 不一致"
