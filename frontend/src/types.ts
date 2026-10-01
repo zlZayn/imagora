@@ -5,6 +5,36 @@ export interface SizeOption {
   cost: number;
 }
 
+/** 可选模型（后端 /api/config 的 models 下发；每个模型自带尺寸与价格） */
+export interface ModelOption {
+  id: string;
+  label: string;
+  note?: string;
+  output_formats: string[];
+  size_options: SizeOption[];
+  ratios: Record<string, Record<string, string>>;
+}
+
+/** 一处服务来源（config.json 的一个 profile）的来源目录项。
+ *
+ *  价目表按来源分家（火山官方 0.2/0.3 元，中转站 0.05/0.1 元），个人配置只覆盖
+ *  接口地址 / 模型 —— 前端据 baseUrl 命中来源后换用它的 sizes / models，
+ *  否则会「用着中转站的接口、显示豆包的价」。 */
+export interface ProviderCatalog {
+  /** profile 名（config.json 的 profiles 键） */
+  name: string;
+  /** 展示名（如「aiwanwu 中转站」） */
+  label: string;
+  baseUrl: string;
+  defaultModel: string;
+  defaultQuality?: string;
+  defaultSize?: string;
+  /** 该来源的兜底尺寸表（模型未自带尺寸时用） */
+  sizes: SizeOption[];
+  /** 该来源的可选模型（各自带尺寸与单价） */
+  models: ModelOption[];
+}
+
 /** 应用初始化配置 */
 /** 配置来源视图的一项（/api/config 的 profileView.fields）：值 + 它来自哪一层 */
 export interface ConfigFieldView {
@@ -41,6 +71,13 @@ export interface AppConfig {
   apiPath?: string;
   /** 当前 profile 的默认模型（标题栏徽章展示，确认切换生效） */
   defaultModel?: string;
+  /** 当前 profile 的可选模型清单（每个带自己的尺寸/价格）；空则按单模型处理 */
+  models?: ModelOption[];
+  /** 全部来源目录（config.json 各 profile 的地址 + 尺寸 + 模型）：
+   *  前端按当前使用的接口地址挑表，个人配置切中转站时价格随之改变 */
+  providers?: ProviderCatalog[];
+  /** 当前 profile 的展示名（如「火山方舟官方」） */
+  profileLabel?: string;
   /** 当前生效的配置 profile 名（config.json 多 profile，.env ACTIVE_PROFILE 可覆盖） */
   activeProfile?: string;
   /** 配置来源视图：每个关键项的值 + 来自哪一层（供 API 设置弹窗呈现） */
@@ -127,6 +164,8 @@ export interface PersonalApiPreset {
   id: string;
   name: string;
   settings: PersonalApiSettings;
+  /** 最近一次使用时间（epoch ms）；「我的接口」按此倒序排列 */
+  lastUsed?: number;
 }
 
 /** 画布图片注册表条目（/api/canvas/* 返回；registry entry + absPath/url 供生成引用与显示） */

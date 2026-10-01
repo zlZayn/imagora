@@ -84,6 +84,16 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
     const detail = await res.text();
+    // 405 的实际含义：路径没匹配到任何 API 路由，请求掉进了末尾的静态文件挂载
+    // （StaticFiles 只服务 GET/HEAD，对 POST 一律回 405）。
+    // 真实场景几乎只有一种成因：页面是新构建的，但后端进程还是旧的、
+    // 不认识这个接口（改了后端代码后没重启服务）。直接翻译成人话，别让用户猜。
+    if (res.status === 405) {
+      throw Object.assign(
+        new Error("服务端是旧版本，不认识这个功能（HTTP 405）。请关闭 imagora 窗口后重新打开一次。"),
+        { status: res.status },
+      );
+    }
     throw Object.assign(new Error(`HTTP ${res.status}: ${errorDetail(detail)}`), {
       status: res.status,
     });
@@ -184,6 +194,7 @@ export async function submitGenerate(
   }
   return requestJson("/api/generate", { method: "POST", body: formData });
 }
+
 
 /* ---------------- 生成任务（异步任务管线：提交 / 轮询 / 取消） ---------------- */
 

@@ -42,6 +42,19 @@ describe("isAppConfig", () => {
   it("passes unknown extra keys through (后端加字段不该让前端报错)", () => {
     expect(isAppConfig({ ...config(), futureField: { nested: true } })).toBe(true);
   });
+
+  it("validates the optional providers catalog (缺 sizes / 尺寸项缺 cost 都拦掉)", () => {
+    const sizes = [{ value: "1024x1024", label: "1:1", cost: 0.2 }];
+    const model = { id: "m", label: "M", output_formats: ["png"], ratios: {}, size_options: sizes };
+    expect(isAppConfig(config({ providers: [{ name: "a", baseUrl: "u", sizes, models: [model] }] }))).toBe(true);
+    expect(isAppConfig(config({ providers: [{ name: "a", baseUrl: "u", sizes: [], models: [] }] }))).toBe(true);
+    // 尺寸项缺 cost → 单价会算成 undefined，必须在入口拦下
+    expect(
+      isAppConfig(config({ providers: [{ name: "a", baseUrl: "u", sizes: [{ value: "1:1", label: "1:1" }], models: [] }] })),
+    ).toBe(false);
+    expect(isAppConfig(config({ providers: [{ name: "a", baseUrl: "u", models: [] }] }))).toBe(false);
+    expect(isAppConfig(config({ providers: "x" }))).toBe(false);
+  });
 });
 
 describe("isHistoryResponse", () => {

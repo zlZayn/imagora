@@ -11,7 +11,7 @@
  */
 
 import type { GenerationHistoryItem, HistoryInputRef } from "./api";
-import type { AppConfig, SizeOption } from "./types";
+import type { AppConfig, ModelOption, ProviderCatalog, SizeOption } from "./types";
 
 /** 供 `requestJson` 使用的校验器签名。 */
 export type Validator<T> = (value: unknown) => value is T;
@@ -31,6 +31,30 @@ function isSizeOption(value: unknown): value is SizeOption {
   );
 }
 
+/** 可选模型：消费面读 id（匹配）/ label（下拉展示）/ size_options（尺寸与单价）。 */
+function isModelOption(value: unknown): value is ModelOption {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.label === "string" &&
+    Array.isArray(value.size_options) &&
+    value.size_options.every(isSizeOption)
+  );
+}
+
+/** 来源目录项：按 baseUrl 命中、用 sizes / models 换表 —— 形状错会导致价格算错而非报错。 */
+function isProviderCatalog(value: unknown): value is ProviderCatalog {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.baseUrl === "string" &&
+    Array.isArray(value.sizes) &&
+    value.sizes.every(isSizeOption) &&
+    Array.isArray(value.models) &&
+    value.models.every(isModelOption)
+  );
+}
+
 /** `/api/config` 响应：启动即消费，形状错了整页后续渲染连环崩。 */
 export function isAppConfig(value: unknown): value is AppConfig {
   return (
@@ -40,7 +64,9 @@ export function isAppConfig(value: unknown): value is AppConfig {
     Array.isArray(value.qualities) &&
     value.qualities.every((quality) => typeof quality === "string") &&
     typeof value.defaultOutputDir === "string" &&
-    typeof value.windowId === "number"
+    typeof value.windowId === "number" &&
+    (value.providers === undefined ||
+      (Array.isArray(value.providers) && value.providers.every(isProviderCatalog)))
   );
 }
 
