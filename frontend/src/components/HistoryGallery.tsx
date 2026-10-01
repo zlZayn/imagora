@@ -20,8 +20,9 @@ import { TERMINAL_STATUSES } from "../useGenerationTask";
 import { useImageZoom } from "../useImageZoom";
 import { CostBoard } from "./CostBoard";
 import { FolderPicker } from "./FolderPicker";
-import { ZoomModal } from "./WorkflowModals";
+import { ModalShell } from "./ModalShell";
 import { Select } from "./Select";
+import { ZoomModal } from "./WorkflowModals";
 
 function parentDirectory(path: string): string {
   return path.replace(/[\\/][^\\/]+$/, "");
@@ -320,8 +321,8 @@ export function HistoryGallery({
 
   if (!open) return null;
   return (
-    <div className="history-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <section className="history-modal corner-rings flex h-[86vh] w-[min(1100px,96vw)] flex-col overflow-hidden rounded-lg bg-[#f7f7f5] shadow-2xl" onClick={(event) => event.stopPropagation()}>
+    <>
+      <ModalShell title="生成历史" onClose={onClose} className="history-modal modal-panel--history corner-rings" overlayClassName="history-overlay">
         <header className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-4 py-3">
           <h2 className="mr-2 text-sm font-semibold">生成历史</h2>
           <input
@@ -462,13 +463,15 @@ export function HistoryGallery({
             <div className="py-16 text-center text-sm text-neutral-400">没有匹配的生成记录</div>
           )}
         </div>
-      </section>
+      </ModalShell>
       {zoom && <ZoomModal imageUrl={zoom.url} name={zoom.name} onClose={closeZoom} />}
       {rerunPlan && (
-        <section
-          data-testid="rerun-dialog"
-          className="w-[min(560px,94vw)] rounded-lg bg-white p-4 shadow-2xl"
-          onClick={(event) => event.stopPropagation()}
+        <ModalShell
+          title="重跑失败项"
+          onClose={() => setRerunPlan(null)}
+          nested
+          testId="rerun-dialog"
+          className="modal-panel--md"
         >
           <h3 className="text-sm font-semibold">重跑失败项</h3>
           <p className="mt-2 text-[11px] text-neutral-600">
@@ -517,8 +520,8 @@ export function HistoryGallery({
               {rerunBusy ? "提交中..." : rerunCheck?.over ? "仍然重跑（超预算）" : "确认重跑"}
             </button>
           </div>
-        </section>
+        </ModalShell>
       )}
-    </div>
+    </>
   );
 }

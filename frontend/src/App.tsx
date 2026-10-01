@@ -25,6 +25,7 @@ import { UploadZone } from "./components/UploadZone";
 import { FolderPicker } from "./components/FolderPicker";
 import { ResultPanel } from "./components/ResultPanel";
 import { LogLine } from "./components/LogLine";
+import { ModalShell } from "./components/ModalShell";
 import { Select } from "./components/Select";
 import { CanvasPage } from "./components/CanvasPage";
 
@@ -122,11 +123,7 @@ function AppearanceModal({
   }, [onClose]);
 
   return (
-    <div className="studio-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <section
-        className="studio-modal corner-rings flex max-h-[min(86vh,720px)] w-[min(480px,94vw)] flex-col p-5"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <ModalShell title="外观" onClose={onClose} className="modal-panel--md corner-rings">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold">外观</h2>
           <button type="button" className="btn-ghost btn-sm" onClick={onClose}>
@@ -315,8 +312,7 @@ function AppearanceModal({
             />
           </div>
         </div>
-      </section>
-    </div>
+      </ModalShell>
   );
 }
 
@@ -563,11 +559,7 @@ function PersonalApiModal({
     { id: "api-path", label: "接口路径", key: "apiPath", mono: true },
   ];
   return (
-    <div className="studio-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <section
-        className="studio-modal api-settings-modal corner-rings flex max-h-[min(86vh,720px)] w-[min(560px,94vw)] flex-col p-5"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <ModalShell title="生图 API 设置" onClose={onClose} className="modal-panel--md api-settings-modal corner-rings">
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="text-base font-medium">生图 API 设置</h2>
           {/* 一处隐私说明就够（覆盖三个页签），不再在每个页签里重复 */}
@@ -852,9 +844,7 @@ function PersonalApiModal({
             </button>
           </div>
         </div>
-      </section>
-
-    </div>
+      </ModalShell>
   );
 }
 

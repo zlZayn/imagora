@@ -61,7 +61,7 @@ function StatusRing({ tone, children }: { tone: "queued" | "running" | "failed" 
           ? "border-red-400"
           : "border-neutral-300";
   return (
-    <div className={`flex h-32 w-32 items-center justify-center rounded-full border-2 ${cls}`}>{children}</div>
+    <div className={`result-status-ring result-status-ring--${tone} ${cls}`}>{children}</div>
   );
 }
 
@@ -171,7 +171,7 @@ export function ResultPanel(props: ResultPanelProps) {
           {prev.node}
         </div>
       )}
-      <div key={key} className="swap-in absolute inset-0 overflow-auto">
+      <div key={key} className="swap-in absolute inset-0 overflow-auto" role="status" aria-live="polite" aria-atomic="true">
         {node}
       </div>
     </div>

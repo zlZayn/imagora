@@ -1,26 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { clampPreviewPan, clampZoom } from "../previewZoom";
+import { ModalShell } from "./ModalShell";
 
 /** 工作流条目（保存/加载弹窗共用） */
 export interface WorkflowEntry {
   name: string;
   modified: string;
-}
-
-/** 遮罩层基座：点击外部关闭 */
-function ModalOverlay({ children, onClose }: { children: ReactNode; onClose: () => void }) {
-  return (
-    <div className="studio-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="studio-modal w-[26rem] max-w-[92vw] rounded-lg bg-white p-4 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
-  );
 }
 
 /** 保存工作流弹窗：固定目录 output/workflows/，只填名字，可点已有工作流填充（同名覆盖有确认） */
@@ -40,8 +27,11 @@ export function WorkflowSaveModal({
   onClose: () => void;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
-      <h3 className="mb-3 text-sm font-semibold">保存工作流</h3>
+    <ModalShell title="保存工作流" onClose={onClose} className="modal-panel--sm">
+      <header className="modal-header">
+        <h3 className="modal-title">保存工作流</h3>
+        <p className="modal-subtitle">命名并保存当前画布，之后可继续编辑。</p>
+      </header>
       <input
         value={saveName}
         onChange={(e) => onSaveNameChange(e.target.value)}
@@ -67,20 +57,20 @@ export function WorkflowSaveModal({
           ))}
         </div>
       )}
-      <div className="flex justify-end gap-2">
-        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={onClose}>
+      <div className="modal-footer">
+        <button type="button" className="btn-ghost btn-sm" onClick={onClose}>
           取消
         </button>
         <button
           type="button"
-          className="btn-primary !px-4 !py-1 text-xs"
+          className="btn-primary btn-sm"
           disabled={!saveName.trim()}
           onClick={onConfirm}
         >
           保存
         </button>
       </div>
-    </ModalOverlay>
+    </ModalShell>
   );
 }
 
@@ -95,27 +85,34 @@ export function WorkflowLoadModal({
   onClose: () => void;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
-      <h3 className="mb-3 text-sm font-semibold">加载工作流</h3>
-      <div className="max-h-72 overflow-auto rounded-lg border border-neutral-200">
-        {workflows.map((w) => (
-          <button
-            key={w.name}
-            type="button"
-            onClick={() => onLoad(w.name)}
-            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-neutral-700 hover:bg-brand/5 hover:text-brand"
-          >
-            <span className="truncate">{w.name}</span>
-            <span className="shrink-0 text-[10px] text-neutral-400">{w.modified}</span>
-          </button>
-        ))}
-      </div>
-      <div className="mt-3 flex justify-end">
-        <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={onClose}>
+    <ModalShell title="加载工作流" onClose={onClose} className="modal-panel--sm">
+      <header className="modal-header">
+        <h3 className="modal-title">加载工作流</h3>
+        <p className="modal-subtitle">选择一份已保存的画布继续工作。</p>
+      </header>
+      {workflows.length > 0 ? (
+        <div className="workflow-list max-h-72 overflow-auto">
+          {workflows.map((w) => (
+            <button
+              key={w.name}
+              type="button"
+              onClick={() => onLoad(w.name)}
+              className="workflow-list__item"
+            >
+              <span className="truncate">{w.name}</span>
+              <span className="workflow-list__meta">{w.modified}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="modal-empty">还没有保存的工作流</div>
+      )}
+      <div className="modal-footer">
+        <button type="button" className="btn-ghost btn-sm" onClick={onClose}>
           取消
         </button>
       </div>
-    </ModalOverlay>
+    </ModalShell>
   );
 }
 

@@ -108,9 +108,19 @@ export function UploadZone({ refs, onChange }: UploadZoneProps) {
   return (
     <>
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="添加参考图片。支持拖拽、粘贴或选择文件"
+        aria-describedby="upload-zone-hint"
         className={`${baseClasses} ${stateClasses}`}
-        onDragOver={(e) => {
-          e.preventDefault();
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
           setDragging(true);
         }}
         onDragLeave={() => setDragging(false)}
@@ -133,7 +143,7 @@ export function UploadZone({ refs, onChange }: UploadZoneProps) {
           }}
         />
         {refs.length === 0 ? (
-          <p className="text-sm text-neutral-500">
+          <p id="upload-zone-hint" className="text-sm text-neutral-500">
             拖拽图片到此处 / Ctrl+V 粘贴 / 点击添加 · 可多张
           </p>
         ) : (
@@ -150,28 +160,34 @@ export function UploadZone({ refs, onChange }: UploadZoneProps) {
                     className={`relative ${isRemoving ? "fade-out" : "pop-in"}`}
                     onAnimationEnd={isRemoving ? () => finishRemove(ref) : undefined}
                   >
-                    <img
-                      src={ref.url}
-                      alt={ref.name}
-                      title="双击放大"
-                      className="h-14 w-14 cursor-zoom-in rounded-lg border border-neutral-200 object-cover"
-                      onClick={(e) => e.stopPropagation()}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setZoom(ref);
-                      }}
-                    />
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeFile(ref);
+                      className="upload-thumb"
+                      aria-label={`预览 ${ref.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setZoom(ref);
                       }}
-                      className="chip chip--sm chip--dot absolute -right-1.5 -top-1.5 bg-neutral-700 text-white"
-                      aria-label={`移除 ${ref.name}`}
+                      onDoubleClick={(event) => event.stopPropagation()}
                     >
-                      x
+                      <img
+                        src={ref.url}
+                        alt={ref.name}
+                        title="点击预览，双击同样可放大"
+                        className="h-14 w-14 cursor-zoom-in rounded-lg border border-neutral-200 object-cover"
+                      />
                     </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removeFile(ref);
+                        }}
+                        className="chip chip--sm chip--dot absolute -right-1.5 -top-1.5 bg-neutral-700 text-white"
+                        aria-label={`移除 ${ref.name}`}
+                      >
+                        ×
+                      </button>
                     <span
                       className="absolute -bottom-4 left-0 max-w-[90px] truncate text-[10px] text-neutral-500"
                       title={`${ref.name} · ${formatBytes(ref.size)}`}
@@ -183,9 +199,9 @@ export function UploadZone({ refs, onChange }: UploadZoneProps) {
               })}
             </ul>
             {pendingCount > 0 && (
-              <p className="mt-2 text-[10px] text-neutral-400">上传中 {pendingCount} 张…</p>
+              <p role="status" aria-live="polite" className="mt-2 text-[10px] text-neutral-400">上传中 {pendingCount} 张…</p>
             )}
-            {uploadError && <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>}
+            {uploadError && <p role="alert" className="mt-2 text-[10px] text-red-500">{uploadError}</p>}
           </>
         )}
       </div>

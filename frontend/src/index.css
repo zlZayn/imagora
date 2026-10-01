@@ -682,8 +682,67 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .studio-canvas .react-flow__handle { box-shadow: 0 0 0 3px rgba(255,255,255,.85); }
 
 /* Gallery, history and modal surfaces share the same product language. */
-.studio-modal-overlay { background: rgba(20,26,31,.62) !important; backdrop-filter: blur(8px); }
-.studio-modal { overflow: hidden; border: 1px solid rgba(255,255,255,.65); border-radius: 16px !important; background: rgba(251,251,248,.96) !important; box-shadow: 0 24px 70px rgba(15,20,25,.26) !important; }
+.studio-modal-overlay,
+.modal-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 2vw, 24px);
+  background: rgba(20,26,31,.62) !important;
+  backdrop-filter: blur(10px) saturate(.9);
+}
+.modal-shell--nested { z-index: 60; background: rgba(20,26,31,.44) !important; }
+.studio-modal,
+.modal-panel {
+  width: min(100%, 42rem);
+  max-height: min(86dvh, 760px);
+  overflow: hidden;
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,.68);
+  border-radius: 16px !important;
+  outline: none;
+  background: rgba(251,251,248,.97) !important;
+  box-shadow: 0 24px 70px rgba(15,20,25,.26), inset 0 1px 0 rgba(255,255,255,.8) !important;
+}
+.modal-panel--sm { width: min(100%, 26rem); }
+.modal-panel--md { width: min(100%, 35rem); }
+.modal-panel--lg { width: min(100%, 42rem); }
+.modal-panel--history {
+  display: flex;
+  width: min(1100px, 96vw);
+  height: min(86dvh, 880px);
+  max-height: none;
+  padding: 0;
+  flex-direction: column;
+}
+.modal-header { margin-bottom: 16px; }
+.modal-title { color: #17202b; font-size: 15px; font-weight: 650; letter-spacing: -.02em; }
+.modal-subtitle { margin-top: 4px; max-width: 58ch; color: rgba(23,32,43,.6); font-size: 12px; line-height: 1.55; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.modal-empty { padding: 24px 12px; color: rgba(23,32,43,.38); font-size: 12px; text-align: center; }
+.workflow-list { border: 1px solid rgba(31,41,55,.12); border-radius: var(--r-control); background: rgba(255,255,255,.6); }
+.workflow-list__item { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; color: #3f4953; font-size: 12px; text-align: left; transition: color .18s ease, background-color .18s ease; }
+.workflow-list__item:hover,
+.workflow-list__item:focus-visible { color: var(--color-brand); background: color-mix(in srgb, var(--color-brand) 7%, transparent); }
+.workflow-list__meta { flex: none; color: rgba(23,32,43,.42); font-size: 11px; font-variant-numeric: tabular-nums; }
+.select-list { border: 1px solid rgba(31,41,55,.14); border-radius: var(--r-control); background: rgba(255,255,255,.98); padding: 4px; box-shadow: 0 18px 40px rgba(15,20,25,.14); }
+.select-option { display: flex; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 7px; color: #3f4953; font-size: 13px; cursor: pointer; }
+.select-option.is-active { color: var(--color-brand); background: color-mix(in srgb, var(--color-brand) 7%, transparent); }
+.select-option.is-selected { color: var(--color-brand); font-weight: 600; }
+.prompt-import-preview { margin-top: 10px; max-height: 260px; }
+.prompt-import-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: rgba(23,32,43,.58); font-size: 12px; }
+.prompt-import-summary__error,
+.prompt-import-issue { color: #c83f3f; }
+.prompt-import-card { margin-top: 8px; padding: 10px 12px; border: 1px solid rgba(31,41,55,.1); border-radius: var(--r-control); background: rgba(255,255,255,.64); }
+.prompt-import-card__meta { display: flex; flex-wrap: wrap; gap: 8px; color: rgba(23,32,43,.5); font-size: 11px; }
+.prompt-import-card__meta strong { color: #17202b; }
+.prompt-import-card__fallback { color: #a46108; }
+.prompt-import-card p { margin-top: 5px; overflow: hidden; color: rgba(23,32,43,.68); font-size: 12px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-import-issue { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(220,38,38,.06); font-size: 12px; }
+.upload-thumb { display: block; padding: 0; border-radius: 9px; }
+.result-status-ring { display: flex; width: 112px; height: 112px; align-items: center; justify-content: center; border-width: 1.5px; border-radius: 50%; box-shadow: 0 18px 50px rgba(23,32,43,.08), inset 0 0 0 8px rgba(255,255,255,.42); }
 /* 模态内容区：默认按内容自适应高度（外观 / 提示词导入弹窗）。
  * scrollbar-gutter 预留滚动条占位：即便出现滚动条也不横向位移。 */
 .modal-body {
@@ -716,6 +775,18 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   .classic-main { grid-template-columns: 1fr !important; }
   .classic-result-panel { min-height: 480px; }
   .studio-header::after { display: none; }
+  .history-modal--compact,
+  .modal-panel--history { width: min(100%, calc(100vw - 24px)); }
+}
+
+@media (max-width: 640px) {
+  .modal-shell { padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+  .modal-panel--history { width: 100%; height: min(92dvh, 860px); }
+  .modal-footer { flex-wrap: wrap; }
+  .history-modal header { align-items: stretch; }
+  .history-modal header .field-control { width: 100% !important; }
+  .history-modal header .select-root { width: 9rem; }
+  .studio-inspector { max-width: calc(100vw - 20px); }
 }
 
 /* Page-specific expressions: one system, three moods.
@@ -725,11 +796,16 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .history-modal { border: 1px solid rgba(31,41,55,.12); border-radius: 18px !important; background: #f4f1eb !important; box-shadow: 0 24px 70px rgba(25,25,22,.22) !important; }
 .history-modal > header { background: rgba(255,255,255,.72); border-color: rgba(31,41,55,.1); }
 .history-modal ul > li { border-color: rgba(31,41,55,.11); background: rgba(255,255,255,.72); transition: transform .2s ease, box-shadow .2s ease; }
-.history-modal ul > li:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(31,41,55,.08); }
+.history-modal ul > li:hover,
+.history-modal ul > li:focus-within { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(31,41,55,.08); }
 
-@media (max-width: 640px) {
-  .history-modal ul { grid-template-columns: 1fr !important; }
-  .history-modal { height: 92vh; }
+@media (max-width: 900px) {
+  .history-modal [data-testid="history-list"] > ul { grid-template-columns: 1fr !important; }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .history-modal ul > li:hover { transform: none; box-shadow: none; }
+  button, a, [role='button'] { touch-action: manipulation; }
 }
 
 /* Classic form: editorial control room, with a single obvious starting action. */
@@ -802,6 +878,16 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   .field-control:focus {
     @apply border-brand ring-2 ring-brand/20;
   }
+  button:focus-visible,
+  a:focus-visible,
+  [role='button']:focus-visible,
+  [role='option']:focus-visible,
+  input[type='range']:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 3px;
+  }
+  .btn-icon { display: inline-flex; min-width: 36px; min-height: 36px; align-items: center; justify-content: center; border-radius: 10px; }
+  .btn-icon--sm { min-width: 30px; min-height: 30px; border-radius: 8px; }
 
   /* 紧凑控件行：一行内并排的输入 / 下拉 / 按钮统一尺寸（历史页筛选行、成本看板预算行）。
      收敛在此、而不是散成各元素的 !py-* / !px-* 覆盖 —— 覆盖各写各的，同排控件就会参差不齐。 */

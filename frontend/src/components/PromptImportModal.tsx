@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { parsePromptImportFormat, resolveCardSize, type PromptCardSpec } from "../promptImportFormat";
 import type { SizeOption } from "../types";
+import { ModalShell } from "./ModalShell";
 
 interface PromptImportModalProps {
   /** 尺寸选项（由画布 config 派生传入，预览时按比例匹配真实尺寸） */
@@ -10,70 +11,73 @@ interface PromptImportModalProps {
   onClose: () => void;
 }
 
-/**
- * 粘贴导入提示词卡片：把多模态模型按导入格式输出的整段回复粘进来，实时解析预览。
- * 解析出的合法卡片逐条展示（标题 / 比例 / 匹配尺寸 / 正文预览），
- * 有问题的条目（缺 ratio、重复标题等）标红列出；确认后批量建卡。
- */
+/** 粘贴整段模型回复，实时解析并批量创建提示词卡片。 */
 export function PromptImportModal({ sizes, onConfirm, onClose }: PromptImportModalProps) {
   const [text, setText] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const { cards, issues } = useMemo(() => parsePromptImportFormat(text), [text]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="flex max-h-[86vh] w-[42rem] max-w-[94vw] flex-col rounded-lg bg-white p-4 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="mb-2 text-sm font-semibold">粘贴导入提示词卡片</h3>
-        <p className="mb-3 text-xs text-neutral-500">
-          把模型回复整段粘贴到下方。导入格式：{"=== 标题 ==="} 行 + {"```text"} 围栏 + 块内首行 {"ratio: N:M"}。
+    <ModalShell
+      title="粘贴导入提示词卡片"
+      onClose={onClose}
+      initialFocusRef={inputRef}
+      className="modal-panel--lg prompt-import-modal"
+    >
+      <header className="modal-header">
+        <h3 className="modal-title">粘贴导入提示词卡片</h3>
+        <p className="modal-subtitle">
+          粘贴模型回复。每张卡片由标题、文本围栏与首行比例组成。
         </p>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={10}
-          placeholder={"=== 示例图1 ===\n```text\nratio: 1:1\n\n（提示词正文）\n```"}
-          className="field-control nodrag nowheel resize-y font-mono text-xs leading-relaxed"
-        />
-        <div className="modal-body mt-2 space-y-1">
-          <div className="text-xs text-neutral-500">
-            识别 {cards.length} 张卡片
-            {issues.length > 0 && <span className="ml-2 text-red-500">发现 {issues.length} 个问题</span>}
-          </div>
-          {cards.map((card) => {
-            const size = resolveCardSize(card.ratio, sizes);
-            return (
-              <div key={card.title} className="flex items-center gap-2 text-xs">
-                <span className="shrink-0 font-medium text-neutral-800">{card.title}</span>
-                <span className="shrink-0 text-neutral-400">{card.ratio}</span>
-                <span className="shrink-0 text-neutral-500">{size.value}</span>
-                {size.fallback && <span className="shrink-0 text-amber-600">尺寸回退</span>}
-                <span className="min-w-0 truncate text-neutral-600">{card.prompt}</span>
+      </header>
+      <textarea
+        ref={inputRef}
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        rows={10}
+        aria-label="待导入的提示词文本"
+        placeholder={"=== 示例图1 ===\n```text\nratio: 1:1\n\n（提示词正文）\n```"}
+        className="field-control nodrag nowheel resize-y font-mono text-xs leading-relaxed"
+      />
+      <div className="modal-body prompt-import-preview" role="status" aria-live="polite">
+        <div className="prompt-import-summary">
+          <span>识别 {cards.length} 张卡片</span>
+          {issues.length > 0 && <span className="prompt-import-summary__error">发现 {issues.length} 个问题</span>}
+        </div>
+        {cards.map((card) => {
+          const size = resolveCardSize(card.ratio, sizes);
+          return (
+            <article key={card.title} className="prompt-import-card">
+              <div className="prompt-import-card__meta">
+                <strong>{card.title}</strong>
+                <span>{card.ratio}</span>
+                <span>{size.value}</span>
+                {size.fallback && <span className="prompt-import-card__fallback">尺寸回退</span>}
               </div>
-            );
-          })}
-          {issues.map((issue, i) => (
-            <div key={i} className="text-xs text-red-500">
-              {issue.title ? `「${issue.title}」` : ""}：{issue.message}
-            </div>
-          ))}
-          {!text.trim() && <div className="py-2 text-center text-[11px] text-neutral-300">粘贴内容后实时预览</div>}
-        </div>
-        <div className="mt-3 flex justify-end gap-2">
-          <button type="button" className="btn-ghost !px-3 !py-1 text-xs" onClick={onClose}>
-            取消
-          </button>
-          <button
-            type="button"
-            className="btn-primary !px-4 !py-1 text-xs"
-            disabled={cards.length === 0}
-            onClick={() => onConfirm(cards)}
-          >
-            确认建卡（{cards.length}）
-          </button>
-        </div>
+              <p>{card.prompt}</p>
+            </article>
+          );
+        })}
+        {issues.map((issue, index) => (
+          <div key={`${issue.title ?? "issue"}-${index}`} className="prompt-import-issue">
+            {issue.title ? `「${issue.title}」` : "当前内容"}：{issue.message}
+          </div>
+        ))}
+        {!text.trim() && <div className="modal-empty">粘贴内容后将在这里实时预览</div>}
       </div>
-    </div>
+      <footer className="modal-footer">
+        <button type="button" className="btn-ghost btn-sm" onClick={onClose}>
+          取消
+        </button>
+        <button
+          type="button"
+          className="btn-primary btn-sm"
+          disabled={cards.length === 0}
+          onClick={() => onConfirm(cards)}
+        >
+          确认建卡（{cards.length}）
+        </button>
+      </footer>
+    </ModalShell>
   );
 }

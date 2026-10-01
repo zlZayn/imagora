@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 export interface SelectOption {
   value: string;
@@ -14,44 +14,103 @@ interface SelectProps {
 }
 
 /**
- * 自定义下拉框：展开面板带过渡动画，选项 hover / 选中态统一，
- * 点击外部或 Esc 关闭。替代原生 select（原生展开列表无法自定义样式）。
+ * 自定义下拉框：提供标准 listbox 语义、完整键盘导航和稳定的关闭行为。
+ * 关闭时仍用 display:none，避免绝对定位列表撑高外层滚动容器。
  */
 export function Select({ options, value, onChange, className = "", id }: SelectProps) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const reactId = useId();
+  const listboxId = `${id ?? `select-${reactId}`}-listbox`;
+
+  const selectedIndex = options.findIndex((option) => option.value === value);
+  const current = selectedIndex >= 0 ? options[selectedIndex] : undefined;
+  const optionId = (index: number) => `${listboxId}-option-${index}`;
+
+  const openList = (preferredIndex = selectedIndex >= 0 ? selectedIndex : 0) => {
+    if (!options.length) return;
+    setActiveIndex(Math.min(Math.max(preferredIndex, 0), options.length - 1));
+    setOpen(true);
+  };
+
+  const closeList = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) window.setTimeout(() => triggerRef.current?.focus(), 0);
+  };
+
+  const choose = (index: number) => {
+    const option = options[index];
+    if (!option) return;
+    onChange(option.value);
+    closeList(true);
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) closeList();
     };
     document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const current = options.find((option) => option.value === value);
+  useEffect(() => {
+    if (!options.length && open) {
+      setOpen(false);
+      setActiveIndex(-1);
+    }
+  }, [open, options.length]);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "Tab") {
+      closeList();
+      return;
+    }
+    if (event.key === "Escape") {
+      if (open) {
+        event.preventDefault();
+        closeList(true);
+      }
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!open) {
+        openList();
+        return;
+      }
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      setActiveIndex((index) => (index + delta + options.length) % options.length);
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      if (!options.length) return;
+      event.preventDefault();
+      if (!open) setOpen(true);
+      setActiveIndex(event.key === "Home" ? 0 : options.length - 1);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (open) choose(activeIndex);
+      else openList();
+    }
+  };
 
   return (
-    <div ref={rootRef} className={`relative ${className}`}>
-      {/* 触发按钮 */}
+    <div ref={rootRef} className={`select-root relative ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
         id={id}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => (open ? closeList() : openList())}
+        onKeyDown={handleKeyDown}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className="field-control flex items-center justify-between gap-2 text-left"
+        aria-controls={listboxId}
+        aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}
+        className="field-control select-trigger flex items-center justify-between gap-2 text-left"
       >
         <span className="min-w-0 truncate">{current?.label ?? "请选择"}</span>
         <svg
@@ -63,39 +122,34 @@ export function Select({ options, value, onChange, className = "", id }: SelectP
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
+          aria-hidden="true"
           className={`shrink-0 text-neutral-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
         >
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
 
-      {/* 展开面板：关闭时用 display:none（而不是 invisible/opacity-0）——
-       * 隐藏但仍占布局的绝对定位面板会算进祖先滚动容器的 scrollHeight，
-       * 哪怕用户根本看不到它，也会让外层「莫名多出一截可滚区域 / 冒出滚动条」
-       * （实测：「生图 API 设置」弹窗里豆包的 6 项模型列表凭空撑出 102px）。
-       * 代价是失去展开动画，换来的是各处滚动容器不再有幽灵高度。 */}
       <ul
+        id={listboxId}
         role="listbox"
-        className={`absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg ${
-          open ? "block" : "hidden"
-        }`}
+        className={`select-list absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-auto ${open ? "block" : "hidden"}`}
       >
-        {options.map((option) => (
-          <li key={option.value}>
-            <button
-              type="button"
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-              className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                option.value === value
-                  ? "bg-brand/5 font-medium text-brand"
-                  : "text-neutral-700 hover:bg-brand/5 hover:text-brand"
-              }`}
+        {options.map((option, index) => {
+          const selected = option.value === value;
+          const active = index === activeIndex;
+          return (
+            <li
+              key={option.value}
+              id={optionId(index)}
+              role="option"
+              aria-selected={selected}
+              className={`select-option ${selected ? "is-selected" : ""} ${active ? "is-active" : ""}`}
+              onMouseEnter={() => setActiveIndex(index)}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => choose(index)}
             >
               <span className="truncate">{option.label}</span>
-              {option.value === value && (
+              {selected && (
                 <svg
                   width="14"
                   height="14"
@@ -105,14 +159,15 @@ export function Select({ options, value, onChange, className = "", id }: SelectP
                   strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  aria-hidden="true"
                   className="shrink-0"
                 >
                   <path d="M20 6 9 17l-5-5" />
                 </svg>
               )}
-            </button>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
