@@ -6,6 +6,7 @@ import { ACCENT_PRESETS, accentForWindow, accentFromHue, hueForWindow, readAccen
 import { clearWallpaperImage, purgeLegacyWallpaperSettings, readWallpaperImage, saveWallpaperImage } from "./wallpaperStore";
 import { readCanvasBounds, saveCanvasBounds } from "./canvasBounds";
 import {
+  DEFAULT_BACKGROUND_PRESET,
   PRESET_MATERIALS,
   PRESET_WALLPAPERS,
   presetWallpaperOf,
@@ -13,7 +14,7 @@ import {
   saveBackgroundPreset,
   type BackgroundPresetId,
 } from "./backgroundPreset";
-import { SURFACE_TRANSPARENCY_LIMITS, readSurfaceTransparency, saveSurfaceTransparency, surfaceTokens } from "./surface";
+import { SURFACE_TRANSPARENCY_DEFAULT, SURFACE_TRANSPARENCY_LIMITS, readSurfaceTransparency, saveSurfaceTransparency, surfaceTokens } from "./surface";
 import type { AppConfig, ConfigProfileView, GenerationTaskStatus, ModelOption, PersonalApiPreset, PersonalApiSettings, ProviderCatalog, RefItem, ResultItem } from "./types";
 import { errMessage, generatingLabel } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
@@ -88,6 +89,7 @@ function AppearanceModal({
   onSurfaceTransparencyChange,
   canvasBounds,
   onCanvasBoundsChange,
+  onReset,
   onClose,
 }: {
   /** 自定义主体色相；null 表示未自定义（回到按窗口自动配色） */
@@ -111,6 +113,8 @@ function AppearanceModal({
   /** 画布是否显示自己的边界（边框 + 底色） */
   canvasBounds: boolean;
   onCanvasBoundsChange: (visible: boolean) => void;
+  /** 一键恢复默认外观（主体色回自动、背景回默认纯白、壁纸清空、通透度与画布边界回默认） */
+  onReset: () => void;
   onClose: () => void;
 }) {
   /** Esc 关闭（与图片预览弹窗同一套行为：模态开了就该能用 Esc 退出来） */
@@ -121,6 +125,15 @@ function AppearanceModal({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+
+  /** 外观是否已经等于「没设置过」的样子：用来把「恢复默认」置灰。
+   *  置灰而不是隐藏——用户遇到问题时会先来找这个按钮，藏起来等于没做。 */
+  const isDefaultAppearance =
+    accentHue === null &&
+    backgroundPreset === DEFAULT_BACKGROUND_PRESET &&
+    !wallpaper.hasImage &&
+    Math.abs(surfaceTransparency - SURFACE_TRANSPARENCY_DEFAULT) < 1e-6 &&
+    canvasBounds;
 
   return (
     <ModalShell title="外观" onClose={onClose} className="modal-panel--md corner-rings">
@@ -234,6 +247,21 @@ function AppearanceModal({
             {presetWallpaperOf(backgroundPreset) !== null && wallpaper.hasImage && (
               <p className="text-caption mt-1">预设壁纸盖住了你的自选壁纸；删掉自选壁纸也还是这张预设图。</p>
             )}
+            {/* 选了材质却又存着自选壁纸：材质其实生效了，只是被整页壁纸层压在下面。
+                不写这句，用户会以为「点材质没反应」（实际发生过），所以连一键删除一起给。 */}
+            {presetWallpaperOf(backgroundPreset) === null && wallpaper.hasImage && (
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <p className="text-caption">自选壁纸整页盖在材质上面，所以换材质看不出变化。</p>
+                <button
+                  type="button"
+                  className="btn-ghost btn-xs btn-danger"
+                  disabled={wallpaper.busy}
+                  onClick={onWallpaperClear}
+                >
+                  删除自选壁纸
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 我的壁纸：按原图直接铺满，不缩放、不模糊、不压暗（图本体存 IndexedDB，只在本机） */}
@@ -310,6 +338,27 @@ function AppearanceModal({
               onChange={(e) => onCanvasBoundsChange(e.target.checked)}
               aria-label="显示画布边界"
             />
+          </div>
+
+          {/* 一键恢复默认外观：这一屏每一项都清回「没设置过」的样子（默认背景 = 纯白）。
+              放在最底部，与上面各分区同一条分隔线语言。 */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200/80 pt-4">
+            <div>
+              <p className="field-label">恢复默认外观</p>
+              <p className="text-caption mt-0.5">
+                {isDefaultAppearance
+                  ? "当前已是默认外观（纯白底、无壁纸）"
+                  : "主体色回自动、背景回纯白、壁纸清空、通透度与画布边界回默认"}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={onReset}
+              disabled={isDefaultAppearance || wallpaper.busy}
+            >
+              恢复默认
+            </button>
           </div>
         </div>
       </ModalShell>
@@ -1088,6 +1137,23 @@ export function App() {
     saveSurfaceTransparency(value);
   };
 
+  /**
+   * 恢复默认外观：把「外观」这一屏的每一项都清回未设置状态。
+   *
+   * 为什么要一个总开关：这几项此前只能逐项手动点回去，而且「背景材质」里当时没有纯白档
+   * ——用户调花了之后**没有任何路径回到白底**，只能翻 localStorage。这一键就是那条路径。
+   *
+   * 壁纸无条件清（不看 wallpaperActive）：IndexedDB 里可能留着图而内存 blob 还没到位，
+   * 清一次是幂等的，漏清反而会留下「说好恢复了却还铺着图」的状态。
+   */
+  const handleAppearanceReset = () => {
+    handleAccentHueChange(null);
+    handleBackgroundPresetChange(DEFAULT_BACKGROUND_PRESET);
+    handleWallpaperClear();
+    handleSurfaceTransparencyChange(SURFACE_TRANSPARENCY_DEFAULT);
+    handleCanvasBoundsChange(true);
+  };
+
   /** 动态 favicon：标签页图标跟随窗口主体色（与顶栏 logo / 菜单边框同色），多开一眼可辨 */
 useEffect(() => {
   const svg = brandLogoSvg(accent.brand);
@@ -1449,6 +1515,7 @@ useEffect(() => {
           onSurfaceTransparencyChange={handleSurfaceTransparencyChange}
           canvasBounds={canvasBounds}
           onCanvasBoundsChange={handleCanvasBoundsChange}
+          onReset={handleAppearanceReset}
           onClose={() => setShowAppearance(false)}
         />
       )}

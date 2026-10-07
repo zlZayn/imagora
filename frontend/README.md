@@ -136,7 +136,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ### [backgroundPreset.ts](src/backgroundPreset.ts)
 - 职责：背景预设的纯数据与读写（`BACKGROUND_PRESETS` 八项 = 六项材质 + 两张内置壁纸、`PRESET_MATERIALS` / `PRESET_WALLPAPERS` 分组、`presetWallpaperOf` 取壁纸 URL、`readBackgroundPreset` / `saveBackgroundPreset`、`isBackgroundPresetId`）；材质由 [index.css](src/index.css) 按 `html[data-bg]` 出，内置壁纸由 App 铺进整页壁纸层（走 `wallpaper` 字段，不走 `--bg-image`：那条是 repeat 的材质通道）
-- 被谁依赖：`App.tsx`（外观弹窗的色块行 + 根元素 `html[data-bg]`）
+- 被谁依赖：`App.tsx`（外观弹窗的色块行 + 根元素 `html[data-bg]` + 「恢复默认外观」）
 - 注意：**只有浅色系**（纯白 / 跟随主体色 / 纸纤维 / 木纹 / 干净冷灰 / 雾面），**默认是纯白 `plain`**（2026-10-07 维护者要求「不设置时就是正常网页的白底」；此前默认「跟随主体色」会让整页跟着主体色相偏色，用户形容为「背景不正常、改不回白底」）。深色的「暗房 / 蓝图」不在其中——它们要连顶栏、卡片、文字、按钮一起换深色，属独立工程；非法/空白存储值一律回落默认「纯白」
 
 ### [surface.ts](src/surface.ts)
