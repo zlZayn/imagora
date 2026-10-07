@@ -51,7 +51,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 最近提示词 | `.recent-prompt` | 结果区空态一键复用的提示词行：单行截断，完整内容走 title 悬停 |
 | 行内角标 | `.chip`（`--sm` `--dot` `--brand` `--quiet` `--danger`） | 顶栏 28 · 小号 18 |
 | 分段控件 | `.tabs`（模态页签） · `.mode-switch`（顶栏模式） | 同源视觉，尺寸走 `--h-ctl` |
-| 模态内容区 | `.modal-body` | 高度过渡（`--panel-h` 驱动）+ 滚动条占位 + `[data-growing]` 变高裁切 |
+| 模态内容区 | `.modal-body` | 面板是 **flex 列**（`.modal-panel`），内容区 `flex: 1 1 auto` + `min-height: 0` 才能被压缩并自己滚动——面板自身 `max-height: min(86dvh, 760px)` + `overflow: hidden`，内容一旦超高**只会被裁掉**，光给内容区写 `overflow-y: auto` 而不约束高度等于没写（`scrollHeight === clientHeight`，底部几行永远滚不到）；`scrollbar-gutter: stable` 是滚动条占位 |
 | 只读值表 | `.spec-list` + `__row` / `__key` / `__val` / `__src` | 「值 + 来源」两行式排版 |
 | 背景材质 | `html[data-bg="…"]` + `.bg-swatches` / `.bg-swatch`（`--plain` `--accent` `--paper` `--wood` `--cool` `--mist`） | 整页背景材质预设；**默认 `plain`（纯白 `#ffffff`、无纹理，普通网页观感）**，`:root` 兜底与它同值（不一致会在 JS 挂载前先闪一层别的底色）；材质只在 `--bg-color` / `--bg-image` / `--bg-size` 三个变量里声明一次，`html[data-bg]` 与选择器色块**共用同一组声明**（每个 id 都必须有对应规则，否则「点了没反应」——由 `backgroundPreset.test.ts` 钉住）；铺法是 `repeat`（纹理通道），**大图不许走这里**（会平铺出接缝）；「跟随主体色」的底色/光晕只能读 `--accent-hue`（`--color-brand` 在 `.imagora-app` 上，body 读不到） |
 | 预设壁纸 | `.bg-walls` / `.bg-wall`（`--dragon` `--tiger`） | 内置大图选项：缩略图直接 `background-image: url("/wallpapers/xxx.jpg")`（静态文件在 `frontend/public/wallpapers/`，构建期原样拷进 `dist/`，路径不经打包器改写）；选中后走**整页壁纸层**（cover 不重复），与「我的壁纸」同一层、同一套可读性处理 |

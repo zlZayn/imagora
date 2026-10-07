@@ -718,6 +718,13 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   width: min(100%, 42rem);
   max-height: min(86dvh, 760px);
   overflow: hidden;
+  /* flex 列 + 内容区可收缩：面板自己被 max-height 封顶、又 overflow:hidden，
+     所以内容一旦超过 760px，只有让 **内容区**（.modal-body）变成可收缩的滚动态才拿得到底。
+     改成块级布局时踩过的坑：.modal-body 只写了 overflow-y:auto，但高度不受约束，
+     scrollHeight === clientHeight 永远不触发滚动，底部几行（画布边界 / 恢复默认外观）
+     被面板裁掉且怎么拖都露不出来。 */
+  display: flex;
+  flex-direction: column;
   padding: 20px;
   border: 1px solid rgba(255,255,255,.68);
   border-radius: 16px !important;
@@ -763,8 +770,11 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .upload-thumb { display: block; padding: 0; border-radius: 9px; }
 .result-status-ring { display: flex; width: 112px; height: 112px; align-items: center; justify-content: center; border-width: 1.5px; border-radius: 50%; box-shadow: 0 18px 50px rgba(23,32,43,.08), inset 0 0 0 8px rgba(255,255,255,.42); }
 /* 模态内容区：默认按内容自适应高度（外观 / 提示词导入弹窗）。
+ * flex: 1 1 auto + min-height: 0 是「能滚」的前提——父级 .modal-panel 是 flex 列，
+ * 内容区必须允许被压缩到内容高度以下，否则它只会撑长面板、被面板的 overflow:hidden 裁掉。
  * scrollbar-gutter 预留滚动条占位：即便出现滚动条也不横向位移。 */
 .modal-body {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
