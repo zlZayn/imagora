@@ -1,7 +1,7 @@
 /**
  * 背景预设 —— 整页背景可选几套现成材质，外加两张内置壁纸。
  *
- * 材质只做**浅色系**：纸纤维 / 木纹 / 干净冷灰 / 雾面，外加"跟随主体色"（默认）。
+ * 材质只做**浅色系**：纯白（默认）/ 跟随主体色 / 纸纤维 / 木纹 / 干净冷灰 / 雾面，外加"跟随主体色"（默认）。
  * 深色的「暗房」「蓝图」**不在此列**：它们不是换一层背景就完事，
  * 顶栏、卡片、文字、按钮都要同时换一套深色值，否则浅色文字控件压在深底上直接不可读。
  * 那属于独立的深色主题工程，等确认要做再单独立项。
@@ -15,7 +15,15 @@
  * 本模块只放纯数据与读写（无副作用、无 DOM），实际材质由 index.css 按 id 出。
  */
 
-export type BackgroundPresetId = "accent" | "paper" | "wood" | "cool" | "mist" | "dragon" | "tiger";
+export type BackgroundPresetId =
+  | "plain"
+  | "accent"
+  | "paper"
+  | "wood"
+  | "cool"
+  | "mist"
+  | "dragon"
+  | "tiger";
 
 export interface BackgroundPreset {
   id: BackgroundPresetId;
@@ -31,7 +39,8 @@ export interface BackgroundPreset {
 
 /** 顺序即界面顺序：默认项在最前；材质在前、内置壁纸在后（两类分开渲染） */
 export const BACKGROUND_PRESETS: readonly BackgroundPreset[] = [
-  { id: "accent", label: "跟随主体色", hint: "默认：底色随主体色相变化，与按钮、角标同一色系" },
+  { id: "plain", label: "纯白", hint: "纯白底、无纹理，与普通网页一致的默认观感" },
+  { id: "accent", label: "跟随主体色", hint: "底色随主体色相变化，与按钮、角标同一色系" },
   { id: "paper", label: "纸纤维", hint: "暖米白纸底 + 纤维纹理" },
   { id: "wood", label: "木纹", hint: "暖木色底 + 细木纹" },
   { id: "cool", label: "干净冷灰", hint: "中性冷灰，无纹理" },
@@ -72,8 +81,15 @@ export const PRESET_MATERIALS: readonly BackgroundPreset[] = BACKGROUND_PRESETS.
 /** 存储键（仅本机浏览器） */
 export const BACKGROUND_PRESET_STORAGE_KEY = "imagora.background-preset.v1";
 
-/** 默认预设：跟随主体色（即改动前的既有观感，不能悄悄换掉默认） */
-export const DEFAULT_BACKGROUND_PRESET: BackgroundPresetId = "accent";
+/**
+ * 默认预设：纯白。
+ *
+ * 2026-10-07 维护者要求：不设置时就是「正常网页的白底」，不要再让页面底色跟着主体色走。
+ * 早于这条的默认是「跟随主体色」（`hsl(色相 32% 93%)` + 两层同色系光晕）——
+ * 主体色一旦调成品红，整页就发粉，用户描述为「背景不正常、改不回白底」。
+ * 「跟随主体色」仍保留为可选项（id 未变，老用户存过的值照旧生效），只是不再是默认。
+ */
+export const DEFAULT_BACKGROUND_PRESET: BackgroundPresetId = "plain";
 
 const IDS: readonly BackgroundPresetId[] = BACKGROUND_PRESETS.map((preset) => preset.id);
 

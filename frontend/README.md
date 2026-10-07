@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（332 用例）
+npm test           # vitest run（337 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -53,7 +53,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 分段控件 | `.tabs`（模态页签） · `.mode-switch`（顶栏模式） | 同源视觉，尺寸走 `--h-ctl` |
 | 模态内容区 | `.modal-body` | 高度过渡（`--panel-h` 驱动）+ 滚动条占位 + `[data-growing]` 变高裁切 |
 | 只读值表 | `.spec-list` + `__row` / `__key` / `__val` / `__src` | 「值 + 来源」两行式排版 |
-| 背景材质 | `html[data-bg="…"]` + `.bg-swatches` / `.bg-swatch`（`--paper` `--wood` `--cool` `--mist`） | 整页背景材质预设；材质只在 `--bg-color` / `--bg-image` / `--bg-size` 三个变量里声明一次，`html[data-bg]` 与选择器色块**共用同一组声明**；铺法是 `repeat`（纹理通道），**大图不许走这里**（会平铺出接缝）；页面底色只能用 `--accent-hue`（`--color-brand` 在 `.imagora-app` 上，body 读不到） |
+| 背景材质 | `html[data-bg="…"]` + `.bg-swatches` / `.bg-swatch`（`--plain` `--accent` `--paper` `--wood` `--cool` `--mist`） | 整页背景材质预设；**默认 `plain`（纯白 `#ffffff`、无纹理，普通网页观感）**，`:root` 兜底与它同值（不一致会在 JS 挂载前先闪一层别的底色）；材质只在 `--bg-color` / `--bg-image` / `--bg-size` 三个变量里声明一次，`html[data-bg]` 与选择器色块**共用同一组声明**（每个 id 都必须有对应规则，否则「点了没反应」——由 `backgroundPreset.test.ts` 钉住）；铺法是 `repeat`（纹理通道），**大图不许走这里**（会平铺出接缝）；「跟随主体色」的底色/光晕只能读 `--accent-hue`（`--color-brand` 在 `.imagora-app` 上，body 读不到） |
 | 预设壁纸 | `.bg-walls` / `.bg-wall`（`--dragon` `--tiger`） | 内置大图选项：缩略图直接 `background-image: url("/wallpapers/xxx.jpg")`（静态文件在 `frontend/public/wallpapers/`，构建期原样拷进 `dist/`，路径不经打包器改写）；选中后走**整页壁纸层**（cover 不重复），与「我的壁纸」同一层、同一套可读性处理 |
 | 我的壁纸 | `.imagora-wallpaper` + `__image` | 整页背景层：固定铺满、置底不挡交互；**按原图 cover 铺底，不缩放、不压暗、不重编码**，只加一层降噪滤镜（`saturate(.62) contrast(.94)`，常量见 `surface.ts` 的 `WALLPAPER_IMAGE_FILTER`）让前景字好读——**不许用半透明白纱**，白纱会把图提亮变灰，等于第二次「看不清」；有壁纸时 `html[data-wallpaper="on"] body` 让出页面底色、并给 `.panel-card` / `.classic-result-panel` 内的文字补极淡白色 text-shadow（该规则须排在预设之后才压得住）。**这一层同时服务内置预设壁纸**（`presetWallpaperOf` 有值时优先于自选图，见 `App.tsx` 的 `pageWallpaperUrl`）：两者共用一层才不会让可读性处理分叉 |
 | 开关 | `.switch` | 布尔开关（原生 checkbox + 轨道圆钮，状态只走 `:checked`）；画布边界开关用它 |
@@ -135,9 +135,9 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 注意：`accentForWindow` **不做色相归一**，越界编号（如 0）保留负色相——该行为由 `accent.test.ts` 钉住，改它会破坏既有契约
 
 ### [backgroundPreset.ts](src/backgroundPreset.ts)
-- 职责：背景预设的纯数据与读写（`BACKGROUND_PRESETS` 七项 = 五项材质 + 两张内置壁纸、`PRESET_MATERIALS` / `PRESET_WALLPAPERS` 分组、`presetWallpaperOf` 取壁纸 URL、`readBackgroundPreset` / `saveBackgroundPreset`、`isBackgroundPresetId`）；材质由 [index.css](src/index.css) 按 `html[data-bg]` 出，内置壁纸由 App 铺进整页壁纸层（走 `wallpaper` 字段，不走 `--bg-image`：那条是 repeat 的材质通道）
+- 职责：背景预设的纯数据与读写（`BACKGROUND_PRESETS` 八项 = 六项材质 + 两张内置壁纸、`PRESET_MATERIALS` / `PRESET_WALLPAPERS` 分组、`presetWallpaperOf` 取壁纸 URL、`readBackgroundPreset` / `saveBackgroundPreset`、`isBackgroundPresetId`）；材质由 [index.css](src/index.css) 按 `html[data-bg]` 出，内置壁纸由 App 铺进整页壁纸层（走 `wallpaper` 字段，不走 `--bg-image`：那条是 repeat 的材质通道）
 - 被谁依赖：`App.tsx`（外观弹窗的色块行 + 根元素 `html[data-bg]`）
-- 注意：**只有浅色系**（跟随主体色 / 纸纤维 / 木纹 / 干净冷灰 / 雾面）。深色的「暗房 / 蓝图」不在其中——它们要连顶栏、卡片、文字、按钮一起换深色，属独立工程；非法/空白存储值一律回落默认「跟随主体色」
+- 注意：**只有浅色系**（纯白 / 跟随主体色 / 纸纤维 / 木纹 / 干净冷灰 / 雾面），**默认是纯白 `plain`**（2026-10-07 维护者要求「不设置时就是正常网页的白底」；此前默认「跟随主体色」会让整页跟着主体色相偏色，用户形容为「背景不正常、改不回白底」）。深色的「暗房 / 蓝图」不在其中——它们要连顶栏、卡片、文字、按钮一起换深色，属独立工程；非法/空白存储值一律回落默认「纯白」
 
 ### [surface.ts](src/surface.ts)
 - 职责：卡片表面材质——`surfaceTokens(色相, 通透度)` 产出 `--surface-card` / `--surface-panel` / `--field-bg` 三个字面量 CSS 值 + `--surface-blur`；`blurFor` 是模糊半径的唯一出处（**当前恒返回 `none`**：壁纸要原样清晰；函数保留只为「由 JS 注入整条字面量」这条路不破）；`WALLPAPER_IMAGE_FILTER` 是壁纸降噪滤镜常量（CSS 侧同值）；`FIELD_ALPHA_FLOOR` 是输入框不透明度底线（0.25）；`readSurfaceTransparency` / `saveSurfaceTransparency` 存通透度（0 最实，1 最透）

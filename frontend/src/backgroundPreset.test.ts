@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -66,8 +67,45 @@ describe("材质与内置壁纸分成两组", () => {
   });
 });
 
+describe("默认预设", () => {
+  it("默认是纯白（普通网页观感），不再是跟随主体色", () => {
+    expect(DEFAULT_BACKGROUND_PRESET).toBe("plain");
+    // 「跟随主体色」仍在清单里，只是不再当默认：老用户存过 accent 仍然生效
+    expect(isBackgroundPresetId("accent")).toBe(true);
+  });
+
+  it("默认项必须是材质而不是内置壁纸（默认不能是一张大图）", () => {
+    expect(presetWallpaperOf(DEFAULT_BACKGROUND_PRESET)).toBeNull();
+  });
+});
+
+describe("材质与 index.css 的对应关系", () => {
+  const css = readFileSync("src/index.css", "utf8");
+
+  it("每一项材质在 index.css 里都有自己的 html[data-bg] 声明（漏一个就会出现「点了没反应」）", () => {
+    for (const preset of PRESET_MATERIALS) {
+      expect(css).toContain(`html[data-bg="${preset.id}"]`);
+    }
+  });
+
+  it("纯白档给出 #ffffff 且不带任何纹理图", () => {
+    const block = css.match(/html\[data-bg="plain"\],\s*\n\.bg-swatch--plain\s*\{([^}]*)\}/);
+    expect(block).not.toBeNull();
+    const body = block?.[1] ?? "";
+    expect(body).toMatch(/--bg-color:\s*#ffffff/);
+    expect(body).toMatch(/--bg-image:\s*none/);
+  });
+
+  it(":root 兜底底色与默认材质一致（不一致会在 JS 挂载前闪一层别的底色）", () => {
+    const rootBlock = css.match(/^:root\s*\{([^}]*)\}/m);
+    expect(rootBlock).not.toBeNull();
+    expect(rootBlock?.[1] ?? "").toMatch(/--bg-color:\s*#ffffff/);
+  });
+});
+
 describe("isBackgroundPresetId", () => {
   it("合法 id 为真，其余一律为假", () => {
+    expect(isBackgroundPresetId("plain")).toBe(true);
     expect(isBackgroundPresetId("paper")).toBe(true);
     expect(isBackgroundPresetId("accent")).toBe(true);
     // 新增的两张内置壁纸也是合法选项，选中后要能持久化
@@ -86,7 +124,7 @@ describe("读写", () => {
     localStorage.clear();
   });
 
-  it("未设置时回落默认（跟随主体色）", () => {
+  it("未设置时回落默认（纯白）", () => {
     expect(readBackgroundPreset()).toBe(DEFAULT_BACKGROUND_PRESET);
   });
 

@@ -13,12 +13,31 @@
  *
  * 各预设只定义三个变量：--bg-color / --bg-image / --bg-size。
  *
+ * 默认 = 纯白（2026-10-07 维护者要求「不设置时就是正常网页的白底」）：
+ * :root 的兜底值必须与 default 预设（plain）一致，否则 JS 挂载前会先闪一层别的底色。
+ * 旧的「跟随主体色」材质挪到 html[data-bg="accent"]，作为可选项保留。
+ *
  * 注意：光晕改用 hsl(var(--accent-hue) ...) 而不是 var(--color-brand)。
  * --color-brand 由 App 写在 .imagora-app 内联样式上，**CSS 变量只向下继承**，
  * body 读不到它（body 只能读到 :root 的兜底灰 #475569）——
  * 也就是说这里以前那两层光晕一直是灰的、并没跟着主体色走。用 --accent-hue 才对。
  */
 :root {
+  --bg-color: #ffffff;
+  --bg-image: none;
+  --bg-size: auto;
+}
+
+html[data-bg="plain"],
+.bg-swatch--plain {
+  --bg-color: #ffffff;
+  --bg-image: none;
+  --bg-size: auto;
+}
+
+/* 跟随主体色：不是纯白，底色与光晕都跟着主体色相走（默认已改为 plain，此项仍可选） */
+html[data-bg="accent"],
+.bg-swatch--accent {
   --bg-color: hsl(var(--accent-hue, 0) 32% 93%);
   --bg-image:
     radial-gradient(circle at 10% -14%, hsl(var(--accent-hue, 0) 55% 42% / 0.22), transparent 46rem),
