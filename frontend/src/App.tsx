@@ -836,6 +836,25 @@ function TitleBar({
   const apiKeyMissing = healthIssues.some((issue) => issue.includes("未配置 API Key"));
   const otherIssues = healthIssues.filter((issue) => !issue.includes("未配置 API Key"));
 
+  /* 「当前在用什么接口」角标 = 状态 + 入口（点它开设置弹窗）。
+     此前顶栏同时挂着模型角标与「生图 API」按钮，两处说同一件事；
+     现在只留这一个控件：正常显示模型名（个人配置生效时带标记），
+     异常时改说原因。文字一律走主题色，状态由角标底色区分。 */
+  const apiChipLabel = apiKeyMissing
+    ? "未配置 API Key"
+    : otherIssues.length > 0
+      ? `自检 ${otherIssues.length} 项`
+      : personalApi
+        ? `${defaultModel || "个人配置"} · 个人`
+        : defaultModel || activeProfile || "未选择模型";
+  const apiChipTitle = apiKeyMissing
+    ? "未配置 API Key，生图任务暂不可用 —— 点击配置"
+    : otherIssues.length > 0
+      ? otherIssues.join("；")
+      : personalApi
+        ? `个人配置生效中：${defaultModel || "未选择模型"} —— 点击修改`
+        : `当前生效：${activeProfile ? `profile「${activeProfile}」` : ""}${defaultModel ? ` · 模型 ${defaultModel}` : ""} —— 点击配置`;
+
   return (
     <header className="studio-header enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
       <a
@@ -854,29 +873,10 @@ function TitleBar({
         </span>
       </a>
       {windowId !== null && <span className="chip chip--brand window-chip">⌘{String(windowId).padStart(2, "0")}</span>}
-      {apiKeyMissing ? (
-        <button
-          type="button"
-          onClick={onOpenApi}
-          className="chip chip--quiet profile-chip cursor-pointer transition-colors hover:text-brand"
-          title="未配置 API Key，生图任务暂不可用 —— 点击配置"
-        >
-          未配置 API Key
-        </button>
-      ) : otherIssues.length > 0 ? (
-        <span className="chip chip--quiet profile-chip" title={otherIssues.join("；")}>
-          自检 {otherIssues.length} 项待处理
-        </span>
-      ) : activeProfile ? (
-        <span
-          className="chip chip--quiet profile-chip"
-          title={`当前配置：profile「${activeProfile}」${defaultModel ? ` · 默认模型 ${defaultModel}` : ""}`}
-        >
-          {activeProfile}
-          {defaultModel ? ` · ${defaultModel}` : ""}
-        </span>
-      ) : null}
-      {/* 模式切换：胶囊分段控件（高度/圆角/字号统一由 .mode-switch 提供，与顶栏其它控件等高） */}
+
+      {/* 模式切换：胶囊分段控件（高度/圆角/字号统一由 .mode-switch 提供，与顶栏其它控件等高）。
+          它是「我在哪个工作区」，属于身份的一部分，所以留在左侧紧跟窗口号，
+          不与右侧的设置类控件混在一起。 */}
       <div className="mode-switch">
         <button
           type="button"
@@ -897,11 +897,22 @@ function TitleBar({
           无限画布
         </button>
       </div>
+      {/* 右侧只有两件事：开新窗口（动作），以及两项设置（接口 / 外观）。
+          动作排最左，设置项按「多久调一次」从低频到高频：接口配一次就不动，外观最常调。 */}
       <button type="button" onClick={onNewWindow} className="btn-ghost ml-auto">
         ＋ 新窗口
       </button>
-      <button type="button" onClick={onOpenApi} className={`api-settings-trigger btn-ghost ${personalApi ? "is-active" : ""}`}>
-        {personalApi ? "个人 API 已启用" : "生图 API"}
+      {/* 状态 + 入口二合一：角标本身显示当前接口，点它开设置弹窗。
+          保留 api-settings-trigger 类名作为稳定的自动化选择器（scripts/smoke_api_modal.py 依赖它）。 */}
+      <button
+        type="button"
+        onClick={onOpenApi}
+        className={`api-settings-trigger chip chip--quiet profile-chip cursor-pointer transition-colors hover:text-brand ${
+          personalApi && !apiKeyMissing ? "is-active" : ""
+        }`}
+        title={apiChipTitle}
+      >
+        {apiChipLabel}
       </button>
       {/* 外观独立入口：接口配置配一次就不动，外观是高频调节，分开才容易发现 */}
       <button type="button" onClick={onOpenAppearance} className="btn-ghost" title="外观" aria-label="外观">
