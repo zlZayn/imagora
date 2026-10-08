@@ -123,6 +123,9 @@ html {
   --r-pill: 999px;
   --r-card: 16px;
   --r-control: 10px;
+  /* 待重启（配置已写入文件但进程尚未重载）：琥珀色，白底上可读且不刺眼。
+     刻意不复用语义警告的 amber —— 那是「出错了」，这是「还没生效」。 */
+  --color-pending: #b45309;
   --pad-card: 20px;
 }
 
@@ -253,6 +256,12 @@ html {
 .chip--brand { background: color-mix(in srgb, var(--color-brand) 12%, transparent); color: var(--color-brand); }
 .chip--danger { background: #dc2626; color: #fff; }
 .chip--quiet { background: rgba(31, 41, 55, 0.06); color: rgba(23, 32, 43, 0.62); }
+/* 待重启是**状态**不是警告，所以单独给一个色，不复用语义警告的 amber。
+   混用会让真正的警告（成本超限 / 参考图丢失）失去含义。 */
+.chip--pending {
+  background: color-mix(in srgb, var(--color-pending) 14%, transparent);
+  color: var(--color-pending);
+}
 
 /* ============ 最近用过的提示词（结果区空态） ============
  * 整行按钮，一条一行：提示词常达数百字，这里单行截断，完整内容走 title 悬停。

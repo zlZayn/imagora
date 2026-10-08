@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   FIELD_ALPHA_FLOOR,
+  MODAL_ALPHA_FLOOR,
   SURFACE_TRANSPARENCY_DEFAULT,
   SURFACE_TRANSPARENCY_STORAGE_KEY,
   clampSurfaceTransparency,
@@ -89,6 +90,22 @@ describe("surfaceTokens", () => {
     const cardAvg = alphasOf(tokens.card).reduce((a, b) => a + b, 0) / 2;
     const panelAvg = alphasOf(tokens.panel).reduce((a, b) => a + b, 0) / 2;
     expect(panelAvg).toBeGreaterThan(cardAvg);
+  });
+
+  it("弹窗面板有不透明度下限：拉到最透也不低于 MODAL_ALPHA_FLOOR", () => {
+    // 弹窗装的是密集表单，与卡片同比透明会让底下的壁纸穿上来、逐行读值费劲。
+    // 原先 .modal-panel 是写死 .97（完全不受通透度影响），改成读 token 后
+    // 必须补一道下限，否则拉到 100% 会掉到 .46（实测过）。
+    const clear = surfaceTokens(224, 1);
+    expect(Math.min(...alphasOf(clear.panel))).toBeGreaterThanOrEqual(MODAL_ALPHA_FLOOR);
+    // 卡片不受这道下限约束（它本来就该跟着通透度走）
+    expect(Math.min(...alphasOf(clear.card))).toBeLessThan(MODAL_ALPHA_FLOOR);
+  });
+
+  it("面板下限不至于让通透度失效：仍随通透度降低而变透", () => {
+    const solid = alphasOf(surfaceTokens(224, 0).panel).reduce((a, b) => a + b, 0) / 2;
+    const clear = alphasOf(surfaceTokens(224, 1).panel).reduce((a, b) => a + b, 0) / 2;
+    expect(clear).toBeLessThan(solid);
   });
 
   it("色相参与底色：不同色相产出不同字符串，且色相被归一", () => {

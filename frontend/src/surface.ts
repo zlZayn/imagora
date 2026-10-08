@@ -111,6 +111,19 @@ export function blurFor(_transparency: number): string {
 export const WALLPAPER_IMAGE_FILTER = "saturate(0.62) contrast(0.94)";
 
 /**
+ * 弹窗（`.modal-panel`）的专用不透明度下限。
+ *
+ * 为什么弹窗不与卡片同比透明：卡片是**大面积衬底**，透一点只是让壁纸露出来，
+ * 里面装的是结果图与短文；弹窗装的是**密集表单**（配置项、键值、长提示），
+ * 底下一花，逐行读值就费劲——同一档透明度在两者上的代价完全不同。
+ *
+ * 0.86 的来由：原先是写死的 .97，与卡片同比透明后会掉到 .46（实测），
+ * 打开弹窗时能明显看到壁纸穿过来。0.86 保住"整页有壁纸"的一致观感，
+ * 又能让表单文字稳稳压住背景（对比度与不透明档基本一致）。
+ */
+export const MODAL_ALPHA_FLOOR = 0.86;
+
+/**
  * 算出整套表面材质。色相参与底色的冷暖（跟随主体色），通透度改 alpha 与毛玻璃。
  * 色相非法时按 0 处理（与 accent.ts 的归一策略一致）。
  */
@@ -119,7 +132,8 @@ export function surfaceTokens(hue: number, transparency: number): SurfaceTokens 
   const t = clampSurfaceTransparency(transparency);
   return {
     card: `linear-gradient(150deg, hsl(${h} 26% 99.2% / ${alphaOf(BASE.cardTop, t)}), hsl(${h} 30% 96.8% / ${alphaOf(BASE.cardBottom, t)}))`,
-    panel: `linear-gradient(150deg, hsl(${h} 30% 98.4% / ${alphaOf(BASE.panelTop, t)}), hsl(${h} 34% 94.8% / ${alphaOf(BASE.panelBottom, t)}))`,
+    // 弹窗：同样的色相与渐变，但两个端点各自抬到下限之上（表单可读性优先）
+    panel: `linear-gradient(150deg, hsl(${h} 30% 98.4% / ${Math.max(MODAL_ALPHA_FLOOR, alphaOf(BASE.panelTop, t))}), hsl(${h} 34% 94.8% / ${Math.max(MODAL_ALPHA_FLOOR, alphaOf(BASE.panelBottom, t))}))`,
     field: `rgba(255, 255, 255, ${Math.max(FIELD_ALPHA_FLOOR, alphaOf(BASE.field, t))})`,
     blur: blurFor(t),
   };
