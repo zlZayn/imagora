@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 
 import {
   generationHistory,
@@ -20,47 +21,39 @@ function parentDirectory(path: string): string {
   return path.replace(/[\\/][^\\/]+$/, "");
 }
 
-/** 提示词行：先显示 2 行、超出省略（line-clamp-2）；仅当文字确实被截断时，悬浮在鼠标旁显示完整多行（短文案不弹无意义浮层）。
-    浮层宽度固定为屏幕 80%（80vw）且水平居中（左/右各留 10vw，永不出屏），高度随行数自动长；
-    垂直跟随鼠标 y 并 clamp 进视口（下边防溢出，靠挪位而非滚动条）。 */
+/** 提示词行：先显示 2 行、超出省略（line-clamp-2）；仅当文字确实被截断时，悬浮显示完整多行（短文案不弹无意义浮层）。
+    定位：**单轴跟随鼠标 Y**，宽度固定屏幕 80% 且水平居中（左/右各留 10vw，永不出屏），高度随行数自动长。
+    渲染走 createPortal 到 body —— 弹窗面板自带 `overflow: hidden` 且入场动画留下 transform，
+    fixed 定位在带 transform 的祖先里会以「那个祖先」为包含块而不是视口：不 Portal 就会被面板裁掉、
+    而且 window.innerHeight 的 clamp 也在错误坐标系里量（曾表现为浮层飘到面板底部、下半截看不见）。 */
 function PromptCell({ text }: { text: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
+  /** null = 不显示 */
   const [tipY, setTipY] = useState<number | null>(null);
-  const [clampTop, setClampTop] = useState(0);
+  const [top, setTop] = useState(0);
 
   const onEnter = (event: MouseEvent<HTMLParagraphElement>) => {
     const el = ref.current;
     // scrollHeight > clientHeight 即发生了 2 行截断，才需要浮层补全
-    if (el && el.scrollHeight > el.clientHeight) {
-      setTipY(event.clientY);
-    }
+    if (el && el.scrollHeight > el.clientHeight) setTipY(event.clientY);
   };
   const onMove = (event: MouseEvent<HTMLParagraphElement>) => {
     setTipY((cur) => (cur != null ? event.clientY : cur));
   };
   const onLeave = () => {
     setTipY(null);
-    setClampTop(0);
+    setTop(0);
   };
 
-  // 浮层水平居中固定（10vw+80vw 恒在屏内）；垂直跟随鼠标 y 并 clamp 进视口（下边溢出靠挪位而非滚动条）
+  // 跟随鼠标 y 并整体夹进视口（下边溢出靠挪位，而不是让它被切掉）。
+  // 再高就顶到 8px，并由 max-height + 自身滚动兜底，保证长提示词也读得到底。
   useLayoutEffect(() => {
     if (tipY != null && tipRef.current) {
       const rect = tipRef.current.getBoundingClientRect();
-      setClampTop(Math.max(8, Math.min(tipY + 16, window.innerHeight - rect.height - 8)));
+      setTop(Math.max(8, Math.min(tipY + 16, window.innerHeight - rect.height - 8)));
     }
   }, [tipY, text]);
-
-  const tipStyle: CSSProperties | undefined =
-    tipY != null
-      ? {
-          // 宽固定屏幕 80% 且水平居中（左/右各留 10vw，永不出屏），高随行数自动长，无滚动条
-          left: "10vw",
-          top: clampTop,
-          width: "80vw",
-        }
-      : undefined;
 
   return (
     <>
@@ -73,16 +66,25 @@ function PromptCell({ text }: { text: string }) {
       >
         {text}
       </p>
-      {tipY != null && (
-        <div
-          ref={tipRef}
-          data-testid="prompt-tip"
-          className="pointer-events-none fixed z-50 rounded-md bg-neutral-800 px-3 py-2 text-xs leading-5 text-white shadow-lg"
-          style={{ ...tipStyle, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-        >
-          {text}
-        </div>
-      )}
+      {tipY != null &&
+        createPortal(
+          <div
+            ref={tipRef}
+            data-testid="prompt-tip"
+            className="pointer-events-none fixed z-[60] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg bg-neutral-800 px-3 py-2 text-xs leading-5 text-white shadow-lg"
+            style={{
+              // 宽固定屏幕 80% 且水平居中（左/右各留 10vw，永不出屏）
+              left: "10vw",
+              width: "80vw",
+              top,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {text}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
