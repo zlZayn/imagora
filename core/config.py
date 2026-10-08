@@ -155,9 +155,62 @@ for _k in unknown_profile_keys(_profile):
     )
 
 
+# ---------- 本机覆盖（.env）：可被界面写入的三个字段 ----------
+# 沿用既有的 API_KEY_<PROFILE> 命名约定（见 .env.example）：
+#   config.json = 出厂目录（git 跟踪，界面永不写）
+#   .env        = 本机覆盖 + 密钥（git 忽略，界面只写这里）
+#
+# 为什么只有这三个：它们是「我这台机器用哪家接口/哪个模型」的本机偏好；
+# ratios / size_options / quality_options / models 是目录数据（价目表与能力清单），
+# 开放环境变量覆盖会把 _get 变成解析器，收益为零。
+# 未设置环境变量时 _env_override_value 一律返回 None，_get 的回退路径与改动前逐字相同。
+_ENV_OVERRIDE_KEYS = {
+    "base_url": "BASE_URL",
+    "default_model": "MODEL",
+    "api_paths": "API_PATH",
+}
+
+
+def env_override_name(key: str) -> str | None:
+    """当前 profile 下该键对应的环境变量名（不读取值）。"""
+    prefix = _ENV_OVERRIDE_KEYS.get(key)
+    if not prefix or not ACTIVE_PROFILE:
+        return None
+    return f"{prefix}_{ACTIVE_PROFILE.upper()}"
+
+
+def _env_override_value(key: str) -> str | None:
+    """本机 .env 覆盖的**实际值**；未设置（缺失或空白）返回 None。
+
+    空白值视为未设置：宁可回落到出厂值，也不要"配了个空地址"。
+    """
+    name = env_override_name(key)
+    if not name:
+        return None
+    return (os.environ.get(name) or "").strip() or None
+
+
 def _get(key: str):
-    """取当前 profile 的配置项，缺失回退内置默认"""
-    return _profile.get(key, _DEFAULTS[key])
+    """取当前 profile 的配置项：.env 本机覆盖 > profile > 内置默认。
+
+    环境变量未设置时，下面两行回退路径与改动前完全一致。
+    """
+    override = _env_override_value(key)
+    if override is None:
+        return _profile.get(key, _DEFAULTS[key])
+    if key == "api_paths":
+        # 单路径覆盖同时用于 generations 与 edits（界面只暴露"接口路径"一项）
+        return {"generations": override, "edits": override}
+    return override
+
+
+def source_of_value(key: str) -> str:
+    """某个键当前生效值的来源标签（供 /api/config 的 profileView 使用）。"""
+    if _env_override_value(key) is not None:
+        name = env_override_name(key)
+        assert name is not None
+        return f".env {name}" if name in _ENV_FILE_KEYS else f"环境变量 {name}"
+    return _SRC_PROFILE if key in _profile else _SRC_FALLBACK
 
 
 # ---------- 接口 ----------
