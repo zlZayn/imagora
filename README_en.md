@@ -72,7 +72,7 @@ The command line supports batch too: hand it a list of prompts and it runs them 
 The top of the generation history panel is the cost board: today's spend, total spend, success rate, failure count, average time per success, plus a breakdown by size.
 **This panel lives on the canvas page's toolbar and is not on the classic form page** — the history and every number on the board are reached from there.
 Two limits can be set: a daily budget and a per-run cap; 0 means unlimited (the default — no nagging). Every submission is priced first; if a limit is exceeded, a confirmation appears stating "spent today + estimated for this run", and nothing is submitted until you confirm. Simultaneous submissions from multiple windows are held back as well.
-Failed records can be rerun: "Rerun" for a single one, or "Rerun failed" at the top of the panel for the whole batch; the dialog lists how many, the estimated cost, and the reason any of them cannot be rerun.
+Failed records show why they failed in the panel (missing reference images are counted separately); to try again, fix the prompt on the canvas and run it again.
 
 ## Feature map
 

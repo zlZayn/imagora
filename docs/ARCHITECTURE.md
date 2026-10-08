@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
 | `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
-| `tests/` | 后端 pytest（272 用例）+ 前端 vitest（331 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
+| `tests/` | 后端 pytest（272 用例）+ 前端 vitest（320 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `assets/` | **文档配图**（只服务 markdown 渲染，不是应用资源）：`screenshots/` 放 README「界面一览」的界面截图；**双件**：assets/AGENTS.md + assets/README.md |
 | `_ui-audit/` | 开发期 UI 审计图（本机产物，git 忽略）：由 [scripts/capture.py](../scripts/capture.py) 生成，与门面配图 `assets/screenshots/` 不是一回事 |
@@ -83,7 +83,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - 外壳：`main.tsx` / `App.tsx` —— 入口与双模式外壳（经典表单 / 无限画布切换，`?mode=canvas` 直达），多窗口编号与主体色、标题栏品牌区 3D（见 8.4）
 - 契约：`api.ts`（`/api/*` 封装）+ `types.ts`（前后端类型契约，见 7.2）
 - Hooks：`useGenerationTask`（提交-轮询任务）、`useCanvasDrop`（拖放接线）、`useCanvasRecovery`（快照自动恢复）、`useImageZoom`（单击开原图/双击放大时序，Gallery 与 HistoryGallery 共用）
-- 纯函数模块（零 UI 依赖，全部有单测，用例分布见 tests/README.md）：`workflow` / `layout` / `canvasDrop` / `promptImportFormat` / `canvasHistory` / `recovery` / `previewZoom` / `format` / `accent` / `windowInherit` / `cost` / `rerun` / `logPath` / `api-guards`
+- 纯函数模块（零 UI 依赖，全部有单测，用例分布见 tests/README.md）：`workflow` / `layout` / `canvasDrop` / `promptImportFormat` / `canvasHistory` / `recovery` / `previewZoom` / `format` / `accent` / `windowInherit` / `cost` / `logPath` / `api-guards`
 - `components/`：`CanvasPage`（画布状态中枢 + 工具栏 + ReactFlow）、`CanvasNodes`（三类节点）、`WorkflowModals`（保存/加载/预览弹窗，ZoomModal 画布/经典表单/生产历史共用）、`PromptImportModal` / `HistoryGallery` / `UploadZone` / `Gallery` / `Select` / `FolderPicker`
 
 ### 2.4 依赖规则
@@ -288,7 +288,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | POST | `/api/delete-ref` | { path } | { ok }（尽力删除，文件不存在也算 ok） |
 | POST | `/api/output-dir` | { path } | { ok }（记住输出路径，重启沿用） |
 | POST | `/api/generate` | multipart：prompt/size/quality/output_dir/win/allow_over_budget + images 或 ref_paths | { taskId, status }（提交即返回；**预算闸门**：超出 `singleRunLimit`/`dailyLimit` 且 `allow_over_budget≠true` 时 409 + `detail{reason, estimate, spentToday, settings}`） |
-| POST | `/api/generate/batch` | { items[{prompt,size,quality,refPaths[]}], outputDir, win, allowOverBudget } | { submitted[{taskId,prompt,size,cost}], skipped[{index,reason}], estimate, budget }（生成历史「重跑失败项」用：一次提交多条，单条非法只跳过该条；全部被跳过或超预算未确认则不提交任何任务） |
+| POST | `/api/generate/batch` | { items[{prompt,size,quality,refPaths[]}], outputDir, win, allowOverBudget } | { submitted[{taskId,prompt,size,cost}], skipped[{index,reason}], estimate, budget }（CLI 批量用：一次提交多条，单条非法只跳过该条；全部被跳过或超预算未确认则不提交任何任务） |
 | GET | `/api/tasks/{task_id}` | 无 | 快照（queued → running → done/failed，可 cancelled；终态保留 10 分钟，超时 404） |
 | POST | `/api/tasks/{task_id}/cancel` | 无 | { ok }（排队立即取消；运行中跑完当前张丢弃结果） |
 | GET | `/api/history/stats` | ?days=（默认 14） | 成本看板：total/ok/error/successRate/cost/seconds/avgSeconds/todayCost + byDay[]/bySize[]/byMode[] + budget（**口径与 /api/history 不同**：这里取账本**原始行**，不去重不截断——每个成功行都真实花过钱，聚合会少算费用） |
@@ -439,7 +439,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 10.1 单元测试
 
 - 后端 pytest：**272 用例**（Windows 含 5 个专属测试，CI 必须 `windows-latest`；默认 tmp 路径的 WinError 5 历史坑已随目录重建恢复，见 AGENTS「活跃坑」）
-- 前端 vitest：**331 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 前端 vitest：**320 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - 文档完整性：`python scripts/check_docs.py`（相对链接可解析 + AGENTS/tests-README/ARCHITECTURE/frontend-README 的测试计数与源码一致；改任何文档后必跑，见 [scripts/README.md](../scripts/README.md)）
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 
