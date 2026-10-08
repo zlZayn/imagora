@@ -560,7 +560,7 @@ function PersonalApiModal({
         {/* 内容区：全模态只此一处滚动——页签内容再长也不会把操作栏顶出视口。
             三页共用同一固定高度（见 index.css 的 .api-settings-modal .modal-body）：
             高度随页签变化会让弹窗「跳大小」、底部按钮跟着上下窜，所以这里不按内容自适应。 */}
-        <div className="modal-body pr-1">
+        <div className="modal-body">
           {tab === "active" && (
             /* 整页撑满固定高度：规格清单在上，来源说明用 mt-auto 压到底部 ——
                内容少的时候留白集中在中间一段，不会出现"上面挤成一条、下面空一大片" */
@@ -1088,6 +1088,20 @@ useEffect(() => {
 useEffect(() => {
   document.documentElement.style.setProperty("--accent-hue", String(backgroundHue));
 }, [backgroundHue]);
+
+/** 运行时 token 同样写到根元素：弹窗经 createPortal 挂在 body 上，落在 .imagora-app 之外，
+ *  只写在 .imagora-app 内联样式里的话，弹窗内一律退化成 @theme 兜底值——表现为
+ *  弹窗外是主题色、弹窗内却是石板灰 #475569，卡片表面与通透度也一并失效。
+ *  .imagora-app 那份保留：它在首帧就生效，避免刷新时先闪一下兜底灰。两处取值同源，不会漂。 */
+useEffect(() => {
+  const root = document.documentElement.style;
+  root.setProperty("--color-brand", accent.brand);
+  root.setProperty("--color-brand-dark", accent.brandDark);
+  root.setProperty("--surface-card", surface.card);
+  root.setProperty("--surface-panel", surface.panel);
+  root.setProperty("--field-bg", surface.field);
+  root.setProperty("--surface-blur", surface.blur);
+}, [accent.brand, accent.brandDark, surface.card, surface.panel, surface.field, surface.blur]);
   /** 界面模式：经典表单 / 无限画布（?mode=canvas 直达画布） */
   const [mode, setMode] = useState<"classic" | "canvas">(() =>
     new URLSearchParams(window.location.search).get("mode") === "canvas" ? "canvas" : "classic",
