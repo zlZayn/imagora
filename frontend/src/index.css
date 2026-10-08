@@ -659,14 +659,14 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .classic-result-panel .result-gallery + * { color: rgba(23, 32, 43, .55); }
 .health-alert { border-radius: 12px; box-shadow: 0 6px 16px rgba(160,110,20,.08); }
 
-/* Dark inspector strip used by both canvas selection and parameter surfaces. */
-.studio-inspector {
-  border-color: rgba(255,255,255,.12) !important;
-  background: rgba(29,36,42,.9) !important;
-  box-shadow: 0 12px 26px rgba(20,25,30,.18) !important;
-}
-.studio-inspector .btn-ghost { color: #d7e0e1; }
-.studio-inspector .btn-ghost:hover:not(:disabled) { color: #20262c; }
+/* 画布选中操作栏（.studio-inspector）：颜色一律交给统一样式，本文件不再覆盖。
+ * 表面走组件声明的半透明毛玻璃（bg-white/20 + border-white/40 + backdrop-blur-md，见 CanvasPage.tsx），
+ * 按钮走全局 btn-ghost / btn-danger / btn-primary（常态主体色文字，hover 涟漪填充 + 反白）。
+ * 历史坑（2026-10-03 修）：此处曾用 !important 把面板涂成深色条 rgba(29,36,42,.9)，
+ * 并把 ghost 文字钉死 #d7e0e1、hover 钉死 #20262c——浅色界面里凭空浮出一条黑条，
+ * 且 hover 时「主体色涟漪 + 近黑文字」自相矛盾；该 0,2,0 选择器还把 btn-danger 的红字一并吃掉
+ * （「删除所选」在暗条里退化成灰字）。与 [ARCHITECTURE 5.4 / 8.4](../../docs/ARCHITECTURE.md) 的既定描述对齐。
+ * 限宽与横向滚动隐藏在文件后段单独定义（本类仍保留）。 */
 .studio-canvas .node-pop {
   border-color: rgba(32,43,51,.13) !important;
   background: rgba(255,255,255,.88) !important;
