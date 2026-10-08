@@ -67,6 +67,10 @@ export interface ConfigFileState {
   configPath: string;
   /** 当前生效的 profile 名 */
   profile: string | null;
+  /** 文件（.env 的 ACTIVE_PROFILE）里写的 profile；未写则等于生效的 */
+  fileProfile: string | null;
+  /** config.json 里已注册的 profile 名（切 profile 的下拉选项，服务端下发） */
+  registeredProfiles: string[];
   /** 各字段对应的 .env 覆盖键名（沿用 API_KEY_<PROFILE> 约定） */
   envNames: Record<string, string>;
   /** 两个配置文件各自的 mtime（秒）；不存在 → null */

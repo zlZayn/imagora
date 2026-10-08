@@ -13,6 +13,7 @@
 {
   "profile": "wanwu",              // 必填：写入哪个 profile 的覆盖键
   "changes": {                      // 只放要改的键；空字符串 = 不修改该键
+    "profile": "wanwu",             // 可选：切配置来源，写 .env 的 ACTIVE_PROFILE（校验已注册）
     "baseUrl": "https://example.com",
     "apiPath": "/v1/images/generations",
     "model": "gpt-image-2.5-flare",

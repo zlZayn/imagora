@@ -5,7 +5,7 @@ FastAPI 路由级 + 纯逻辑测试，**不调真实上游 API、不花钱**。�
 ## 本地常用命令（在项目根目录执行）
 
 ```powershell
-# 后端全量（338 用例）
+# 后端全量（345 用例）
 .\.venv\Scripts\python.exe -m pytest
 # 按模块筛选
 .\.venv\Scripts\python.exe -m pytest tests/test_core_config.py tests/test_server_helpers.py
@@ -22,7 +22,7 @@ cd frontend; npm test
 - **测试数字是 AGENTS 仪表盘数据源**：增/删测试用例必须同步 AGENTS「当前仪表盘」；数字意外变化（非新增导致）必须报告维护者
 - **别按变量名读断言**：`test_core_api.py` 里的 `calls["n"] == 3` 是**重试次数**计数器，与生成张数无关。看名字以为"多张已覆盖"过一次误判（CLI `--n` 的真覆盖在 `test_main_cli.py`，见 issue #34）
 
-## 文件索引（后端 pytest，共 338）——每个 test_*.py 测什么
+## 文件索引（后端 pytest，共 345）——每个 test_*.py 测什么
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -32,6 +32,7 @@ cd frontend; npm test
 | [`test_core_config_override.py`](test_core_config_override.py) | 16 | `.env` 本机覆盖通道（`BASE_URL_` / `MODEL_` / `API_PATH_<PROFILE>`）：**未设环境变量时行为与没有覆盖时逐字相同**、覆盖只影响自己那一个键、只对当前 profile 生效、换 profile 后覆盖跟着换、空值视为未设置、来源标注区分 `.env` 与系统环境变量、删掉覆盖行后回到 config.json profile、非覆盖键没有环境变量名 |
 | [`test_core_config_write.py`](test_core_config_write.py) | 21 | `.env` 行级原地更新：注释/空行/键顺序原样保留、引号风格与缩进保留、CRLF 不混用、**留空 = 不修改**、注释掉幂等（清空密钥可手工恢复）、`.bak` 备份与原子写、写失败清理临时文件且原文件不受损 |
 | [`test_server_config_write.py`](test_server_config_write.py) | 29 | 写配置路由：三层防护纯函数（本机 / Origin 白名单 / 令牌比对 / profile 名挡路径穿越）、`GET /api/config` 不回传密钥值、写入保留注释、留空不修改、**mtime 不匹配 409 且磁盘不变**、清空密钥是注释而非删除、需要 confirm |
+| [`test_server_config_profile.py`](test_server_config_profile.py) | 7 | 切 profile：写 `ACTIVE_PROFILE` 且注释与未改的键保留、未注册的 profile 被拒（400 且磁盘不变）、profile 非字符串被拒、切 profile 计入 pending、profile 与字段可同一次写入、`fileState` 下发注册名单、文件值与生效值不同时报 pending |
 | [`test_core_cost.py`](test_core_cost.py) | 21 | 账本聚合（成功/失败计数、成功率、费用只算成功行、按天窗口与倒序、按尺寸/模式、坏行与脏类型容错、空账本）/ 今日花费 / 预估费用（已知/未知尺寸、非法张数）/ 预算规范化与读写（缺失/损坏/原子写无残留）/ 超预算判定（不限放行、单次上限、当日已花+预估、双限、remaining） |
 | [`test_core_logging.py`](test_core_logging.py) | 8 | 日志写入 / 并发串行 / 路径相对化 |
 | [`test_core_history.py`](test_core_history.py) | 16 | 历史读取 / 坏行容忍 / 筛选 / **搜索换行归一（CRLF 粘贴可命中）** / **同参数聚合（失败去重只留最新、成功吸收失败、时间不算参数、任一参数不同不合并、inputAssetIds 参与判定）** / **分页（聚合后切片与 total、offset 越界、与搜索/状态一致）** / backfill（报告·补齐·幂等·跳过无法反查·坏行保留） |
@@ -47,7 +48,7 @@ cd frontend; npm test
 | [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
 | [`test_main_cli.py`](test_main_cli.py) | 31 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ **`--n` 逐张请求（每次 `n=1`、各存各的账、部分失败保留已成功、默认单张行为不变）** / config 输出 |
 
-## 文件索引（前端 vitest，共 323，位于 frontend/src/）
+## 文件索引（前端 vitest，共 324，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |

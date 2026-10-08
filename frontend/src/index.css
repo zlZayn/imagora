@@ -589,6 +589,13 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   width: min(100%, 42rem);
   max-height: min(86dvh, 760px);
   overflow: hidden;
+  /* flex 列 + 内容区可收缩：面板自己被 max-height 封顶又 overflow:hidden，
+     所以内容一旦超过上限，只有让 **内容区** 变成可收缩的滚动态才拿得到底。
+     块级布局时踩过的坑：.modal-body 只写了 overflow-y:auto、高度不受约束，
+     scrollHeight === clientHeight 永远不触发滚动，底部几行被面板静默裁掉且怎么拖都露不出来
+     （实测 1100x620：panelClientH 531 / panelScrollH 716 / bodyClientH 636 / canScroll false）。 */
+  display: flex;
+  flex-direction: column;
   padding: 20px;
   border: 1px solid rgba(255,255,255,.68);
   border-radius: 16px !important;
@@ -644,6 +651,9 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
  * 而滚动容器只裁到 padding box —— 内边距为 0 时左侧的环会被整条切掉（曾出现「左被裁、右正常」，
  * 右边只是因为当时多写了一个 pr-1 的 4px）。两侧同值才不会左右不对称。 */
 .modal-body {
+  /* flex: 1 1 auto + min-height: 0 是「能滚」的前提：父级 .modal-panel 是 flex 列，
+     内容区必须允许被压缩到内容高度以下，否则它只会撑长面板、被面板的 overflow:hidden 裁掉。 */
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding-inline: 6px;

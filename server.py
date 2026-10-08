@@ -320,6 +320,7 @@ def get_config(win: int | None = None):
 # .env 是本机覆盖与密钥（git 忽略，界面只写这里）。契约见 docs/config-write-api-design.md。
 
 # 可编辑字段 → .env 覆盖键名（与 core/config.py 的 _ENV_OVERRIDE_KEYS 同源）
+# profile 单独处理（写 ACTIVE_PROFILE，且要校验已注册）
 _EDITABLE = ("baseUrl", "apiPath", "model", "apiKey")
 
 
@@ -373,6 +374,13 @@ def _config_file_state() -> dict:
         if fv is not None and fv != live[field]:
             pending.append(field)
 
+    # profile 本身也是「改了要重启」的一项：切 profile = 换掉整条解析链
+    profile_view = config.describe_config()
+    registered = profile_view.get("registeredProfiles") or []
+    file_profile = (env_values.get("ACTIVE_PROFILE") or "").strip() or profile
+    if file_profile != profile:
+        pending.insert(0, "profile")
+
     from core.config import get_api_key_source
 
     key_name = names.get("apiKey")
@@ -381,6 +389,8 @@ def _config_file_state() -> dict:
         "envPath": str(_env_path()),
         "configPath": str(config._CONFIG_FILE),
         "profile": profile,
+        "fileProfile": file_profile,
+        "registeredProfiles": registered,
         "envNames": names,
         "mtimes": _mtimes(),
         "fields": {
@@ -453,6 +463,30 @@ def write_config(body: dict = Body(...)):
     names = config_guard.profile_env_names(profile)
     updates: dict[str, str] = {}
     written: list[str] = []
+
+    # 切 profile：写 `ACTIVE_PROFILE`。校验目标必须在 config.json 已注册，
+    # 否则写进去会让服务按不存在的 profile 解析（表现为地址/模型全回退内置默认）。
+    target_profile = changes.get("profile")
+    if target_profile is not None:
+        if not isinstance(target_profile, str):
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "invalid_value", "reason": "profile 必须是字符串"},
+            )
+        picked = target_profile.strip()
+        registered = config.describe_config().get("registeredProfiles") or []
+        if picked and picked not in registered:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_profile",
+                    "reason": f"未注册的 profile：{picked}",
+                },
+            )
+        if picked:
+            updates["ACTIVE_PROFILE"] = picked
+            written.append("profile")
+
     for field in _EDITABLE:
         if field not in changes:
             continue

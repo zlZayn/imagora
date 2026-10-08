@@ -390,8 +390,11 @@ function ConfigEditorModal({
   };
 
   const [form, setForm] = useState({ ...onDisk, apiKey: "" });
+  /** 选中的 profile：切换它等于换掉整条解析链（地址/模型/尺寸都跟着换），因此与其余字段一起「待重启」 */
+  const [pickedProfile, setPickedProfile] = useState(fileState?.fileProfile ?? profile);
   /** 「有改动」的比较基线：初始 = 磁盘值，保存成功后推进到刚写下的值 */
   const [savedBaseline, setSavedBaseline] = useState(onDisk);
+  const [savedProfileBaseline, setSavedProfileBaseline] = useState(fileState?.fileProfile ?? profile);
   const [busy, setBusy] = useState(false);
   /** null = 没有正在显示的反馈；"saved" 短暂显示后自动回到无变化态 */
   const [notice, setNotice] = useState<{ kind: "ok" | "err" | "conflict"; text: string } | null>(null);
@@ -410,12 +413,13 @@ function ConfigEditorModal({
    *  与文本编辑器 Ctrl+S 的行为同构。空密钥不算变化（留空 = 不修改）。 */
   const changed = useMemo(() => {
     const out: string[] = [];
+    if (pickedProfile !== savedProfileBaseline) out.push("profile");
     if (form.baseUrl.trim() !== savedBaseline.baseUrl) out.push("baseUrl");
     if (form.apiPath.trim() !== savedBaseline.apiPath) out.push("apiPath");
     if (form.model.trim() !== savedBaseline.model) out.push("model");
     if (form.apiKey.trim() !== "") out.push("apiKey");
     return out;
-  }, [form, savedBaseline]);
+  }, [form, savedBaseline, pickedProfile, savedProfileBaseline]);
 
   const canSave = changed.length > 0 && !busy;
 
@@ -424,7 +428,12 @@ function ConfigEditorModal({
     setNotice(null);
     try {
       const changes: Record<string, string> = {};
-      for (const field of changed) changes[field] = form[field as "baseUrl"];
+      // profile 不是「覆盖键」而是选择器：它决定其余键读哪一套（见 server 的 write_config）
+      if (changed.includes("profile")) changes.profile = pickedProfile;
+      for (const field of changed) {
+        if (field === "profile") continue;
+        changes[field] = form[field as "baseUrl"];
+      }
       const result = await writeConfig({
         profile,
         changes,
@@ -440,6 +449,7 @@ function ConfigEditorModal({
         apiPath: result.fileState.fields.apiPath.fileValue ?? form.apiPath,
         model: result.fileState.fields.model.fileValue ?? form.model,
       });
+      setSavedProfileBaseline(result.fileState.fileProfile ?? pickedProfile);
       setForm({
         baseUrl: result.fileState.fields.baseUrl.fileValue ?? form.baseUrl,
         apiPath: result.fileState.fields.apiPath.fileValue ?? form.apiPath,
@@ -486,6 +496,11 @@ function ConfigEditorModal({
   ];
 
   const modelOptions = (config.models ?? []).map((m) => ({ value: m.id, label: m.label }));
+  /** 切 profile 的下拉选项：用 config.json 已注册的名单（服务端下发），不硬编码 */
+  const profileOptions = (fileState?.registeredProfiles ?? []).map((name) => ({
+    value: name,
+    label: name,
+  }));
 
   return (
     <ModalShell title="生图 API 配置" className="modal-panel--lg" onClose={onClose} testId="config-editor">
@@ -535,6 +550,23 @@ function ConfigEditorModal({
         </div>
 
         <div className="flex flex-col gap-4">
+          {/* 切 profile 在最前：它是其余字段的父级（BASE_URL_<PROFILE> / MODEL_<PROFILE> 都挂在它下面）。
+              改了要重启才生效，因此与其它字段同走「待重启」。 */}
+          {profileOptions.length > 0 && (
+            <div>
+              <label className="field-label mb-2" htmlFor="cfg-profile">配置来源（profile）</label>
+              <Select
+                id="cfg-profile"
+                options={profileOptions}
+                value={pickedProfile}
+                onChange={setPickedProfile}
+              />
+              <p className="text-caption mt-2">
+                切一套来源 = 换掉地址、模型与尺寸价目表；写入 .env 的 ACTIVE_PROFILE，重启后生效。
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="field-label mb-2" htmlFor="cfg-base-url">接口地址</label>
             <input
