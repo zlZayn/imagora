@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
 | `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
-| `tests/` | 后端 pytest（272 用例）+ 前端 vitest（331 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
+| `tests/` | 后端 pytest（338 用例）+ 前端 vitest（323 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `assets/` | **文档配图**（只服务 markdown 渲染，不是应用资源）：`screenshots/` 放 README「界面一览」的界面截图；**双件**：assets/AGENTS.md + assets/README.md |
 | `_ui-audit/` | 开发期 UI 审计图（本机产物，git 忽略）：由 [scripts/capture.py](../scripts/capture.py) 生成，与门面配图 `assets/screenshots/` 不是一回事 |
@@ -138,6 +138,16 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 
 参考图路径白名单：`/api/generate` 的 `ref_paths` 只接受 `output/.refs/` 与 `output/.assets/` 两个目录内的路径（逐根 commonpath 校验，跨盘 root 单独捕获不误伤），防路径穿越；与 `images` multipart 互斥、`ref_paths` 优先——图生图不二次上传大图。
 
+**写配置接口的三层防护**（`core/config_guard.py`）：写配置等于改磁盘上的密钥与接口地址，能力等同于改服务器凭据，因此 `/api/config` 前缀单独设防。
+
+- 服务只监听 `127.0.0.1`（`main.py` 的 `uvicorn.run(host="127.0.0.1")`），但「只监听本机」挡不住浏览器里别的网页对本机发请求（CSRF），故再加两层。
+- 三层按**早失败、成本递增**排列：① 本机绑定（`request.client.host`）→ ② Origin 白名单 → ③ 进程内随机令牌。失败一律 403 + `error` 码，不带任何配置内容。
+- **GET 不校验令牌**（页面首屏要能加载），令牌只保护「写」这个不可逆动作。
+- 令牌经 `GET /api/config` 的响应头下发，前端存**内存**（不写 localStorage）。**不落盘**：落盘等于把钥匙挂在门上；进程内随机则重启即失效。
+- 跨站页面为什么拿不到令牌：同源策略禁止跨源读取响应头内容——它能发 POST，但读不到 `GET /api/config` 的响应头。
+- profile 名做字符白名单校验后拼 `.env` 路径，挡路径穿越。
+- **作用域**：这套防护是为「单人本机工具」设计的。若要支持远程访问，安全层必须重新设计（TLS + 真实认证 + 速率限制），不能直接沿用。
+
 ### 4.4 配置加载层
 
 配置分层（优先级从高到低）：环境变量（含 `.env` 自动加载，已存在的环境变量不被覆盖）→ `config.json` 的 `profiles[ACTIVE_PROFILE]` → `config.json` 的 `default_profile` → 内置默认值。
@@ -146,6 +156,42 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 - profile 解析是**纯函数**（`resolve_profile_config` / `unknown_profile_keys`，有单测）：profile 缺失 / JSON 格式错 / 未知键 → 控制台警告并回退，绝不静默。
 - **密钥跟随 profile**：`get_api_key()` 按 `API_KEY_<PROFILE 大写>` → `API_KEY` → `AIWANWU_API_KEY`（旧写法兼容）逐级查找，切换中转站 key 自动跟随。
 - **铁律**：密钥只允许在 `.env` / 环境变量；`config.json` 是公开配置（git 跟踪），绝不放密钥。
+
+#### 配置只有一个真相源，界面是它的一个编辑入口
+
+配置数据只有一份（在文件里），界面与文本编辑器是**同一份数据的两个入口**，不存在「前端配置 + 后端配置」两套。
+分层与归属：
+
+- `config.json` = **出厂目录**（git 跟踪）：地址 / 模型 / 尺寸价目表 / 能力清单。界面**只读**，永不写。
+- `.env` = **本机覆盖 + 密钥**（git 忽略）：界面**只写这里**。
+
+为什么界面不写 `config.json`：它是公开仓库里的出厂数据，别人 clone 下来跑。界面写它会让每次改本机偏好都污染 git 状态；
+更严重的是冲突解决时一句 `git checkout config.json` 会**静默丢掉用户的选择**，而且要等到生成报错才发现。
+
+因此有三个字段有 `.env` 覆盖通道（沿用既有的 `API_KEY_<PROFILE>` 命名约定，见 `.env.example`）：
+
+| 字段 | 覆盖键 |
+|---|---|
+| 接口地址 | `BASE_URL_<PROFILE 大写>` |
+| 默认模型 | `MODEL_<PROFILE 大写>` |
+| 接口路径 | `API_PATH_<PROFILE 大写>`（同时用于 generations 与 edits） |
+| 密钥 | `API_KEY_<PROFILE 大写>` |
+
+**只开这四个键**：其余（`ratios` / `size_options` / `models`）是价目表与能力清单，属出厂目录，开放环境变量覆盖会把 `_get()` 变成解析器而收益为零。
+**未设置环境变量时回退路径与没有覆盖通道时逐字相同**（`tests/test_core_config_override.py` 锁死）。
+空白值视为未设置（宁可回出厂值，也不要「配了个空地址」）。
+
+写入侧（`core/config_write.py`）：行级原地更新 + 原子写。
+
+- 只改目标行，用户注释 / 空行 / 键顺序 / 引号风格逐字保留——从解析后的 dict 重新 dump 正好会把它们全冲掉。
+- 写前 `.bak`，之后临时文件 → `fsync` → `os.replace`，沿用原文件权限。这是密钥文件：写到一半崩溃留下的半截 `.env` 会让服务起来后完全无法生图。
+- **值为空 = 不修改**；清空密钥是**注释掉那一行**而非删除，手工去掉 `#` 即可恢复（因此不需要「重置」按钮）。
+
+冲突与生效：
+
+- 写配置接口带 `expectedMtimes`，与磁盘 mtime 不符则 409，**绝不静默覆盖**。两个文件各自独立比对。
+- 全部字段都是 import 时求值的模块级常量，**没有可热加载的部分**，所以写入后一律标记「待重启」（`fileState.pending` = 文件值 ≠ 生效值）。
+- 取常量一律走 `config.xxx`，不用模块顶层 `from core.config import XXX` 的名字——后者是导入时绑定的快照。
 
 ### 4.5 错误处理与日志
 
@@ -279,7 +325,9 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 | 方法 | 路径 | 请求 | 响应 |
 | --- | --- | --- | --- |
-| GET | `/api/config` | `?win=`（沿用窗口号，缺省服务端分配） | sizes / qualities / defaultOutputDir / windowId / baseUrl / defaultModel / activeProfile（后三项来自 config.json profile 解析，前端展示确认切换生效） |
+| GET | `/api/config` | `?win=`（沿用窗口号，缺省服务端分配） | sizes / qualities / defaultOutputDir / windowId / baseUrl / defaultModel / activeProfile / models / providers / profileView（值 + 来源）/ fileState（文件值 + mtime + pending）；**响应头带 `X-Config-Token`**（写配置用） |
+| POST | `/api/config` | { profile, changes{baseUrl?,apiPath?,model?,apiKey?}, expectedMtimes{env?,config?} } | 写 `.env`（行级原地更新 + 原子写）：{ ok, written, mtimes, pending, fileState }。`changes` 里空字符串 = 不修改该字段；mtime 与磁盘不符 → 409 `stale_file`（绝不静默覆盖） |
+| POST | `/api/config/secret` | { profile, confirm: true } | { ok, cleared, fileState }（清空密钥：把 `.env` 里那一行注释掉，手工去掉 `#` 即恢复；必须显式 confirm） |
 | GET | `/api/window/next` | 无 | { windowId }（原子分配，与 config 共用计数器） |
 | GET | `/api/status` | 无 | { windowCounter }（只读最大已分配编号） |
 | POST | `/api/select-folder` | { current } | { path }（系统弹窗，取消返回原值） |
@@ -287,7 +335,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 | POST | `/api/upload-ref` | multipart：images | { refs[ id, path, url, name, size, ext, mime ] }（落盘 `output/.refs/`） |
 | POST | `/api/delete-ref` | { path } | { ok }（尽力删除，文件不存在也算 ok） |
 | POST | `/api/output-dir` | { path } | { ok }（记住输出路径，重启沿用） |
-| POST | `/api/generate` | multipart：prompt/size/quality/output_dir/win/allow_over_budget + images 或 ref_paths | { taskId, status }（提交即返回；**预算闸门**：超出 `singleRunLimit`/`dailyLimit` 且 `allow_over_budget≠true` 时 409 + `detail{reason, estimate, spentToday, settings}`） |
+| POST | `/api/generate` | multipart：prompt/size/quality/output_dir/win/allow_over_budget + images 或 ref_paths（**不接收任何凭据**：配置在文件里，服务端自己读） | { taskId, status }（提交即返回；**预算闸门**：超出 `singleRunLimit`/`dailyLimit` 且 `allow_over_budget≠true` 时 409 + `detail{reason, estimate, spentToday, settings}`） |
 | POST | `/api/generate/batch` | { items[{prompt,size,quality,refPaths[]}], outputDir, win, allowOverBudget } | { submitted[{taskId,prompt,size,cost}], skipped[{index,reason}], estimate, budget }（CLI 批量用：一次提交多条，单条非法只跳过该条；全部被跳过或超预算未确认则不提交任何任务） |
 | GET | `/api/tasks/{task_id}` | 无 | 快照（queued → running → done/failed，可 cancelled；终态保留 10 分钟，超时 404） |
 | POST | `/api/tasks/{task_id}/cancel` | 无 | { ok }（排队立即取消；运行中跑完当前张丢弃结果） |
@@ -418,13 +466,21 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 10. **弹窗表面写死颜色 = 换色只换一半**。现象：换主体色 / 调通透度 / 选背景材质之后，页面变了而弹窗（生成历史 / 工作流 / API 配置）不变，像两套界面。根因：`.modal-panel` 的 `background` 是写死的 `rgba(251,251,248,.97) !important`，不读任何 token。规范：**弹窗表面必须读 `--surface-panel`**，与卡片共用同一套材质 token（`surface.ts` 的 `surfaceTokens` 算好后内联注入）；兜底值与 `BASE.panelTop` 对齐（hue 0 / 不透明档），JS 未注入时也不跑偏。判据：改材质后在弹窗打开态比对 `getComputedStyle('.modal-panel').getPropertyValue('--surface-panel')` 与卡片侧的 `--surface-card` 是否同色相同档位。
 11. **滚动容器的水平内边距小于焦点环外扩量，左侧的环被裁掉**。现象：点开下拉框，聚焦特效左边被切平、右边正常（右边只是当时多写了一个 4px）。根因：`overflow-y: auto` 只裁到 padding box，而 `button:focus-visible` 的环是 `outline 2px + offset 3px = 5px`、`.field-control:focus` 的 `box-shadow` 是 4px；`.modal-body` 左侧内边距为 0 时元素左沿与容器左沿重合，向左的部分整条被裁。规范：**滚动容器的 `padding-inline` 不小于环的外扩量**，且两侧同值（`.modal-body` 取 6px）；不要靠在调用处写单边 `pr-*` 打补丁，那只会把「两边都裁」变成「左右不对称」。
 
-### 9.5 坐标与几何
+### 9.5 配置写入
+
+1. **界面写配置文件会污染 git 状态，且可能在冲突时静默丢数据**。现象：改的是一个本机偏好（我用的哪家接口），动的却是 git 跟踪的 `config.json`。规范：`config.json` 是**出厂目录**（只读），本机偏好一律写 `.env` 的 `<KEY>_<PROFILE>` 覆盖键，见 4.4。
+2. **从解析后的 dict 重新 dump 配置文件会冲掉用户内容**。现象：`.env` 里的注释、空行、键顺序、引号风格被重排，diff 爆炸。规范：**行级原地更新**——只改目标行，其余逐字保留（`core/config_write.py`）。
+3. **写配置文件必须原子**。现象：写到一半崩溃留下截断的 `.env`（可能半个密钥），服务起来后完全无法生图。规范：`.bak` → 临时文件 → `fsync` → `os.replace`；失败时清理临时文件、原文件不受损。
+4. **用模块顶层 `from core.config import XXX` 的值做运行时判断**。现象：`server.py` 里 `BASE_URL` / `DEFAULT_MODEL` / `ACTIVE_PROFILE` 是**导入时绑定**的快照，测试替换 `config.X` 不生效，将来做热加载也读不到新值（曾导致 pending 恒为空）。规范：运行时一律走 `config.xxx`。
+5. **两个解析器各写一套**。现象：`config_write.split_key_value` 与 `config._load_env_file` 规则若不一致，改的键可能被加载器忽略，或更糟——漏改它实际会读的键。规范：两者按同一套规则（strip / 跳过注释 / 按第一个 `=` 切）。
+
+### 9.6 坐标与几何
 
 1. **screenToFlowPosition 基准**：它接受相对视口容器的屏幕坐标并内部修正（domNode = `.react-flow` wrapper），传 window 坐标给 `getBoundingClientRect` 中心即可，**不要再手动减 rect 偏移**（会双重偏移）。换算公式：flow = (screen - vx) / zoom，与库实现保持一致。
 2. **预览缩放锚点**：transform-origin 为图片中心时，保持指针下内容不动的补偿公式 `pan_new = p - (p - pan_old) * k`（k = zoom_new/zoom_old）；数学进纯函数，UI 不重算。
 3. **平移夹紧**：放大后图片主体不能丢出可视区，中心对称夹紧；未测量（box 为 0）时原样返回。测试：previewZoom.test.ts。
 
-### 9.6 进程与并发
+### 9.7 进程与并发
 
 1. **taskkill /t 只杀子树不杀父**：单杀监听层会留 uv/python 宿主。规范：先回溯祖先链再连根杀。测试：test_main_process.py。
 2. **PID 文件互相覆盖**：多开脚本同时写会误杀/漏杀。规范：端口是唯一真相源，动态探测，不落 PID 文件。
@@ -432,7 +488,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 4. **配置 typo 静默失效**：config.json 拼错键名/选不存在的 profile → 控制台警告 + 回退默认。规范：profile 键有白名单校验（`unknown_profile_keys`），新增键必须同步加入 config 白名单和测试。
 5. **写文件瞬时锁（Windows 杀软/云同步）**。现象：输出目录存在且可写、手动写入正常，但生成结果偶发 `PermissionError [Errno 13]`——杀软（Defender/火绒等）实时扫描刚落盘的文件、或 OneDrive 云同步托管目录时短暂持有句柄。规范：图片落盘统一走 `core/api.py:write_file_with_retry`（只捕获 PermissionError、退避 0.3s/0.8s/1.5s 重试 3 次、耗尽原样抛出、其余异常不重试）；若每次都失败则非瞬时问题，应排查目录权限/杀软排除目录，不依赖重试框住。测试：test_core_api.py「瞬时锁重试」。
 
-### 9.7 数据一致性
+### 9.8 数据一致性
 
 1. **历史展示与导入判定漂移**。现象一：生成历史列表显示图片（`exists=true`）但导入报「不是可用的历史输出」；现象二（画布回流）：每张结果都弹软提示「节点 prompt-xxx：生成成功，但结果导入画布失败」，历史里却能看见图。根因（同一条坑的两个方向，任一侧漂移都会复现）：展示按资产注册表解析（账本带 outputAssetIds → `resolve_asset`，`.assets` 副本在、原 output 文件被移动/删除仍显示），导入白名单必须同时接受账本行的**两个合法派生路径**——注册表副本路径（历史面板「导入画布」传它）与账本 `output` 原路径（画布回流传任务结果 URL 反解的 run_generation 落盘路径）——只收其一必然另一侧失配：曾先只认原路径（原文件被清理后「列表有图、导入失败」，f4126fe 修至注册表副本优先），继而只认注册表副本（画布回流固定失败，本条修复）。规范：导入白名单 = 每个账本行的注册表副本路径 ∪ output 原路径（原路径须文件仍存在）；判定仍只来自账本记录，任意未记录路径拒绝（不能退化成任意路径读取接口）；展示与导入共用 `resolve_history_asset_path`。测试：test_server_helpers.py「只接受记录路径」+「注册表副本路径可导入」+「带 outputAssetIds 时原路径可导入（画布回流回归）」。
 
@@ -440,8 +496,8 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 ### 10.1 单元测试
 
-- 后端 pytest：**272 用例**（Windows 含 5 个专属测试，CI 必须 `windows-latest`；默认 tmp 路径的 WinError 5 历史坑已随目录重建恢复，见 AGENTS「活跃坑」）
-- 前端 vitest：**331 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 后端 pytest：**338 用例**（Windows 含 5 个专属测试，CI 必须 `windows-latest`；默认 tmp 路径的 WinError 5 历史坑已随目录重建恢复，见 AGENTS「活跃坑」）
+- 前端 vitest：**323 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - 文档完整性：`python scripts/check_docs.py`（相对链接可解析 + AGENTS/tests-README/ARCHITECTURE/frontend-README 的测试计数与源码一致；改任何文档后必跑，见 [scripts/README.md](../scripts/README.md)）
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 

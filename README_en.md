@@ -26,7 +26,7 @@ Batch mode and a command line are included. Prompts, reference images, tasks, ou
 
 </div>
 
-> **Data boundary**　Requests go straight to the endpoint you configure; keys stay in your local `.env` or in your own browser; images and generation records land in local directories only, with no intermediary service.
+> **Data boundary**　Requests go straight to the endpoint you configure; keys stay in your local `.env`; images and generation records land in local directories only, with no intermediary service.
 
 ## Interface at a glance
 
@@ -100,7 +100,8 @@ Failed records show why they failed in the panel (missing reference images are c
 | | |
 | --- | --- |
 | Multiple providers | Endpoint, model, sizes, and prices live side by side in one config file and switch with a single line; the title bar shows which one is active |
-| Quick key override | Top bar "Image API" → Personal config; stored only in your browser, no file edits, no restart |
+| Edit config in the UI | Model chip in the top bar → config editor: change endpoint / model / path / key, written back to your local `.env`; anything changed is flagged as pending restart |
+| Or just edit the file | The editor and a text editor touch the **same file**; there is one config, not a second copy in the browser |
 
 ### Appearance
 
@@ -125,7 +126,7 @@ Copy-Item .env.example .env
 # Edit .env and fill in the key for the active profile, e.g. API_KEY_WANWU=sk-your-key
 ```
 
-`.env` is git-ignored and never enters the repository. You can also skip this and enter a key later under "Image API" in the top bar — that copy exists only in your browser.
+`.env` is git-ignored and never enters the repository. You can also skip this and enter a key later from the config editor behind the model chip in the top bar — it writes to your local `.env` as well.
 
 ### 3. Start
 

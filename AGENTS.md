@@ -19,13 +19,14 @@
 - 改成本统计 / 预算保护（[core/cost.py](core/cost.py)）→ 跑 `pytest tests/test_core_cost.py tests/test_server_cost.py` → 预算落在 `output/.budget.json`（git 忽略，勿改成进仓库的配置）
 - 改 frontend/src/ 纯函数 → 查 [frontend/README.md](frontend/README.md) 文件索引 → 跑 `npm test`（有单测即够，无需文档）
 - 改 frontend/components/ UI → 查 [frontend/README.md](frontend/README.md) 组件索引 → 跑 `npm test` + [E2E](frontend/e2e/verify_canvas.py) → 样式改 [index.css](frontend/src/index.css)（公共类先登记到 [frontend/README.md](frontend/README.md)「样式体系」节，不是根 README）
+- 改配置加载 / 本机覆盖通道 / 配置写入接口 → 查 [core/README.md](core/README.md) 的 config.py、config_write.py、config_guard.py 三节 → 跑 `pytest tests/test_core_config.py tests/test_core_config_override.py tests/test_core_config_write.py tests/test_server_config_write.py` → 契约同步 [docs/config-write-api-design.md](docs/config-write-api-design.md)
 - 改 [scripts/migrate.py](scripts/migrate.py) 或存储格式 → 查 [scripts/README.md](scripts/README.md) → 跑 `pytest tests/test_core_migrate.py` → **必须先 Handoff 确认（硬边界）**
 - 改测试文件 → 查 [tests/README.md](tests/README.md) → 按模块筛选跑 → 增/删用例后更新本文档「仪表盘」数字
 
 ## 仪表盘（最近验证快照，2026-09-29，main）
 
-- 后端 pytest：**272 passed**（命令与逐文件覆盖见 [tests/README.md](tests/README.md)）
-- 前端 vitest：**331 passed**；tsc + vite build 成功；lint / ruff 零告警（命令见 [frontend/README.md](frontend/README.md)、[tests/README.md](tests/README.md)）
+- 后端 pytest：**338 passed**（命令与逐文件覆盖见 [tests/README.md](tests/README.md)）
+- 前端 vitest：**323 passed**；tsc + vite build 成功；lint / ruff 零告警（命令见 [frontend/README.md](frontend/README.md)、[tests/README.md](tests/README.md)）
 - E2E [verify_canvas.py](frontend/e2e/verify_canvas.py)：**36/36 PASS**（前置：起 7860 服务，见 [frontend/README.md](frontend/README.md)）
 - 迁移（v1→v2 / .canvas→.assets / 账本回填）已完成，日常无需执行（见 [scripts/README.md](scripts/README.md)）
 

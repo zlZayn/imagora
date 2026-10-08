@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（331 用例）
+npm test           # vitest run（323 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -134,6 +134,12 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 职责：背景预设的纯数据与读写（`BACKGROUND_PRESETS` 两项 = 跟随主体色 / 纯白、`readBackgroundPreset` / `saveBackgroundPreset`、`isBackgroundPresetId`）；底色由 [index.css](src/index.css) 按 `html[data-bg]` 出。**不涉及图片**：整页背景图只走 `wallpaperStore` 的用户自选图（IndexedDB，不入库）
 - 被谁依赖：`App.tsx`（外观弹窗的色块行 + 根元素 `html[data-bg]`）
 - 注意：**只有浅色系**，且只有两项（跟随主体色 / 纯白）。深色的「暗房 / 蓝图」不在其中——它们要连顶栏、卡片、文字、按钮一起换深色，属独立工程；非法/空白存储值一律回落默认「跟随主体色」
+
+### [configWrite 相关](src/api.ts)
+- `getConfig()`：取配置并**同时取出写配置令牌**（令牌在 `GET /api/config` 的响应头里下发，存内存不写 localStorage）
+- `writeConfig()`：写 `.env`（带 `X-Config-Token`）；409 = 文件被外部修改，不静默覆盖
+- `clearConfigSecret()`：清空密钥（独立出口，必须 `confirm: true`）
+- 契约见 [../docs/config-write-api-design.md](../docs/config-write-api-design.md)
 
 ### [surface.ts](src/surface.ts)
 - 职责：卡片表面材质——`surfaceTokens(色相, 通透度)` 产出 `--surface-card` / `--surface-panel` / `--field-bg` 三个字面量 CSS 值 + `--surface-blur`；`blurFor` 是模糊半径的唯一出处（**当前恒返回 `none`**：壁纸要原样清晰；函数保留只为「由 JS 注入整条字面量」这条路不破）；`WALLPAPER_IMAGE_FILTER` 是壁纸降噪滤镜常量（由 `wallpaperAdjust.ts` 的 `wallpaperFilter` 消费，CSS 侧不再重复写值）；`--surface-panel` 的消费方是 `.modal-panel`（弹窗与卡片共用一套材质 token，2026-10-03 起不再写死背景色）；`FIELD_ALPHA_FLOOR` 是输入框不透明度底线（0.25）；`readSurfaceTransparency` / `saveSurfaceTransparency` 存通透度（0 最实，1 最透）
