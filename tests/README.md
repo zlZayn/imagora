@@ -44,7 +44,7 @@ cd frontend; npm test
 | [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
 | [`test_main_cli.py`](test_main_cli.py) | 31 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ **`--n` 逐张请求（每次 `n=1`、各存各的账、部分失败保留已成功、默认单张行为不变）** / config 输出 |
 
-## 文件索引（前端 vitest，共 332，位于 frontend/src/）
+## 文件索引（前端 vitest，共 331，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -70,7 +70,7 @@ cd frontend; npm test
 | [`providerSwitch.test.ts`](../frontend/src/providerSwitch.test.ts) | 6 | 跨来源切换清空 Key / 空表单→选来源保留 / 重复点同一项保留 |
 | [`usedApis.test.ts`](../frontend/src/usedApis.test.ts) | 4 | 「我的接口」记录读写往返 / lastUsed 保留 / 按最近使用排序 / 去重键稳定 |
 | [`format.test.ts`](../frontend/src/format.test.ts) | 6 | `formatBytes` 三档与 1024 边界 / `generatingLabel` 文案 / `errMessage`（Error 与非 Error、超长才截断、恰好等于上限不截、limit 可覆盖） |
-| [`accent.test.ts`](../frontend/src/accent.test.ts) | 13 | 同一编号恒定取色、`null` 回落 1 号、黄金角色相分布（含越过 360 回绕与 0 号负色相的现行为）、`brand` 与 `brandDark` 只差明度 / 色相归一到 [0,360) / NaN·Infinity 回落 0 不产出坏值 / 自定义色相与自动取色共用同一公式 / 九个预设互不重复且在合法区间 / 读写往返（未设置读 `null`、存后读回、存越界先归一、传 `null` 清除、空白或非法视为未设置） |
+| [`accent.test.ts`](../frontend/src/accent.test.ts) | 12 | 同一编号恒定取色、`null` 回落 1 号、黄金角色相分布（含越过 360 回绕与 0 号负色相的现行为）、`brand` 与 `brandDark` 只差明度 / 色相归一到 [0,360) / NaN·Infinity 回落 0 不产出坏值 / 自定义色相与自动取色共用同一公式 / 读写往返（未设置读 `null`、存后读回、存越界先归一、传 `null` 清除、空白或非法视为未设置） |
 | [`brand/logo.test.ts`](../frontend/src/brand/logo.test.ts) | 4 | 形状与 viewBox 取自 `logo.svg` 单一源 / 源文件只有一处 fill 声明（否则换色会漏改）/ `brandLogoSvg` 只换根元素 fill / 换色不动 xmlns 与 viewBox（favicon 缺 xmlns 不显示）|
 | [`windowInherit.test.ts`](../frontend/src/windowInherit.test.ts) | 10 | 写读往返且不清除、`notice` 省略即不写该键、空参考图 `filesIncluded: false`、`sessionStorage` 抛错时放弃继承不抛错、无键 / 非 JSON / 顶层形状不符 / `refs` 字段类型不符 / `notice` 非字符串一律判无继承、清除不误伤其他键 |
 | [`rerun.test.ts`](../frontend/src/rerun.test.ts) | 9 | 可重跑判定（成功记录、空提示词、缺尺寸/质量、图生图参考图丢失、参考图仍在、纯文生图）/ 分组与丢失计数 / 批量参数构造（空 path 丢弃）/ 跳过原因聚合排序 |

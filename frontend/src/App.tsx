@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { generationHistory, getConfig, getHealthDetails, openFolder, readPersonalApiPresets, readPersonalApiSettings, rememberOutputDir, savePersonalApiPresets, savePersonalApiSettings } from "./api";
 import { useGenerationTask } from "./useGenerationTask";
 import { Palette } from "lucide-react";
-import { ACCENT_PRESETS, accentForWindow, accentFromHue, hueForWindow, readAccentHue, saveAccentHue } from "./accent";
+import { accentForWindow, accentFromHue, hueForWindow, readAccentHue, saveAccentHue } from "./accent";
 import { clearWallpaperImage, purgeLegacyWallpaperSettings, readWallpaperImage, saveWallpaperImage } from "./wallpaperStore";
 import { readCanvasBounds, saveCanvasBounds } from "./canvasBounds";
 import {
@@ -131,28 +131,13 @@ function AppearanceModal({
 
         {/* 内容区走 .modal-body：加了壁纸与画布开关后内容变高，超出时自己滚动并预留滚动条位 */}
         <div className="modal-body space-y-4">
-          {/* 九色预设：点一个即整页换主色（按钮/角标/选中态/连线/聚焦环全部跟随） */}
-          <div>
-            <p className="field-label mb-2">主体色</p>
-            <div className="accent-swatches">
-              {ACCENT_PRESETS.map((preset) => (
-                <button
-                  key={preset.hue}
-                  type="button"
-                  title={preset.label}
-                  aria-label={preset.label}
-                  aria-pressed={accentHue === preset.hue}
-                  className={`accent-swatch ${accentHue === preset.hue ? "is-on" : ""}`}
-                  style={{ background: accentFromHue(preset.hue).brand }}
-                  onClick={() => onAccentHueChange(preset.hue)}
-                />
-              ))}
-            </div>
-          </div>
-
+          {/* 主体色：只有一条色相滑杆，排版与下面的「卡片通透度」逐行对齐。
+              九色预设方块已移除（2026-10-03）：滑杆本身就能到任意色相，方块是重复入口；
+              而且方块行 + 「色相微调」行说的是同一件事，两行并列反而让人不确定以哪个为准。
+              原「当前 / 生效范围」两张只读行也一并删去——值已经在滑杆右侧，范围写进下面一句说明。 */}
           <div>
             <label className="field-label mb-2" htmlFor="accent-hue">
-              色相微调
+              主体色
             </label>
             <div className="flex items-center gap-3">
               <input
@@ -162,32 +147,23 @@ function AppearanceModal({
                 max={359}
                 value={accentHue ?? 0}
                 onChange={(e) => onAccentHueChange(Number(e.target.value))}
-                className="accent-hue"
+                className="accent-hue flex-1"
               />
               <span className="text-muted w-16 text-right text-xs">
                 {accentHue === null ? "自动" : `${Math.round(accentHue)}°`}
               </span>
             </div>
+            <p className="text-caption mt-2">
+              {accentHue === null
+                ? "当前按窗口编号自动配色；拖动滑杆即改为自定义，对所有窗口生效。"
+                : "按钮、角标、选中态与聚焦环都跟随这个色相，对所有窗口生效。"}
+            </p>
+            {accentHue !== null && (
+              <button type="button" className="btn-ghost btn-sm mt-2" onClick={() => onAccentHueChange(null)}>
+                恢复自动配色
+              </button>
+            )}
           </div>
-
-          <div className="spec-list">
-            <div className="spec-list__row">
-              <span className="spec-list__key">当前</span>
-              <span className="spec-list__val">
-                {accentHue === null ? "按窗口编号自动配色" : `自定义色相 ${Math.round(accentHue)}°`}
-              </span>
-            </div>
-            <div className="spec-list__row">
-              <span className="spec-list__key">生效范围</span>
-              <span className="spec-list__val">所有窗口</span>
-            </div>
-          </div>
-
-          {accentHue !== null && (
-            <button type="button" className="btn-ghost btn-sm" onClick={() => onAccentHueChange(null)}>
-              恢复自动配色
-            </button>
-          )}
 
           {/* 背景底色：只有两项预置（跟随主体色 / 纯白）；整页大图只走下面的「我的壁纸」，不再有内置预设壁纸 */}
           <div className="border-t border-neutral-200/80 pt-4">

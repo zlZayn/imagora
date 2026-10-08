@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（332 用例）
+npm test           # vitest run（331 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -57,7 +57,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 开关 | `.switch` | 布尔开关（原生 checkbox + 轨道圆钮，状态只走 `:checked`）；画布边界开关用它 |
 | 画布边界 | `html[data-canvas-bounds="off"] .studio-canvas` | 关闭时收掉画布边框 / 底色 / 投影与渲染层底色晕，与页面背景融为一体 |
 | 滚动条 | `--sb-size` · `--sb-thumb` · `--sb-track` | 全局统管；轨道 transparent = 跟随所在容器底色 |
-| 主体色选择 | `.accent-swatches` / `.accent-swatch`（选中态 `.is-on`） · `.accent-hue` | 外观弹窗的九色预设方块 + 自定义色相滑杆：**色块底色由组件按 `accentFromHue` 现算并内联注入**，CSS 只管形状（28 方块、圆角 8）、hover 抬升与选中态的双层外圈；`.accent-hue` 是主体色滑杆本体（`--r-pill` 轨道 + 自定义 thumb，「通用滑杆」`.range-field` 与它同形）。取到的色相写到根元素 `--accent-hue`，背景材质与页面光晕都读它 |
+| 主体色选择 | `.accent-hue` | 外观弹窗**只有一条色相滑杆**（九色预设方块已移除，2026-10-03）：`--r-pill` 轨道 + 自定义 thumb，轨道底色是色相彩虹——那只属于「选色」，其余参数用中性的「通用滑杆」`.range-field`；宽度交给容器（配 `flex-1`），与「卡片通透度」那行逐行对齐。取到的色相写到根元素 `--accent-hue`，背景底色与页面光晕都读它 |
 
 ## 文件索引
 
