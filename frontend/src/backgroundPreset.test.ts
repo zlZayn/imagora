@@ -68,7 +68,7 @@ describe("材质与内置壁纸分成两组", () => {
 
 describe("isBackgroundPresetId", () => {
   it("合法 id 为真，其余一律为假", () => {
-    expect(isBackgroundPresetId("paper")).toBe(true);
+    expect(isBackgroundPresetId("plain")).toBe(true);
     expect(isBackgroundPresetId("accent")).toBe(true);
     // 新增的两张内置壁纸也是合法选项，选中后要能持久化
     expect(isBackgroundPresetId("dragon")).toBe(true);
@@ -91,8 +91,8 @@ describe("读写", () => {
   });
 
   it("存进去能读回来", () => {
-    saveBackgroundPreset("wood");
-    expect(readBackgroundPreset()).toBe("wood");
+    saveBackgroundPreset("plain");
+    expect(readBackgroundPreset()).toBe("plain");
   });
 
   it("存储里是非法值时回落默认，不抛错", () => {
@@ -103,9 +103,9 @@ describe("读写", () => {
   });
 
   it("非法 id 不写进存储（不污染已有值）", () => {
-    saveBackgroundPreset("cool");
+    saveBackgroundPreset("plain");
     saveBackgroundPreset("dark" as never);
-    expect(localStorage.getItem(BACKGROUND_PRESET_STORAGE_KEY)).toBe("cool");
+    expect(localStorage.getItem(BACKGROUND_PRESET_STORAGE_KEY)).toBe("plain");
   });
 
   it("每一项合法预设都能往返", () => {

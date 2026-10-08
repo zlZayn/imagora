@@ -134,9 +134,9 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 注意：`accentForWindow` **不做色相归一**，越界编号（如 0）保留负色相——该行为由 `accent.test.ts` 钉住，改它会破坏既有契约
 
 ### [backgroundPreset.ts](src/backgroundPreset.ts)
-- 职责：背景预设的纯数据与读写（`BACKGROUND_PRESETS` 七项 = 五项材质 + 两张内置壁纸、`PRESET_MATERIALS` / `PRESET_WALLPAPERS` 分组、`presetWallpaperOf` 取壁纸 URL、`readBackgroundPreset` / `saveBackgroundPreset`、`isBackgroundPresetId`）；材质由 [index.css](src/index.css) 按 `html[data-bg]` 出，内置壁纸由 App 铺进整页壁纸层（走 `wallpaper` 字段，不走 `--bg-image`：那条是 repeat 的材质通道）
+- 职责：背景预设的纯数据与读写（`BACKGROUND_PRESETS` 四项 = 两项底色 + 两张内置壁纸、`PRESET_MATERIALS` / `PRESET_WALLPAPERS` 分组、`presetWallpaperOf` 取壁纸 URL、`readBackgroundPreset` / `saveBackgroundPreset`、`isBackgroundPresetId`）；材质由 [index.css](src/index.css) 按 `html[data-bg]` 出，内置壁纸由 App 铺进整页壁纸层（走 `wallpaper` 字段，不走 `--bg-image`：那条是 repeat 的材质通道）
 - 被谁依赖：`App.tsx`（外观弹窗的色块行 + 根元素 `html[data-bg]`）
-- 注意：**只有浅色系**（跟随主体色 / 纸纤维 / 木纹 / 干净冷灰 / 雾面）。深色的「暗房 / 蓝图」不在其中——它们要连顶栏、卡片、文字、按钮一起换深色，属独立工程；非法/空白存储值一律回落默认「跟随主体色」
+- 注意：**只有浅色系**，且只有两项（跟随主体色 / 纯白）。深色的「暗房 / 蓝图」不在其中——它们要连顶栏、卡片、文字、按钮一起换深色，属独立工程；非法/空白存储值一律回落默认「跟随主体色」
 
 ### [surface.ts](src/surface.ts)
 - 职责：卡片表面材质——`surfaceTokens(色相, 通透度)` 产出 `--surface-card` / `--surface-panel` / `--field-bg` 三个字面量 CSS 值 + `--surface-blur`；`blurFor` 是模糊半径的唯一出处（**当前恒返回 `none`**：壁纸要原样清晰；函数保留只为「由 JS 注入整条字面量」这条路不破）；`WALLPAPER_IMAGE_FILTER` 是壁纸降噪滤镜常量（CSS 侧同值）；`FIELD_ALPHA_FLOOR` 是输入框不透明度底线（0.25）；`readSurfaceTransparency` / `saveSurfaceTransparency` 存通透度（0 最实，1 最透）

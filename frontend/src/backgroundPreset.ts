@@ -1,7 +1,11 @@
 /**
- * 背景预设 —— 整页背景可选几套现成材质，外加两张内置壁纸。
+ * 背景预设 —— 整页背景可选几套现成底色，外加两张内置壁纸。
  *
- * 材质只做**浅色系**：纸纤维 / 木纹 / 干净冷灰 / 雾面，外加"跟随主体色"（默认）。
+ * 底色只留两项：**跟随主体色**（默认）与**纯白**。
+ * 纸纤维 / 木纹 / 干净冷灰 / 雾面四个纹理预设已移除（2026-10-03）：底纹与卡片表面叠加后整页发灰，
+ * 且纹理属于装饰而非底色——要纹理的用户可以自己传壁纸。
+ *
+ * 底色只做**浅色系**。
  * 深色的「暗房」「蓝图」**不在此列**：它们不是换一层背景就完事，
  * 顶栏、卡片、文字、按钮都要同时换一套深色值，否则浅色文字控件压在深底上直接不可读。
  * 那属于独立的深色主题工程，等确认要做再单独立项。
@@ -15,7 +19,7 @@
  * 本模块只放纯数据与读写（无副作用、无 DOM），实际材质由 index.css 按 id 出。
  */
 
-export type BackgroundPresetId = "accent" | "paper" | "wood" | "cool" | "mist" | "dragon" | "tiger";
+export type BackgroundPresetId = "accent" | "plain" | "dragon" | "tiger";
 
 export interface BackgroundPreset {
   id: BackgroundPresetId;
@@ -29,13 +33,10 @@ export interface BackgroundPreset {
   wallpaper?: string;
 }
 
-/** 顺序即界面顺序：默认项在最前；材质在前、内置壁纸在后（两类分开渲染） */
+/** 顺序即界面顺序：默认项在最前；底色在前、内置壁纸在后（两类分开渲染） */
 export const BACKGROUND_PRESETS: readonly BackgroundPreset[] = [
   { id: "accent", label: "跟随主体色", hint: "默认：底色随主体色相变化，与按钮、角标同一色系" },
-  { id: "paper", label: "纸纤维", hint: "暖米白纸底 + 纤维纹理" },
-  { id: "wood", label: "木纹", hint: "暖木色底 + 细木纹" },
-  { id: "cool", label: "干净冷灰", hint: "中性冷灰，无纹理" },
-  { id: "mist", label: "雾面", hint: "浅灰雾面，极淡纹理" },
+  { id: "plain", label: "纯白", hint: "纯白底色，不带纹理，也不跟主体色" },
   {
     id: "dragon",
     label: "青玉游龙",

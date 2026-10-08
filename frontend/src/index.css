@@ -27,33 +27,12 @@
   --bg-size: auto, auto, auto;
 }
 
-/* 纸纤维 / 雾面共用的噪点纹理（fractalNoise 拉伸成纤维状）；雾面版把浓度调淡 */
-html[data-bg="paper"],
-.bg-swatch--paper {
-  --bg-color: #eae4d8;
-  --bg-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .3' numOctaves='3'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23p)' opacity='.5'/%3E%3C/svg%3E");
-  --bg-size: 320px 320px;
-}
-html[data-bg="wood"],
-.bg-swatch--wood {
-  --bg-color: #e7d8bd;
-  --bg-image:
-    repeating-linear-gradient(92deg, rgba(120, 86, 44, 0.055) 0 2px, transparent 2px 9px),
-    repeating-linear-gradient(88deg, rgba(120, 86, 44, 0.03) 0 1px, transparent 1px 13px),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .3' numOctaves='3'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23p)' opacity='.34'/%3E%3C/svg%3E");
-  --bg-size: auto, auto, 320px 320px;
-}
-html[data-bg="cool"],
-.bg-swatch--cool {
-  --bg-color: #f5f6f7;
+/* 纯白：不带纹理，也不跟主体色 */
+html[data-bg="plain"],
+.bg-swatch--plain {
+  --bg-color: #fff;
   --bg-image: none;
   --bg-size: auto;
-}
-html[data-bg="mist"],
-.bg-swatch--mist {
-  --bg-color: #eef0f2;
-  --bg-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .3' numOctaves='3'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23p)' opacity='.22'/%3E%3C/svg%3E");
-  --bg-size: 320px 320px;
 }
 
 body {
