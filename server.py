@@ -43,7 +43,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from core import canvas, config, cost, graphstore, history
+from core import canvas, config, config_guard, config_write, cost, graphstore, history
 from core.api import format_error, generate_image
 from core.canvas import safe_ref_path_allowlist
 from core.config import (
@@ -159,6 +159,31 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class ConfigGuardMiddleware(BaseHTTPMiddleware):
+    """写配置的访问防护（见 core/config_guard.py）+ 令牌下发。
+
+    两层职责：
+    - 拦：只拦 /api/config 前缀。GET 只校验本机绑定（页面首屏要能加载），
+      POST 才校验 Origin 与令牌。失败一律 403 + error 码，不带任何配置内容。
+    - 发：对 GET /api/config 的响应挂令牌头，供同源页面取用。
+      放在中间件而不是路由里，是为了不改变 get_config 的签名——
+      它被既有测试与调用方按 get_config(win) 直调。
+    """
+
+    async def dispatch(self, request, call_next):
+        guarded = request.url.path.startswith(config_guard.GUARDED_PREFIX)
+        if guarded:
+            denied = config_guard.guard_config_write(request)
+            if denied is not None:
+                return denied
+        response = await call_next(request)
+        # 令牌经响应头下发：同源页面能读，跨站页面受同源策略限制读不到内容
+        if guarded and request.method == "GET":
+            for name, value in config_guard.token_response_header().items():
+                response.headers[name] = value
+        return response
+
+
 BASE_DIR = (
     Path(sys.executable).resolve().parent.parent
     if getattr(sys, "frozen", False)
@@ -171,6 +196,7 @@ DIST_DIR = FRONTEND_DIR / "dist"
 
 app = FastAPI(title="Imagora")
 app.add_middleware(NoCacheMiddleware)
+app.add_middleware(ConfigGuardMiddleware)
 
 # 启动时清理超时的孤儿参考图（前端删除失败 / 上传未用的情况兜底）
 cleanup_stale_refs()
@@ -258,6 +284,9 @@ def get_config(win: int | None = None):
 
     多开页面：前端传已有窗口号（URL ?win= 或 window.name 记忆）则沿用，
     否则服务端原子分配下一个编号；默认输出目录按窗口分区 output/win{N}。
+
+    令牌响应头由 ConfigGuardMiddleware 统一挂（它能看到每个响应），
+    这里不接收 Response 参数——既有测试与调用方按 get_config(win) 直调，签名须保持可用。
     """
     window_id = win if win and win > 0 else _next_window_id()
     # 默认输出路径：优先记住的上次路径（服务重启沿用），无记录才按窗口分区
@@ -281,7 +310,228 @@ def get_config(win: int | None = None):
         # 配置来源视图：前端据此呈现「该值来自 config.json / .env / 内置默认」。
         # profile 增字段时前端自动多一行，无需逐处适配（唯一真相源 = core/config.py）。
         "profileView": config.describe_config(),
+        # 可编辑状态：文件里的当前值 + mtime + 待重启项（供配置编辑器弹窗）
+        "fileState": _config_file_state(),
     }
+
+
+# ---------- 配置写入（界面 = 配置文件的一个编辑入口） ----------
+# 数据只有一份，就在 .env / config.json：config.json 是出厂目录（git 跟踪，界面永不写），
+# .env 是本机覆盖与密钥（git 忽略，界面只写这里）。契约见 docs/config-write-api-design.md。
+
+# 可编辑字段 → .env 覆盖键名（与 core/config.py 的 _ENV_OVERRIDE_KEYS 同源）
+_EDITABLE = ("baseUrl", "apiPath", "model", "apiKey")
+
+
+def _env_path() -> Path:
+    return config.ENV_FILE_PATH
+
+
+def _mtimes() -> dict[str, float | None]:
+    """两个配置文件各自的 mtime（秒）；不存在 → None。"""
+
+    def one(path: Path) -> float | None:
+        try:
+            return path.stat().st_mtime if path.exists() else None
+        except OSError:
+            return None
+
+    return {"env": one(_env_path()), "config": one(config._CONFIG_FILE)}
+
+
+def _config_file_state() -> dict:
+    """文件里的值 + mtime + 待重启项。
+
+    密钥只报「是否已设置」与来源，**绝不回传值**（core/config.py 的铁律）。
+    pending 的判据：文件里的值 ≠ 进程当前生效的值 —— 服务端算，前端不自行比对，
+    因为前端没有"生效值"的权威来源。
+
+    注意：本函数一律经 `config.xxx` 取常量，不用模块顶层 import 进来的名字。
+    顶层 `from core.config import ACTIVE_PROFILE` 是**导入时绑定**的快照，
+    读 `config.ACTIVE_PROFILE` 才拿到当前值（也让测试能替换）。
+    """
+    env_values = config_write.read_env_values(_env_path())
+    profile = config.ACTIVE_PROFILE or ""
+    names = config_guard.profile_env_names(profile)
+
+    def file_value_for(field: str) -> str | None:
+        name = names.get(field)
+        return env_values.get(name) if name else None
+
+    # 文件里的值 vs 进程当前生效的值（后者可能是 .env 覆盖，也可能是出厂 config.json）
+    api_paths = config.API_PATHS
+    live = {
+        "baseUrl": config.BASE_URL,
+        "apiPath": api_paths.get("generations", "")
+        if isinstance(api_paths, dict)
+        else "",
+        "model": config.DEFAULT_MODEL,
+    }
+    pending: list[str] = []
+    for field in ("baseUrl", "apiPath", "model"):
+        fv = file_value_for(field)
+        if fv is not None and fv != live[field]:
+            pending.append(field)
+
+    from core.config import get_api_key_source
+
+    key_name = names.get("apiKey")
+    key_in_file = bool(env_values.get(key_name or ""))
+    return {
+        "envPath": str(_env_path()),
+        "configPath": str(config._CONFIG_FILE),
+        "profile": profile,
+        "envNames": names,
+        "mtimes": _mtimes(),
+        "fields": {
+            "baseUrl": {"fileValue": file_value_for("baseUrl")},
+            "apiPath": {"fileValue": file_value_for("apiPath")},
+            "model": {"fileValue": file_value_for("model")},
+            # 密钥永不回传值：configured = 文件里有没有覆盖；source = 当前生效来源
+            "apiKey": {"configured": key_in_file, "source": get_api_key_source()},
+        },
+        "pending": pending,
+    }
+
+    from core.config import get_api_key_source
+
+    key_name = names.get("apiKey")
+    key_in_file = bool(env_values.get(key_name or ""))
+    return {
+        "envPath": str(_env_path()),
+        "configPath": str(config._CONFIG_FILE),
+        "profile": ACTIVE_PROFILE,
+        "envNames": names,
+        "mtimes": _mtimes(),
+        "fields": {
+            "baseUrl": {"fileValue": file_value_for("baseUrl")},
+            "apiPath": {"fileValue": file_value_for("apiPath")},
+            "model": {"fileValue": file_value_for("model")},
+            # 密钥永不回传值；只报文件里有没有 + 当前生效来源
+            "apiKey": {"configured": key_in_file, "source": get_api_key_source()},
+        },
+        "pending": pending,
+    }
+
+
+@app.post("/api/config")
+def write_config(body: dict = Body(...)):
+    """把界面的改动写进 .env（行级原地更新 + 原子写 + mtime 冲突检测）。
+
+    请求/响应契约见 docs/config-write-api-design.md。
+    值为空字符串的字段 = 不修改（界面的「留空则不修改」规则）。
+    """
+    profile = str(body.get("profile") or "").strip() or (ACTIVE_PROFILE or "")
+    changes = body.get("changes")
+    if not isinstance(changes, dict):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_value", "reason": "changes 必须是对象"},
+        )
+    expected = body.get("expectedMtimes") or {}
+
+    try:
+        env_path = config_guard.safe_profile_path(config.WORK_ROOT, profile)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail={"error": "invalid_profile", "reason": str(exc)}
+        ) from exc
+
+    # 冲突检测：紧贴写入动作。打开弹窗时读到的 mtime vs 现在磁盘上的
+    want = expected.get("env") if isinstance(expected, dict) else None
+    current = _mtimes()["env"]
+    if want is not None and current is not None and abs(float(want) - current) > 0.001:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "stale_file",
+                "reason": "文件已被外部修改",
+                "currentMtimes": _mtimes(),
+            },
+        )
+
+    names = config_guard.profile_env_names(profile)
+    updates: dict[str, str] = {}
+    written: list[str] = []
+    for field in _EDITABLE:
+        if field not in changes:
+            continue
+        raw = changes[field]
+        if not isinstance(raw, str):
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "invalid_value", "reason": f"{field} 必须是字符串"},
+            )
+        value = raw.strip()
+        if value == "":
+            continue  # 留空 = 不修改
+        if field == "baseUrl" and not value.startswith(("http://", "https://")):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_value",
+                    "reason": "接口地址需以 http(s):// 开头",
+                },
+            )
+        if field == "apiPath" and not value.startswith("/"):
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "invalid_value", "reason": "接口路径需以 / 开头"},
+            )
+        updates[names[field]] = value
+        written.append(field)
+
+    if "apiKey" in written:
+        # 密钥是敏感字段，不落日志
+        pass
+
+    try:
+        config_write.update_env_file(env_path, updates) if updates else None
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500, detail={"error": "write_failed", "reason": str(exc)}
+        ) from exc
+
+    after = _config_file_state()
+    return {
+        "ok": True,
+        "written": written,
+        "unchanged": [],
+        "mtimes": after["mtimes"],
+        "pending": after["pending"],
+        "fileState": after,
+    }
+
+
+@app.post("/api/config/secret")
+def clear_config_secret(body: dict = Body(...)):
+    """清空密钥 —— 独立出口，且必须显式 confirm。
+
+    与「改值」分开是刻意的：删除和修改是两种心智模型，混在一条路径上迟早误操作。
+    实现是**注释掉**该行而不是删除，值留在文件里，手工去掉一个 # 即可恢复。
+    """
+    if body.get("confirm") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_value", "reason": "需要 confirm=true"},
+        )
+    profile = str(body.get("profile") or "").strip() or (ACTIVE_PROFILE or "")
+    try:
+        env_path = config_guard.safe_profile_path(config.WORK_ROOT, profile)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail={"error": "invalid_profile", "reason": str(exc)}
+        ) from exc
+
+    names = config_guard.profile_env_names(profile)
+    key_name = names["apiKey"]
+    try:
+        config_write.comment_out_env_file(env_path, [key_name])
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500, detail={"error": "write_failed", "reason": str(exc)}
+        ) from exc
+    return {"ok": True, "cleared": "apiKey", "fileState": _config_file_state()}
 
 
 @app.get("/api/window/next")

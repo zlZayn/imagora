@@ -188,3 +188,28 @@ def comment_out_env_file(path: Path, keys: list[str], *, backup: bool = True) ->
     """Comment out `keys` in the .env at `path`, atomically."""
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     write_text_atomic(path, comment_out_keys(text, keys), backup=backup)
+
+
+def read_env_values(path: Path) -> dict[str, str]:
+    """Read the .env file into {KEY: value}; comments and blanks dropped.
+
+    Lives next to the writer on purpose: it must use the **same** parser as
+    `update_env_text`, otherwise "what the UI believes is in the file" and "what
+    the UI writes" would disagree on quoting/whitespace handling.
+    Missing or unreadable file → empty dict (never raises; a config reader must
+    not take the server down).
+    """
+    if not path.exists():
+        return {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        parsed = split_key_value(line)
+        if parsed is None:
+            continue
+        key, raw_value = parsed
+        out[key] = _unquote(raw_value)[0]
+    return out
