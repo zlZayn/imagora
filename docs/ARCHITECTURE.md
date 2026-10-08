@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
 | `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
-| `tests/` | 后端 pytest（272 用例）+ 前端 vitest（320 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
+| `tests/` | 后端 pytest（272 用例）+ 前端 vitest（331 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `assets/` | **文档配图**（只服务 markdown 渲染，不是应用资源）：`screenshots/` 放 README「界面一览」的界面截图；**双件**：assets/AGENTS.md + assets/README.md |
 | `_ui-audit/` | 开发期 UI 审计图（本机产物，git 忽略）：由 [scripts/capture.py](../scripts/capture.py) 生成，与门面配图 `assets/screenshots/` 不是一回事 |
@@ -411,10 +411,12 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 4. **浮层被后续卡片盖住**。规范：含浮层的卡片加 relative + 更高 z-index。
 5. **全屏浮层被动画 transform 祖先捕获**。现象：`fixed inset-0` 的弹窗只覆盖容器大小（如放大预览只出现在结果卡片内，四周不是全屏）。原因：入场动画 `fill both` 结束后 computed transform 仍是非 none 的矩阵，把 fixed 后代的包含块改成该祖先。规范：全屏浮层（如 ZoomModal）用 `createPortal(..., document.body)` 渲染，脱离任何 transform/filter 祖先；不要依赖"恰好没有动画祖先"。测试保障：Playwright 断言预览容器 boundingBox == 视口。
 6. **Portal 点击沿 React 组件树冒泡误关外层宿主**。现象：放大预览里点图片中间（非空白）却连带关掉外层遮罩（历史画廊退到画布）。原因：`createPortal` 内容挂到 body，但合成事件仍沿 **React 组件树**冒泡（非 DOM 树）——宿主遮罩的 `onClick=onClose` 收得到 Portal 内的点击，DOM 上的兄弟关系拦不住。规范：Portal 根（ZoomModal 的 `data-zoom-overlay` 层）必须 `onClick` stopPropagation 截停冒泡；关闭判定仍走 pointerdown（真实按下元素），两者职责分离。测试：WorkflowModals.test.tsx（组件单测锁定）。
-7. **毛玻璃随通透度增长，越模糊越看不清**。现象：卡片文字压不住壁纸，用户反复报「看不清壁纸」。根因：`backdrop-filter: blur()` 跟着通透度往上加（曾到 80px），整卡糊成奶白雾、壁纸被洗成灰白，比不透明更挡视线。规范：**模糊绝不随通透度增长**——`blurFor` 当前恒返回 `none`（函数保留只为「由 JS 注入整条字面量」这条路不破）；可读性靠壁纸降噪滤镜（`WALLPAPER_IMAGE_FILTER`）+ 卡片文字的极淡白描边兜底，输入框另有 `FIELD_ALPHA_FLOOR = 0.25` 底线（只抬输入框，不抬卡片/面板）。曾试过 8~12px 的中间档，同样被要求归零。测试：`surface.test.ts`（任何通透度都返回 `none`、底线只作用于输入框、alpha 单调）。
+7. **卡片表面的模糊不该随通透度自动增长**。现象：卡片文字压不住壁纸，用户反复报「看不清壁纸」。根因：`backdrop-filter: blur()` 跟着通透度往上加（曾到 80px），整卡糊成奶白雾、壁纸被洗成灰白，比不透明更挡视线。规范：**卡片表面恒不模糊**——`blurFor` 仍返回 `none`（函数保留只为「由 JS 注入整条字面量」这条路不破）；可读性靠壁纸降噪滤镜（`WALLPAPER_IMAGE_FILTER`）+ 卡片文字的极淡白描边兜底，输入框另有 `FIELD_ALPHA_FLOOR = 0.25` 底线（只抬输入框，不抬卡片/面板）。曾试过 8~12px 的中间档，同样被要求归零。测试：`surface.test.ts`（任何通透度都返回 `none`、底线只作用于输入框、alpha 单调）。
+   **2026-10-03 修订**：这条原本写成「模糊绝不随通透度增长」，并据此把壁纸的模糊/压暗/缩放滑杆一并删除。维护者后来明确要求恢复**壁纸自身**的模糊与明暗调节（`wallpaperAdjust.ts`，两条独立滑杆，默认 0 / 1 即原图）。**两者不冲突**：被否掉的是「系统替用户决定、把背景弄走」，保留的是「用户显式选择的壁纸属性」，且与卡片通透度完全解耦（卡片仍恒不模糊）。判断口径：**可读性由谁决定**——系统自动改 = 不做；用户手动拉 = 做。
 8. **CSS 里写「函数内嵌 var()」的声明被压缩器整条丢弃**。现象：本地 dev 看着对，构建后样式静默失效——`backdrop-filter: blur(var(--x))` 与 `hsl(… / calc(0.66 * var(--x)))` 都被证明确实会丢。规范：需要按 JS 状态算出的字面量，就在 JS 里拼成**整条值**再内联注入（`surface.ts` 的 `surfaceTokens`，与 `--color-brand` 同路）；CSS 侧只允许 `var()` 作为**整个值**（`backdrop-filter: var(--x, none)` 安全）。测试保障：`surface.test.ts` 只锁「三档都是合法 CSS 值」，压缩器丢弃这条**没有自动化断言**——改这类声明必须实跑 `npm run build` 后在 `dist/` 里确认声明还在。
 9. **运行时 token 只写在 `.imagora-app` 上，Portal 弹窗拿不到**。现象：同一种按钮，弹窗外是主题色、弹窗内却是石板灰（`#475569`，即 `@theme` 兜底值）；弹窗里的卡片表面与通透度设置也一直不生效。根因：`ModalShell` 用 `createPortal(..., document.body)` 渲染，节点落在 `.imagora-app` **之外**，而 CSS 变量只向下继承——写在 App 容器内联样式上的 `--color-brand` / `--surface-*` / `--field-bg` 到不了弹窗。规范：**按运行状态计算、且要被 Portal 用到的 token，必须同时写到 `document.documentElement`**（`--accent-hue` 一直就是这么做的，其余 token 见 `App.tsx` 的同步 effect）；`.imagora-app` 的那份保留，用于首帧即生效、避免刷新闪一下兜底灰；两处取值同源，不会漂。判据：改任何 token 后，在弹窗打开态下比对 `getComputedStyle('.imagora-app')` 与 `getComputedStyle('.modal-panel')` 的同名变量是否相等。
-10. **滚动容器的水平内边距小于焦点环外扩量，左侧的环被裁掉**。现象：点开下拉框，聚焦特效左边被切平、右边正常（右边只是当时多写了一个 4px）。根因：`overflow-y: auto` 只裁到 padding box，而 `button:focus-visible` 的环是 `outline 2px + offset 3px = 5px`、`.field-control:focus` 的 `box-shadow` 是 4px；`.modal-body` 左侧内边距为 0 时元素左沿与容器左沿重合，向左的部分整条被裁。规范：**滚动容器的 `padding-inline` 不小于环的外扩量**，且两侧同值（`.modal-body` 取 6px）；不要靠在调用处写单边 `pr-*` 打补丁，那只会把「两边都裁」变成「左右不对称」。
+10. **弹窗表面写死颜色 = 换色只换一半**。现象：换主体色 / 调通透度 / 选背景材质之后，页面变了而弹窗（生成历史 / 工作流 / API 配置）不变，像两套界面。根因：`.modal-panel` 的 `background` 是写死的 `rgba(251,251,248,.97) !important`，不读任何 token。规范：**弹窗表面必须读 `--surface-panel`**，与卡片共用同一套材质 token（`surface.ts` 的 `surfaceTokens` 算好后内联注入）；兜底值与 `BASE.panelTop` 对齐（hue 0 / 不透明档），JS 未注入时也不跑偏。判据：改材质后在弹窗打开态比对 `getComputedStyle('.modal-panel').getPropertyValue('--surface-panel')` 与卡片侧的 `--surface-card` 是否同色相同档位。
+11. **滚动容器的水平内边距小于焦点环外扩量，左侧的环被裁掉**。现象：点开下拉框，聚焦特效左边被切平、右边正常（右边只是当时多写了一个 4px）。根因：`overflow-y: auto` 只裁到 padding box，而 `button:focus-visible` 的环是 `outline 2px + offset 3px = 5px`、`.field-control:focus` 的 `box-shadow` 是 4px；`.modal-body` 左侧内边距为 0 时元素左沿与容器左沿重合，向左的部分整条被裁。规范：**滚动容器的 `padding-inline` 不小于环的外扩量**，且两侧同值（`.modal-body` 取 6px）；不要靠在调用处写单边 `pr-*` 打补丁，那只会把「两边都裁」变成「左右不对称」。
 
 ### 9.5 坐标与几何
 
@@ -439,7 +441,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 10.1 单元测试
 
 - 后端 pytest：**272 用例**（Windows 含 5 个专属测试，CI 必须 `windows-latest`；默认 tmp 路径的 WinError 5 历史坑已随目录重建恢复，见 AGENTS「活跃坑」）
-- 前端 vitest：**320 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 前端 vitest：**331 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - 文档完整性：`python scripts/check_docs.py`（相对链接可解析 + AGENTS/tests-README/ARCHITECTURE/frontend-README 的测试计数与源码一致；改任何文档后必跑，见 [scripts/README.md](../scripts/README.md)）
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 

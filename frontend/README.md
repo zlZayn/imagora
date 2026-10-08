@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（320 用例）
+npm test           # vitest run（331 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -53,7 +53,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 模态内容区 | `.modal-body` | 高度过渡（`--panel-h` 驱动）+ 滚动条占位 + `[data-growing]` 变高裁切 |
 | 只读值表 | `.spec-list` + `__row` / `__key` / `__val` / `__src` | 「值 + 来源」两行式排版 |
 | 背景材质 | `html[data-bg="…"]` + `.bg-swatches` / `.bg-swatch`（`--accent` `--plain`） | 整页背景材质预设；材质只在 `--bg-color` / `--bg-image` / `--bg-size` 三个变量里声明一次，`html[data-bg]` 与选择器色块**共用同一组声明**；铺法是 `repeat`（纹理通道），**大图不许走这里**（会平铺出接缝）；页面底色只能用 `--accent-hue`（`--color-brand` 在 `.imagora-app` 上，body 读不到） |
-| 我的壁纸 | `.imagora-wallpaper` + `__image` | 整页背景层：固定铺满、置底不挡交互；**按原图 cover 铺底，不缩放、不压暗、不重编码**，只加一层降噪滤镜（`saturate(.62) contrast(.94)`，常量见 `surface.ts` 的 `WALLPAPER_IMAGE_FILTER`）让前景字好读——**不许用半透明白纱**，白纱会把图提亮变灰，等于第二次「看不清」；有壁纸时 `html[data-wallpaper="on"] body` 让出页面底色、并给 `.panel-card` / `.classic-result-panel` 内的文字补极淡白色 text-shadow（该规则须排在预设之后才压得住）。**整页背景图只有这一条来源**（内置预设壁纸已移除，只支持用户自己上传） |
+| 我的壁纸 | `.imagora-wallpaper` + `__image` | 整页背景层：固定铺满、置底不挡交互；cover 铺底，**不缩放、不重编码**。`filter` 不在 CSS 里写死，由 `wallpaperAdjust.ts` 的 `wallpaperFilter(模糊, 明暗)` 拼成整条内联注入（降噪 + 用户两条滑杆，默认 0/1 即原图）——CSS 嵌 `var()` 会被压缩器丢弃，见 ARCHITECTURE 9.4 第 8 条。**不许用半透明白纱**，白纱会把图提亮变灰，等于第二次「看不清」；有壁纸时 `html[data-wallpaper="on"] body` 让出页面底色、并给 `.panel-card` / `.classic-result-panel` 内的文字补极淡白色 text-shadow（该规则须排在预设之后才压得住）。**整页背景图只有这一条来源**（内置预设壁纸已移除，只支持用户自己上传） |
 | 开关 | `.switch` | 布尔开关（原生 checkbox + 轨道圆钮，状态只走 `:checked`）；画布边界开关用它 |
 | 画布边界 | `html[data-canvas-bounds="off"] .studio-canvas` | 关闭时收掉画布边框 / 底色 / 投影与渲染层底色晕，与页面背景融为一体 |
 | 滚动条 | `--sb-size` · `--sb-thumb` · `--sb-track` | 全局统管；轨道 transparent = 跟随所在容器底色 |
@@ -136,10 +136,15 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - 注意：**只有浅色系**，且只有两项（跟随主体色 / 纯白）。深色的「暗房 / 蓝图」不在其中——它们要连顶栏、卡片、文字、按钮一起换深色，属独立工程；非法/空白存储值一律回落默认「跟随主体色」
 
 ### [surface.ts](src/surface.ts)
-- 职责：卡片表面材质——`surfaceTokens(色相, 通透度)` 产出 `--surface-card` / `--surface-panel` / `--field-bg` 三个字面量 CSS 值 + `--surface-blur`；`blurFor` 是模糊半径的唯一出处（**当前恒返回 `none`**：壁纸要原样清晰；函数保留只为「由 JS 注入整条字面量」这条路不破）；`WALLPAPER_IMAGE_FILTER` 是壁纸降噪滤镜常量（CSS 侧同值）；`FIELD_ALPHA_FLOOR` 是输入框不透明度底线（0.25）；`readSurfaceTransparency` / `saveSurfaceTransparency` 存通透度（0 最实，1 最透）
+- 职责：卡片表面材质——`surfaceTokens(色相, 通透度)` 产出 `--surface-card` / `--surface-panel` / `--field-bg` 三个字面量 CSS 值 + `--surface-blur`；`blurFor` 是模糊半径的唯一出处（**当前恒返回 `none`**：壁纸要原样清晰；函数保留只为「由 JS 注入整条字面量」这条路不破）；`WALLPAPER_IMAGE_FILTER` 是壁纸降噪滤镜常量（由 `wallpaperAdjust.ts` 的 `wallpaperFilter` 消费，CSS 侧不再重复写值）；`--surface-panel` 的消费方是 `.modal-panel`（弹窗与卡片共用一套材质 token，2026-10-03 起不再写死背景色）；`FIELD_ALPHA_FLOOR` 是输入框不透明度底线（0.25）；`readSurfaceTransparency` / `saveSurfaceTransparency` 存通透度（0 最实，1 最透）
 - 被谁依赖：`App.tsx`（外观弹窗的通透度滑杆 + 根节点内联注入）
 - 注意：**故意在 JS 里拼字符串而不是在 CSS 里用变量**——压缩器会丢弃「函数内嵌 var()」的声明；拉到最透仍留约 0.27 的白，保证文字压得住
 
+
+### [wallpaperAdjust.ts](src/wallpaperAdjust.ts)
+- 职责：壁纸自身的模糊（0~24px）与明暗（0.5~1.5）两条**显式**参数——钳制、默认值、`localStorage` 读写，以及 `wallpaperFilter()` 把「固定降噪 + 用户两项」拼成**整条** filter 字面量
+- 与「卡片通透度」完全解耦：那档管卡片自己有多透，这两条管壁纸长什么样，可同时生效；两者都默认取原图/不模糊
+- 判据：**可读性由谁决定**——系统自动改（随通透度糊）不做，用户手动拉才做，详见 ARCHITECTURE 9.4 第 7 条
 ### [wallpaperStore.ts](src/wallpaperStore.ts)
 - 职责：我的壁纸存储层，**只存图**——`readWallpaperImage` / `saveWallpaperImage` / `clearWallpaperImage`，Blob 直存 IndexedDB（不把 base64 塞 localStorage）
 - 被谁依赖：`App.tsx`（外观弹窗与整页铺底；启动时调一次 `purgeLegacyWallpaperSettings`）

@@ -44,7 +44,7 @@ cd frontend; npm test
 | [`test_main_process.py`](test_main_process.py) | 4 | 端口探测 / 祖先链回溯（Windows） |
 | [`test_main_cli.py`](test_main_cli.py) | 31 | CLI gen 子命令全链路（校验/输出解析/文生图+图生图+多参考/失败/--no-asset/比例档位）/ **`--n` 逐张请求（每次 `n=1`、各存各的账、部分失败保留已成功、默认单张行为不变）** / config 输出 |
 
-## 文件索引（前端 vitest，共 320，位于 frontend/src/）
+## 文件索引（前端 vitest，共 331，位于 frontend/src/）
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -77,6 +77,7 @@ cd frontend; npm test
 | [`canvasBounds.test.ts`](../frontend/src/canvasBounds.test.ts) | 9 | 画布边界开关（默认开、只有 0/false 才关、空白与非法值回落、localStorage 不可用降级） |
 | [`backgroundPreset.test.ts`](../frontend/src/backgroundPreset.test.ts) | 13 | 背景底色预设：清单 id 唯一且默认项在最前、每项标签与提示非空、不含深色预设（暗房/蓝图属独立工程）、只有跟随主体色 + 纯白两项、清单里不再有 `wallpaper` 字段（内置壁纸已移除）、两张内置壁纸与四个纹理预设的旧 id 均判为非法、`isBackgroundPresetId` 拒绝非字符串与未知 id、读写往返（每项合法预设都能往返）、非法存储值与旧 id 一律回落默认「跟随主体色」（不需要迁移脚本）、非法 id 不写进存储（不污染已有值） |
 | [`surface.test.ts`](../frontend/src/surface.test.ts) | 15 | 卡片通透度：入参钳到 [0,1] 且空值回落默认、通透度越高各档 alpha 单调变小、通透度 0 落到基准（卡片 0.9/0.68）、拉到最透仍留 >0.2 白（保证文字可读）、`blurFor` 在任何通透度下都返回 `none`（毛玻璃已彻底关闭，不许随通透度增长）、输入框有 `FIELD_ALPHA_FLOOR = 0.25` 底线而卡片不受此限、面板始终比卡片实一档、色相参与底色并被归一、NaN 色相回落 0、读写往返与坏值回落 |
+| [`wallpaperAdjust.test.ts`](../frontend/src/wallpaperAdjust.test.ts) | 11 | 壁纸模糊/明暗：入参钳到合法区间且空值·NaN 回落默认（模糊→0、明暗→1）、默认参数下只产出降噪不写 no-op 指令、模糊与明暗各自出现且降噪永远排最前、只调一项时另一项不出现、越界值先钳再拼绝不写进 CSS、小数保留两位、自定义降噪走同一拼装路径、写入后读回同值、写入前先钳制（存储不落越界值）、未设置/空白/非法一律回落默认 |
 | [`recentPrompts.test.ts`](../frontend/src/recentPrompts.test.ts) | 10 | 最近提示词挑选：按入参顺序取（越靠前越新）不重排、同一条反复重跑只算一次并保留最靠前那次、**按前 40 字归并近似版本**且保留最新、前 40 字不同视为两条、归并键先归一连续空白（只差空格数算同一条）、丢弃空白与缺失项、裁剪首尾空白后再去重、受 `limit` 限制且取满即停、去重后不足 limit 返回全部、空入参返回空数组 |
 
 ## 变更影响路由（改前必看）
