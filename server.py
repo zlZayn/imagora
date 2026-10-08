@@ -1006,7 +1006,7 @@ def run_generation(task: GenerationTask) -> None:
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     started_at = time.time()
-    cost = size_cost(task.size, task.api_model or None)
+    cost = size_cost(task.size)
     results: list[dict] = []
     messages: list[str] = []
     dest = ""
@@ -1025,13 +1025,9 @@ def run_generation(task: GenerationTask) -> None:
                 images=bases,
                 size=task.size,
                 quality=task.quality,
-                model=task.api_model or DEFAULT_MODEL,
+                model=DEFAULT_MODEL,
                 output_format="png",
                 output_path=dest,
-                api_base_url=task.api_base_url or None,
-                api_key=task.api_key or None,
-                generations_path=task.api_generations_path,
-                edits_path=task.api_edits_path,
             )
         else:
             generate_image(
@@ -1039,13 +1035,9 @@ def run_generation(task: GenerationTask) -> None:
                 image_path=None,
                 size=task.size,
                 quality=task.quality,
-                model=task.api_model or DEFAULT_MODEL,
+                model=DEFAULT_MODEL,
                 output_format="png",
                 output_path=dest,
-                api_base_url=task.api_base_url or None,
-                api_key=task.api_key or None,
-                generations_path=task.api_generations_path,
-                edits_path=task.api_edits_path,
             )
         results.append(
             {
@@ -1158,12 +1150,6 @@ def generate(
     ref_paths: str = Form(""),
     win: int = Form(0),
     allow_over_budget: bool = Form(False),
-    api_base_url: str = Form(""),
-    api_key: str = Form(""),
-    api_model: str = Form(""),
-    api_generations_path: str = Form("/v1/images/generations"),
-    api_edits_path: str = Form("/v1/images/edits"),
-    api_path: str = Form(""),
 ):
     """提交生成任务（文生图 / 图生图），立即返回 taskId 与初始状态。
 
@@ -1171,6 +1157,10 @@ def generate(
     前端轮询 GET /api/tasks/{taskId} 获取状态与最终结果。
     同步提交：仅在提交阶段做参数校验与文件落盘，不阻塞生成。
     allow_over_budget：预算预检已确认时由前端置 true，超限才放行（见 /api/budget/check）。
+
+    接口不接收任何凭据参数：配置只有一份，在 .env / config.json 里，由服务端自己读。
+    此前前端会带 api_key / api_base_url 覆盖，那是「浏览器也存一份配置」时代的产物，
+    已随配置归一移除（见 docs/config-write-api-design.md）。
     """
     ref_bases: list[str] = []
     if ref_paths:
@@ -1204,23 +1194,6 @@ def generate(
         submission_id, [*ref_bases, *temp_bases]
     )
 
-    personal_base_url = _form_string(api_base_url).strip()
-    personal_api_key = _form_string(api_key).strip()
-    personal_model = _form_string(api_model).strip()
-    personal_api_path = _form_string(api_path).strip()
-    if personal_api_path:
-        personal_generations_path = personal_api_path
-        personal_edits_path = personal_api_path
-    else:
-        personal_generations_path = (
-            _form_string(api_generations_path, "/v1/images/generations").strip()
-            or "/v1/images/generations"
-        )
-        personal_edits_path = (
-            _form_string(api_edits_path, "/v1/images/edits").strip()
-            or "/v1/images/edits"
-        )
-
     task = GenerationTask(
         prompt=prompt,
         size=size,
@@ -1231,11 +1204,6 @@ def generate(
         temp_bases=temp_bases,
         submission_id=submission_id,
         input_asset_ids=input_asset_ids,
-        api_base_url=personal_base_url,
-        api_key=personal_api_key,
-        api_model=personal_model,
-        api_generations_path=personal_generations_path,
-        api_edits_path=personal_edits_path,
     )
     task_id = task_manager.submit(task)
     return {"taskId": task_id, "status": task.status}
