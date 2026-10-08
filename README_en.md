@@ -128,6 +128,12 @@ Copy-Item .env.example .env
 
 `.env` is git-ignored and never enters the repository. You can also skip this and enter a key later from the config editor behind the model chip in the top bar — it writes to your local `.env` as well.
 
+> **Optional local mirror**　Dependencies install from the official PyPI. If that is slow where you are,
+> add `index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"` to your **machine-level**
+> `%APPDATA%\uv\uv.toml` (Windows) or `~/.config/uv/uv.toml`.
+> **Do not commit `uv.lock` while that is active** — the lock pins the source into every package
+> (absolute download URLs included), which breaks CI runners abroad. `uv lock --check` tells you if it drifted.
+
 ### 3. Start
 
 Double-click `启动生图工作台.exe` in the project root: it checks whether the frontend is built → starts the server → opens a window → enters an interactive menu, where `N` opens the next window and `Q` (or closing the window) stops the server and everything under it.

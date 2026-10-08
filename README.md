@@ -128,6 +128,12 @@ Copy-Item .env.example .env
 
 `.env` 已被 git 忽略，不会进仓库。也可以先不配，启动后在顶栏模型角标里打开配置弹窗填入——那份同样写进本机 `.env`。
 
+> **本地加速（可选）**　依赖默认从官方 PyPI 装。国内如果嫌慢，改**本机**的
+> `%APPDATA%\uv\uv.toml`（Windows）或 `~/.config/uv/uv.toml`，加一行
+> `index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"`。
+> **别把这种状态下的 `uv.lock` 提交上来**——锁文件会把源固化到每个包（连绝对下载 URL），
+> 提交后海外 CI 会连不上。`: uv lock --check` 能查出锁是否漂了。
+
 ### 3. 启动
 
 双击根目录的 `启动生图工作台.exe`：自动检查前端是否已构建 → 起服务 → 开一个窗口 → 进入交互菜单，按 `N` 开下一个窗口，按 `Q`（或关窗）连根停掉服务。
