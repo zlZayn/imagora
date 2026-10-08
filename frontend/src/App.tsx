@@ -849,7 +849,7 @@ function PersonalApiModal({
 }
 
 
-/** 顶部标题区：logo + 标题 + 窗口徽章 + 配置徽章（当前 profile·模型，确认切换中转站生效）+ 模式切换 + 新窗口按钮 */
+/** 顶部标题区：logo + 标题 + 窗口徽章 + 状态徽章（未配置 API Key / 自检问题 / 当前 profile·模型）+ 模式切换 + 新窗口按钮 */
 function TitleBar({
   windowId,
   onNewWindow,
@@ -857,6 +857,7 @@ function TitleBar({
   onModeChange,
   activeProfile,
   defaultModel,
+  healthIssues,
   onOpenApi,
   personalApi,
   onOpenAppearance,
@@ -869,6 +870,8 @@ function TitleBar({
   activeProfile?: string | undefined;
   /** 当前 profile 的默认模型 */
   defaultModel?: string | undefined;
+  /** 启动自检问题（未配置 API Key / 前端未构建 / 输出不可写 / 自检失败）——状态徽章的数据源 */
+  healthIssues: string[];
   onOpenApi: () => void;
   personalApi: PersonalApiSettings | null;
   /** 打开外观弹窗（主体色 / 我的壁纸 / 画布边界） */
@@ -876,6 +879,11 @@ function TitleBar({
 }) {
   /** 品牌区使用单层 Logo，悬停只改变高光与阴影，避免透视挤出造成重影。 */
   const brandRootRef = useRef<HTMLAnchorElement | null>(null);
+
+  /* 状态徽章的取值顺序：没配 Key 时「模型 ID」这个槽位本身没有意义（生图根本不可用），
+     于是直接改说原因，模型名让位；其余自检问题没有各自的入口，聚合在这个槽位里。 */
+  const apiKeyMissing = healthIssues.some((issue) => issue.includes("未配置 API Key"));
+  const otherIssues = healthIssues.filter((issue) => !issue.includes("未配置 API Key"));
 
   return (
     <header className="studio-header enter-up mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -895,7 +903,20 @@ function TitleBar({
         </span>
       </a>
       {windowId !== null && <span className="chip chip--brand window-chip">⌘{String(windowId).padStart(2, "0")}</span>}
-      {activeProfile && (
+      {apiKeyMissing ? (
+        <button
+          type="button"
+          onClick={onOpenApi}
+          className="chip chip--quiet profile-chip cursor-pointer transition-colors hover:text-brand"
+          title="未配置 API Key，生图任务暂不可用 —— 点击配置"
+        >
+          未配置 API Key
+        </button>
+      ) : otherIssues.length > 0 ? (
+        <span className="chip chip--quiet profile-chip" title={otherIssues.join("；")}>
+          自检 {otherIssues.length} 项待处理
+        </span>
+      ) : activeProfile ? (
         <span
           className="chip chip--quiet profile-chip"
           title={`当前配置：profile「${activeProfile}」${defaultModel ? ` · 默认模型 ${defaultModel}` : ""}`}
@@ -903,7 +924,7 @@ function TitleBar({
           {activeProfile}
           {defaultModel ? ` · ${defaultModel}` : ""}
         </span>
-      )}
+      ) : null}
       {/* 模式切换：胶囊分段控件（高度/圆角/字号统一由 .mode-switch 提供，与顶栏其它控件等高） */}
       <div className="mode-switch">
         <button
@@ -1434,6 +1455,7 @@ useEffect(() => {
         defaultModel={activeModelId || config?.defaultModel}
         onOpenApi={() => setShowApiSettings(true)}
         personalApi={personalApi}
+        healthIssues={visibleHealthIssues}
         onOpenAppearance={() => setShowAppearance(true)}
       />
       {showAppearance && (
@@ -1462,12 +1484,6 @@ useEffect(() => {
           onSave={setPersonalApi}
           onClose={() => setShowApiSettings(false)}
         />
-      )}
-
-      {visibleHealthIssues.length > 0 && (
-        <div className="health-alert mb-3 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {visibleHealthIssues.map((issue) => <div key={issue}>{issue}</div>)}
-        </div>
       )}
 
       {/* 无限画布：首次进入后保持挂载，切换模式仅显隐（内容保留，退出窗口才清空） */}

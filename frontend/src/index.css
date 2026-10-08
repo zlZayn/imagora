@@ -612,7 +612,6 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .classic-result-panel .log-box { background: rgba(23, 32, 43, .045); border-color: rgba(23, 32, 43, .08); }
 /* 此处原为深色主题的浅灰白，落在浅底上几乎不可见——归并到同一套次要文字色 */
 .classic-result-panel .result-gallery + * { color: rgba(23, 32, 43, .55); }
-.health-alert { border-radius: 12px; box-shadow: 0 6px 16px rgba(160,110,20,.08); }
 
 /* 画布选中操作栏（.studio-inspector）：颜色一律交给统一样式，本文件不再覆盖。
  * 表面走组件声明的半透明毛玻璃（bg-white/20 + border-white/40 + backdrop-blur-md，见 CanvasPage.tsx），
