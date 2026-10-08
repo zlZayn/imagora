@@ -81,13 +81,20 @@ def test_切profile计入pending(env):
 
 
 def test_切换profile与字段可同一次写入(env):
+    """同一次请求既切 profile 又改字段时，字段必须写**新** profile 的键。
+
+    踩过的坑：用当前生效的 profile 拼键，会得到「ACTIVE_PROFILE 指向 volc，
+    但模型覆盖落在 MODEL_WANWU」—— 切过去之后那个覆盖对不上任何生效的键，
+    表现为「切换成功但模型没变」。
+    """
     body = write_config(
         {"profile": "wanwu", "changes": {"profile": "volc", "model": "some-model"}}
     )
     assert sorted(body["written"]) == ["model", "profile"]
     text = env.read_text(encoding="utf-8")
     assert "ACTIVE_PROFILE=volc" in text
-    assert "MODEL_WANWU=some-model" in text  # 字段键仍按**当前生效** profile 命名
+    assert "MODEL_VOLC=some-model" in text  # 跟**选中**的 profile
+    assert "MODEL_WANWU" not in text  # 不能落到即将失效的那一套上
 
 
 def test_fileState_下发注册名单(env):

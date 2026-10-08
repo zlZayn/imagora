@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { clearConfigSecret, generationHistory, getConfig, getHealthDetails, isHttpError, openFolder, rememberOutputDir, writeConfig } from "./api";
+import { generationHistory, getConfig, getHealthDetails, isHttpError, openFolder, rememberOutputDir, writeConfig } from "./api";
 import { useGenerationTask } from "./useGenerationTask";
 import { Palette } from "lucide-react";
 import { accentForWindow, accentFromHue, hueForWindow, readAccentHue, saveAccentHue } from "./accent";
@@ -344,17 +344,16 @@ function AppearanceModal({
   );
 }
 
-/** 配置编辑器 —— 配置文件的可视化编辑器（不是配置管理器）。
+/** 配置切换 —— 在两份已知清单里**选**，不在这里**写**配置。
  *
- * 数据只有一份，就在 .env 与 config.json：
- *   config.json = 出厂目录（git 跟踪）—— 本界面**只读**，永不写
- *   .env        = 本机覆盖 + 密钥（git 忽略）—— 本界面**只写这里**
- * 因此顶部是只读的「生效中」，下面是写回 .env 的编辑区，两者语义不同、不合并。
+ * 需要的功能只有两件：换来源（profile）、换该来源下的模型。两者都是从清单里挑，
+ * 适合 UI；而接口地址 / 接口路径 / 密钥是「这个来源**是什么**」的定义性内容，
+ * 写一次就不动，用文本编辑器改更直接（也符合已定的分层：config.json = 出厂目录、
+ * .env = 本机覆盖）。把「选择」和「编辑」混在一个弹窗里，正是旧版让人别扭的根因。
  *
- * 交互要点（完整设计见 docs/config-editor-ui-design.md）：
- * - 保存按钮 = 与当前生效值有差异才亮（与文本编辑器 Ctrl+S 同构）；保存**不关窗**
- * - 密钥 write-only：永不回显值，留空 = 不修改；清空走独立按钮 + 二次确认
- * - 待重启：改完写进文件但进程未重载，行尾标 pending，顶栏另有汇总
+ * 其余要点（详见 docs/config-editor-ui-design.md）：
+ * - 保存按钮 = 与磁盘值有差异才亮（与文本编辑器 Ctrl+S 同构）；保存**不关窗**
+ * - 待重启：写进文件但进程未重载，标 pending；顶栏另有汇总
  * - 并发：写前带 expectedMtimes，服务端发现文件被外部改过就 409，绝不静默覆盖
  */
 function ConfigEditorModal({
@@ -368,37 +367,25 @@ function ConfigEditorModal({
   onFileState: (next: ConfigFileState) => void;
 }) {
   const fileState = config.fileState;
-  const profile = fileState?.profile ?? config.activeProfile ?? "";
+  /** 当前**生效**的 profile（进程正在用的那套） */
+  const activeProfile = fileState?.profile ?? config.activeProfile ?? "";
 
-  /** 生效值 = 进程**当前**在用的值（只读区显示它）。 */
-  const effective = {
-    baseUrl: config.baseUrl ?? "",
-    apiPath: config.apiPath ?? "",
-    model: config.defaultModel ?? "",
-  };
+  /** 选项都来自服务端下发的清单，前端不硬编码 */
+  const profileOptions = (fileState?.registeredProfiles ?? []).map((name) => ({
+    value: name,
+    label: name,
+  }));
+  const providerOf = (name: string) => (config.providers ?? []).find((p) => p.name === name);
 
-  /** 磁盘基线 = 文件里的覆盖值，没有覆盖才用生效值。
-   *
-   *  这是编辑区的起点，也是「有没有改动」的比较基准 —— 两项都必须是**磁盘上的值**，
-   *  否则保存过、进入待重启之后：文件里已是新值，而表单还显示旧的生效值，
-   *  用户会以为没保存成功；而且再点保存会因为「与生效值相同」而算作无改动。
-   *  与只读区共用生效值就正好会踩这个坑，所以两者刻意分开。 */
-  const onDisk = {
-    baseUrl: fileState?.fields.baseUrl.fileValue ?? effective.baseUrl,
-    apiPath: fileState?.fields.apiPath.fileValue ?? effective.apiPath,
-    model: fileState?.fields.model.fileValue ?? effective.model,
-  };
+  /** 磁盘基线：文件里选的是哪个 profile、哪个模型。这是「有没有改动」的比较基准。 */
+  const fileProfile = fileState?.fileProfile ?? activeProfile;
+  const fileModel = fileState?.fields.model.fileValue ?? config.defaultModel ?? "";
 
-  const [form, setForm] = useState({ ...onDisk, apiKey: "" });
-  /** 选中的 profile：切换它等于换掉整条解析链（地址/模型/尺寸都跟着换），因此与其余字段一起「待重启」 */
-  const [pickedProfile, setPickedProfile] = useState(fileState?.fileProfile ?? profile);
-  /** 「有改动」的比较基线：初始 = 磁盘值，保存成功后推进到刚写下的值 */
-  const [savedBaseline, setSavedBaseline] = useState(onDisk);
-  const [savedProfileBaseline, setSavedProfileBaseline] = useState(fileState?.fileProfile ?? profile);
+  const [pickedProfile, setPickedProfile] = useState(fileProfile);
+  const [pickedModel, setPickedModel] = useState(fileModel);
+  const [baseline, setBaseline] = useState({ profile: fileProfile, model: fileModel });
   const [busy, setBusy] = useState(false);
-  /** null = 没有正在显示的反馈；"saved" 短暂显示后自动回到无变化态 */
   const [notice, setNotice] = useState<{ kind: "ok" | "err" | "conflict"; text: string } | null>(null);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [pending, setPending] = useState<string[]>(fileState?.pending ?? []);
   /** 保存成功后的短暂反馈：2 秒后回到无变化态 */
   const [justSaved, setJustSaved] = useState(false);
@@ -408,18 +395,26 @@ function ConfigEditorModal({
     if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
   }, []);
 
-  /** 「有变化」= 任一非密钥字段与**基线**不同，或填了新密钥。
-   *  基线是磁盘值（保存成功后推进到刚写下的值），所以保存完按钮立刻回到灰态，
-   *  与文本编辑器 Ctrl+S 的行为同构。空密钥不算变化（留空 = 不修改）。 */
+  /** 选中来源的模型清单：必须跟着**选中**的 profile 走。
+   *  用 config.models（当前生效 profile 的）会出现「选着 wanwu、下拉里列的是 volc 的模型」。 */
+  const pickedProvider = providerOf(pickedProfile);
+  const modelOptions = (pickedProvider?.models ?? []).map((m) => ({ value: m.id, label: m.label }));
+  const activeProvider = providerOf(activeProfile);
+
+  /** 切来源时把模型一起带到该来源的默认值：否则模型还停在上一个来源的 id，
+   *  保存下去就是一个「新来源 + 旧模型」的无效组合。 */
+  const changeProfile = (name: string) => {
+    setPickedProfile(name);
+    const next = providerOf(name);
+    if (next) setPickedModel(next.defaultModel);
+  };
+
   const changed = useMemo(() => {
     const out: string[] = [];
-    if (pickedProfile !== savedProfileBaseline) out.push("profile");
-    if (form.baseUrl.trim() !== savedBaseline.baseUrl) out.push("baseUrl");
-    if (form.apiPath.trim() !== savedBaseline.apiPath) out.push("apiPath");
-    if (form.model.trim() !== savedBaseline.model) out.push("model");
-    if (form.apiKey.trim() !== "") out.push("apiKey");
+    if (pickedProfile !== baseline.profile) out.push("profile");
+    if (pickedModel !== baseline.model) out.push("model");
     return out;
-  }, [form, savedBaseline, pickedProfile, savedProfileBaseline]);
+  }, [pickedProfile, pickedModel, baseline]);
 
   const canSave = changed.length > 0 && !busy;
 
@@ -428,34 +423,21 @@ function ConfigEditorModal({
     setNotice(null);
     try {
       const changes: Record<string, string> = {};
-      // profile 不是「覆盖键」而是选择器：它决定其余键读哪一套（见 server 的 write_config）
-      if (changed.includes("profile")) changes.profile = pickedProfile;
       for (const field of changed) {
-        if (field === "profile") continue;
-        changes[field] = form[field as "baseUrl"];
+        changes[field] = field === "profile" ? pickedProfile : pickedModel;
       }
       const result = await writeConfig({
-        profile,
+        profile: activeProfile,
         changes,
         // force = 用户看过冲突提示后选择「仍然覆盖」：不带 mtime，服务端不再拦
         ...(opts?.force ? {} : { expectedMtimes: fileState?.mtimes ?? {} }),
       });
       setPending(result.pending);
       onFileState(result.fileState);
-      // 写完即把基线推到刚写下的值：否则按钮会一直显示「有变化」，
-      // 且密钥明文还留在表单里（不关窗时这是移除它的唯一时机）。
-      setSavedBaseline({
-        baseUrl: result.fileState.fields.baseUrl.fileValue ?? form.baseUrl,
-        apiPath: result.fileState.fields.apiPath.fileValue ?? form.apiPath,
-        model: result.fileState.fields.model.fileValue ?? form.model,
-      });
-      setSavedProfileBaseline(result.fileState.fileProfile ?? pickedProfile);
-      setForm({
-        baseUrl: result.fileState.fields.baseUrl.fileValue ?? form.baseUrl,
-        apiPath: result.fileState.fields.apiPath.fileValue ?? form.apiPath,
-        model: result.fileState.fields.model.fileValue ?? form.model,
-        apiKey: "",
-      });
+      // 写完把基线推进到刚写下的值，按钮立刻回灰（Ctrl+S 心智）
+      const nextProfile = result.fileState.fileProfile ?? pickedProfile;
+      const nextModel = result.fileState.fields.model.fileValue ?? pickedModel;
+      setBaseline({ profile: nextProfile, model: nextModel });
       setJustSaved(true);
       if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
       savedTimer.current = window.setTimeout(() => setJustSaved(false), 2000);
@@ -470,173 +452,78 @@ function ConfigEditorModal({
     }
   };
 
-  const clearSecret = async () => {
-    setBusy(true);
-    setNotice(null);
-    try {
-      const res = await clearConfigSecret({ profile, confirm: true });
-      if (res.fileState) onFileState(res.fileState);
-      setConfirmClear(false);
-      setNotice({ kind: "ok", text: "已清空密钥（.env 里那一行被注释掉，去掉 # 即可恢复）" });
-    } catch (err) {
-      setNotice({ kind: "err", text: errMessage(err) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const fieldSource = (key: string) =>
-    config.profileView?.fields.find((f) => f.key === key)?.source ?? "";
-  const keyConfigured = fileState?.fields.apiKey.configured ?? false;
-
-  const rows: { key: string; label: string; value: string }[] = [
-    { key: "baseUrl", label: "接口地址", value: effective.baseUrl },
-    { key: "apiPath", label: "接口路径", value: effective.apiPath },
-    { key: "model", label: "默认模型", value: effective.model },
-  ];
-
-  const modelOptions = (config.models ?? []).map((m) => ({ value: m.id, label: m.label }));
-  /** 切 profile 的下拉选项：用 config.json 已注册的名单（服务端下发），不硬编码 */
-  const profileOptions = (fileState?.registeredProfiles ?? []).map((name) => ({
-    value: name,
-    label: name,
-  }));
-
   return (
-    <ModalShell title="生图 API 配置" className="modal-panel--lg" onClose={onClose} testId="config-editor">
+    <ModalShell title="生图 API 配置" onClose={onClose} testId="config-editor">
       <header className="modal-header">
         <h3 className="modal-title">生图 API 配置</h3>
-        <p className="modal-subtitle">
-          改这里 = 直接改配置文件；数据只有一份，文本编辑器与这里等价。
-        </p>
+        <p className="modal-subtitle">选一套来源与模型。地址与密钥等改文件即可。</p>
       </header>
 
-      {/* 生效中：只读事实。不给输入框——只读信息不该伪装成可编辑 */}
-      <section>
-        <p className="field-label mb-2">生效中</p>
-        <div className="spec-list">
-          {rows.map((row) => (
-            <div key={row.key} className="spec-list__row">
-              <span className="spec-list__key">{row.label}</span>
-              <span className="spec-list__val flex min-w-0 items-baseline gap-2">
-                <span className={row.key === "model" ? "truncate" : "truncate font-mono text-xs"}>
-                  {row.value || "—"}
-                </span>
-                {fieldSource(row.key) && (
-                  <span className="text-caption shrink-0">{fieldSource(row.key)}</span>
-                )}
-              </span>
-            </div>
-          ))}
-          <div className="spec-list__row">
-            <span className="spec-list__key">API Key</span>
-            <span className="spec-list__val flex items-baseline gap-2">
-              <span>{keyConfigured ? "● 已设置" : "○ 未配置"}</span>
-              {/* 密钥的 source 在后端就是「未配置」本身（见 build_profile_view），
-                  与左边的状态重复，故只在已配置时显示来源（那时它是有信息量的命名变量名）。 */}
-              {keyConfigured && fieldSource("apiKey") && (
-                <span className="text-caption">{fieldSource("apiKey")}</span>
-              )}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* 编辑区：写回 .env */}
-      <section className="mt-5 border-t border-neutral-200/80 pt-4">
-        <div className="mb-3 flex items-baseline justify-between">
-          <p className="field-label">修改配置</p>
-          <span className="text-caption">写入 .env · 重启后生效</span>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          {/* 切 profile 在最前：它是其余字段的父级（BASE_URL_<PROFILE> / MODEL_<PROFILE> 都挂在它下面）。
-              改了要重启才生效，因此与其它字段同走「待重启」。 */}
-          {profileOptions.length > 0 && (
-            <div>
-              <label className="field-label mb-2" htmlFor="cfg-profile">配置来源（profile）</label>
-              <Select
-                id="cfg-profile"
-                options={profileOptions}
-                value={pickedProfile}
-                onChange={setPickedProfile}
-              />
-              <p className="text-caption mt-2">
-                切一套来源 = 换掉地址、模型与尺寸价目表；写入 .env 的 ACTIVE_PROFILE，重启后生效。
-              </p>
-            </div>
-          )}
-
+      {/* 内容区走 .modal-body：面板是 overflow:hidden 的 flex 列，不包这一层的话
+          内容超出时会被静默裁掉且滚不动。 */}
+      <div className="modal-body">
+        {profileOptions.length > 0 && (
           <div>
-            <label className="field-label mb-2" htmlFor="cfg-base-url">接口地址</label>
-            <input
-              id="cfg-base-url"
-              className="field-control font-mono text-sm"
-              value={form.baseUrl}
-              onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
-              placeholder="https://…"
-            />
-          </div>
-
-          <div>
-            <label className="field-label mb-2" htmlFor="cfg-api-path">接口路径</label>
-            <input
-              id="cfg-api-path"
-              className="field-control font-mono text-sm"
-              value={form.apiPath}
-              onChange={(e) => setForm({ ...form, apiPath: e.target.value })}
-              placeholder="/v1/images/generations"
-            />
-          </div>
-
-          <div>
-            <label className="field-label mb-2" htmlFor="cfg-model">默认模型</label>
-            {modelOptions.length > 0 ? (
-              <Select
-                options={modelOptions}
-                value={form.model}
-                onChange={(v) => setForm({ ...form, model: v })}
-              />
-            ) : (
-              <input
-                id="cfg-model"
-                className="field-control text-sm"
-                value={form.model}
-                onChange={(e) => setForm({ ...form, model: e.target.value })}
-              />
-            )}
-          </div>
-
-          <div>
-            <label className="field-label mb-2" htmlFor="cfg-api-key">API Key</label>
-            <input
-              id="cfg-api-key"
-              type="password"
-              className="field-control font-mono text-sm"
-              value={form.apiKey}
-              onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
-              placeholder="留空则不修改"
-              autoComplete="off"
+            <label className="field-label mb-2" htmlFor="cfg-profile">配置来源</label>
+            <Select
+              id="cfg-profile"
+              options={profileOptions}
+              value={pickedProfile}
+              onChange={changeProfile}
             />
             <p className="text-caption mt-2">
-              {keyConfigured ? "● 已设置 · 写入后无法再查看" : "○ 未配置"}
+              {pickedProvider?.label && pickedProvider.label !== pickedProfile
+                ? pickedProvider.label
+                : "换来源 = 换地址、模型与尺寸价目表"}
             </p>
           </div>
+        )}
+
+        <div className="mt-4">
+          <label className="field-label mb-2" htmlFor="cfg-model">默认模型</label>
+          {modelOptions.length > 0 ? (
+            <Select id="cfg-model" options={modelOptions} value={pickedModel} onChange={setPickedModel} />
+          ) : (
+            <input
+              id="cfg-model"
+              className="field-control text-sm"
+              value={pickedModel}
+              onChange={(e) => setPickedModel(e.target.value)}
+            />
+          )}
+          <p className="text-caption mt-2">
+            {pickedModel && pickedProvider?.models.find((m) => m.id === pickedModel)?.note
+              ? pickedProvider.models.find((m) => m.id === pickedModel)?.note
+              : "该来源下的可选模型"}
+          </p>
         </div>
 
-        {/* 清空密钥：独立出口 + 二次确认。不与普通保存同路 */}
-        {keyConfigured && (
-          <div className="mt-5 border-t border-neutral-200/80 pt-3">
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              disabled={busy}
-              onClick={() => setConfirmClear(true)}
-            >
-              清空此密钥
-            </button>
+        {/* 生效中：只读事实。改文件才动它，这里只用来对照「保存后会不会变」 */}
+        <div className="mt-5 border-t border-neutral-200/80 pt-4">
+          <p className="field-label mb-2">生效中</p>
+          <div className="spec-list">
+            <div className="spec-list__row">
+              <span className="spec-list__key">来源</span>
+              <span className="spec-list__val">{activeProfile || "—"}</span>
+            </div>
+            <div className="spec-list__row">
+              <span className="spec-list__key">模型</span>
+              <span className="spec-list__val truncate">{config.defaultModel || "—"}</span>
+            </div>
+            <div className="spec-list__row">
+              <span className="spec-list__key">API Key</span>
+              <span className="spec-list__val">
+                {fileState?.fields.apiKey.configured ? "● 已设置" : "○ 未配置"}
+              </span>
+            </div>
+            {activeProvider?.baseUrl && (
+              <div className="spec-list__row">
+                <span className="spec-list__key">接口地址</span>
+                <span className="spec-list__val truncate font-mono text-xs">{activeProvider.baseUrl}</span>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         {pending.length > 0 && (
           <p className="mt-4 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
@@ -674,7 +561,7 @@ function ConfigEditorModal({
             )}
           </div>
         )}
-      </section>
+      </div>
 
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-neutral-200/80 pt-4">
         <span className="text-caption min-w-0 truncate">
@@ -692,37 +579,13 @@ function ConfigEditorModal({
           </button>
         </div>
       </div>
-
-      {confirmClear && (
-        <ModalShell
-          title="清空 API Key"
-          onClose={() => setConfirmClear(false)}
-          nested
-          testId="clear-secret"
-          className="modal-panel--sm"
-        >
-          <h3 className="modal-title">清空 API Key？</h3>
-          <p className="modal-subtitle">
-            删掉后生成任务会失败，直到重新填入。此操作只把 .env 里那一行注释掉，
-            去掉行首的 # 即可手工恢复。
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" className="btn-ghost btn-sm" onClick={() => setConfirmClear(false)}>
-              取消
-            </button>
-            <button type="button" className="btn-danger btn-sm" disabled={busy} onClick={() => void clearSecret()}>
-              确认清空
-            </button>
-          </div>
-        </ModalShell>
-      )}
     </ModalShell>
   );
 }
 
-/** 字段 key → 界面用词（提示文案里用） */
+/** 字段 key → 界面用词（「待重启」提示文案里用） */
 function labelOfField(key: string): string {
-  return { baseUrl: "接口地址", apiPath: "接口路径", model: "默认模型", apiKey: "API Key" }[key] ?? key;
+  return { profile: "配置来源", model: "默认模型" }[key] ?? key;
 }
 
 

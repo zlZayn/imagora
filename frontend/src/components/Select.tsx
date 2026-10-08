@@ -1,6 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { popPopup, pushPopup } from "../popupLayer";
+
 export interface SelectOption {
   value: string;
   label: string;
@@ -75,6 +77,13 @@ export function Select({ options, value, onChange, className = "", id }: SelectP
       maxHeight,
     });
   };
+
+  // 展开期间登记为「有浮层」：否则按 Esc 时弹窗会抢先关掉（见 popupLayer 的说明）
+  useEffect(() => {
+    if (!open) return;
+    pushPopup();
+    return () => popPopup();
+  }, [open]);
 
   // 展开时量一次；展开期间滚动 / 改变窗口尺寸要重算（否则列表会与触发器错位）
   useLayoutEffect(() => {

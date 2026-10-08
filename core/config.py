@@ -558,7 +558,7 @@ def build_provider_catalog(cfg: dict) -> list[dict]:
     把各 profile 的 base_url + sizes + models 一并下发，前端才能按地址自己换表；
     profile 增删来源时前端零改动。
 
-    每项：{name, label, baseUrl, defaultModel, defaultQuality, defaultSize, sizes, models}
+    每项：{name, label, baseUrl, apiPath, defaultModel, defaultQuality, defaultSize, sizes, models}
     """
     profiles = cfg.get("profiles")
     if not isinstance(profiles, dict):
@@ -567,11 +567,19 @@ def build_provider_catalog(cfg: dict) -> list[dict]:
     for name, profile in profiles.items():
         if not isinstance(profile, dict):
             continue
+        paths = profile.get("api_paths")
+        if not isinstance(paths, dict):
+            paths = _DEFAULTS["api_paths"]
         catalog.append(
             {
                 "name": str(name),
                 "label": str(profile.get("label") or name),
                 "baseUrl": str(profile.get("base_url") or _DEFAULTS["base_url"]),
+                # 供配置编辑器在切换 profile 时预览该来源的接口路径
+                # （不带上它，前端切了 profile 只能沿用上一个来源的路径）
+                "apiPath": str(
+                    paths.get("generations") or _DEFAULTS["api_paths"]["generations"]
+                ),
                 "defaultModel": str(
                     profile.get("default_model") or _DEFAULTS["default_model"]
                 ),

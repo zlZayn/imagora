@@ -73,26 +73,17 @@ export async function getConfig(win?: number): Promise<AppConfig> {
   return (await res.json()) as AppConfig;
 }
 
-/** 把界面的改动写进 .env（行级原地更新 + 原子写 + mtime 冲突检测）。
- *  契约见 docs/config-write-api-design.md。失败时抛 HttpError（409 = 文件被外部修改）。 */
+/** 切换配置：写 ACTIVE_PROFILE 与 MODEL_<PROFILE>。
+ *
+ *  界面只做「选」不做「写」——接口地址 / 路径 / 密钥是定义性内容，改文件即可，
+ *  所以这里只可能出现这两个字段（服务端契约更宽，见 docs/config-write-api-design.md）。
+ *  失败时抛 HttpError（409 = 文件被外部修改）。 */
 export function writeConfig(payload: {
   profile: string;
-  changes: Partial<Record<"baseUrl" | "apiPath" | "model" | "apiKey", string>>;
+  changes: Partial<Record<"profile" | "model", string>>;
   expectedMtimes?: { env?: number | null; config?: number | null };
 }): Promise<ConfigWriteResult> {
   return requestJson<ConfigWriteResult>("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...tokenHeader() },
-    body: JSON.stringify(payload),
-  });
-}
-
-/** 清空密钥 —— 独立出口且必须显式确认（改值与删除是两种心智模型）。 */
-export function clearConfigSecret(payload: {
-  profile: string;
-  confirm: true;
-}): Promise<{ ok: boolean; fileState: AppConfig["fileState"] }> {
-  return requestJson("/api/config/secret", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...tokenHeader() },
     body: JSON.stringify(payload),

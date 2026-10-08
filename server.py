@@ -460,6 +460,9 @@ def write_config(body: dict = Body(...)):
             },
         )
 
+    # 覆盖键的后缀必须跟着**目标** profile：若同一次请求既切 profile 又改字段，
+    # 用当前生效的 profile 拼键会把覆盖写到即将失效的那一套上
+    # （表现为：切到 volc 成功，但模型覆盖落在 MODEL_WANWU 上，切过去后不生效）。
     names = config_guard.profile_env_names(profile)
     updates: dict[str, str] = {}
     written: list[str] = []
@@ -486,6 +489,7 @@ def write_config(body: dict = Body(...)):
         if picked:
             updates["ACTIVE_PROFILE"] = picked
             written.append("profile")
+            names = config_guard.profile_env_names(picked)  # 后续字段写新来源的键
 
     for field in _EDITABLE:
         if field not in changes:

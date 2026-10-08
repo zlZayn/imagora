@@ -26,6 +26,8 @@ export interface ProviderCatalog {
   /** 展示名（如「aiwanwu 中转站」） */
   label: string;
   baseUrl: string;
+  /** 该来源的图片生成接口路径（切换 profile 时用它预览，否则只能沿用上一个来源的路径） */
+  apiPath: string;
   defaultModel: string;
   defaultQuality?: string;
   defaultSize?: string;
