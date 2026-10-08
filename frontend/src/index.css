@@ -326,8 +326,10 @@ html {
 /* ============ 我的壁纸（整页背景层） ============
  * 固定铺满视口、画在内容之下（z-index: -1 —— 在 body 底色之上、所有内容之下）、
  * pointer-events: none：它只是背景，绝不能挡住任何交互。
- * **就用用户的原图**：cover 铺满，不缩放、不模糊、不压暗、不重编码
- * （曾做过模糊/压暗/缩放三个滑杆，维护者要求只保留原图，相关参数与取样逻辑已一并删除）。 */
+ * cover 铺满、不缩放、不重编码；模糊与明暗是**用户的显式调节**（外观弹窗两条滑杆，
+ * 默认 0 / 1 即原图），整条 filter 由 JS 拼好内联注入 —— CSS 里嵌 var() 会被压缩器丢弃。
+ * 历史：曾把模糊做成「随卡片通透度自动涨到 80px」，整卡糊成奶白雾、壁纸被洗成灰白，已归零；
+ * 现在这两条是壁纸自身的属性，与卡片通透度完全解耦，由用户自己权衡可读性。 */
 .imagora-wallpaper {
   position: fixed;
   inset: 0;
@@ -341,10 +343,8 @@ html {
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  /* 降噪：抽掉一部分颜色、轻微压对比，让画面安静下来，前景文字才读得清。
-   * **不是遮挡**：不加白纱、不压暗、不改尺寸、不重编码——壁纸的细节与纵深全部保留。
-   * 数值与原因见 surface.ts 的 WALLPAPER_IMAGE_FILTER（那边是唯一事实来源）。 */
-  filter: saturate(0.62) contrast(0.94);
+  /* filter 由 JS 内联注入（含固定降噪 + 用户可调的模糊/明暗），
+   * 这里不再写死值——见 wallpaperAdjust.ts 的 wallpaperFilter（唯一事实来源）。 */
 }
 /* 壁纸生效时页面底色让位于壁纸：body 的「掺主色相浅色底」收掉（图未解码完时也不闪主色底）。
  * 主色只留给前景元素（按钮 / 角标 / 选中态 / 聚焦环），由 --color-brand 承担。 */
@@ -557,7 +557,12 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .studio-canvas .react-flow__edge.selected .react-flow__edge-path { stroke: var(--color-brand); stroke-width: 2.5; }
 .studio-canvas .react-flow__handle { box-shadow: 0 0 0 3px rgba(255,255,255,.85); }
 
-/* Gallery, history and modal surfaces share the same product language. */
+/* Gallery, history and modal surfaces share the same product language.
+ *
+ * 弹窗表面读 `--surface-panel`，与卡片同一套材质 token（surface.ts 的 surfaceTokens 算好后内联注入）：
+ * 此前这里是写死的 rgba(251,251,248,.97)，于是主体色 / 卡片通透度 / 背景材质对**所有弹窗**一律无效——
+ * 换色/调通透度时页面变了、弹窗不变，看着像两套界面。
+ * 兜底值与 surface.ts 的 BASE.panelTop 对齐（hue 0 / 不透明档），JS 未注入时也不会跑偏。 */
 .studio-modal-overlay,
 .modal-shell {
   position: fixed;
@@ -579,7 +584,8 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   border: 1px solid rgba(255,255,255,.68);
   border-radius: 16px !important;
   outline: none;
-  background: rgba(251,251,248,.97) !important;
+  /* 与卡片同源：主体色相 + 通透度都在这条 token 里 */
+  background: var(--surface-panel, linear-gradient(150deg, hsl(0 30% 98.4% / 0.96), hsl(0 34% 94.8% / 0.8)));
   box-shadow: 0 24px 70px rgba(15,20,25,.26), inset 0 1px 0 rgba(255,255,255,.8) !important;
 }
 .modal-panel--sm { width: min(100%, 26rem); }
@@ -593,6 +599,10 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   padding: 0;
   flex-direction: column;
 }
+/* 弹窗变得可透之后，卡片用的那层「极淡白描边」同样适用（见下方 html[data-wallpaper] 段）。
+   两套材质 token 之下文字可读性一致，不再是「卡片透、弹窗不透」的两副面孔。 */
+.modal-panel,
+.studio-modal { text-shadow: none; }
 .modal-header { margin-bottom: 16px; }
 .modal-title { color: #17202b; font-size: 15px; font-weight: 650; letter-spacing: -.02em; }
 .modal-subtitle { margin-top: 4px; max-width: 58ch; color: rgba(23,32,43,.6); font-size: 12px; line-height: 1.55; }

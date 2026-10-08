@@ -12,6 +12,15 @@ import {
   type BackgroundPresetId,
 } from "./backgroundPreset";
 import { SURFACE_TRANSPARENCY_LIMITS, readSurfaceTransparency, saveSurfaceTransparency, surfaceTokens } from "./surface";
+import {
+  WALLPAPER_BLUR_LIMITS,
+  WALLPAPER_BRIGHTNESS_LIMITS,
+  readWallpaperBlur,
+  readWallpaperBrightness,
+  saveWallpaperBlur,
+  saveWallpaperBrightness,
+  wallpaperFilter,
+} from "./wallpaperAdjust";
 import type { AppConfig, ConfigProfileView, GenerationTaskStatus, ModelOption, PersonalApiPreset, PersonalApiSettings, ProviderCatalog, RefItem, ResultItem } from "./types";
 import { errMessage, generatingLabel } from "./format";
 import { clearInheritedState, readInheritedState, saveInheritedState } from "./windowInherit";
@@ -84,6 +93,10 @@ function AppearanceModal({
   onBackgroundPresetChange,
   surfaceTransparency,
   onSurfaceTransparencyChange,
+  wallpaperBlur,
+  onWallpaperBlurChange,
+  wallpaperBrightness,
+  onWallpaperBrightnessChange,
   canvasBounds,
   onCanvasBoundsChange,
   onClose,
@@ -106,6 +119,14 @@ function AppearanceModal({
   surfaceTransparency: number;
   /** 改通透度 */
   onSurfaceTransparencyChange: (value: number) => void;
+  /** 壁纸模糊半径 px（0 = 原图） */
+  wallpaperBlur: number;
+  /** 改壁纸模糊 */
+  onWallpaperBlurChange: (value: number) => void;
+  /** 壁纸明暗（1 = 原样，>1 提亮，<1 压暗） */
+  wallpaperBrightness: number;
+  /** 改壁纸明暗 */
+  onWallpaperBrightnessChange: (value: number) => void;
   /** 画布是否显示自己的边界（边框 + 底色） */
   canvasBounds: boolean;
   onCanvasBoundsChange: (visible: boolean) => void;
@@ -229,8 +250,54 @@ function AppearanceModal({
               )}
             </div>
 
+            {/* 模糊 / 明暗：壁纸自身的显式属性，与「卡片通透度」互不影响。
+                默认 0 与 1 即原图——用户自己权衡可读性，系统不替他决定。 */}
+            <div className="mt-4 flex flex-col gap-4">
+              <div>
+                <label className="field-label mb-2" htmlFor="wallpaper-blur">
+                  壁纸模糊
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="wallpaper-blur"
+                    type="range"
+                    className="range-field flex-1"
+                    min={WALLPAPER_BLUR_LIMITS.min}
+                    max={WALLPAPER_BLUR_LIMITS.max}
+                    step={0.5}
+                    value={wallpaperBlur}
+                    onChange={(e) => onWallpaperBlurChange(Number(e.target.value))}
+                  />
+                  <span className="text-muted w-14 text-right text-xs">
+                    {wallpaperBlur.toFixed(1)}px
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="field-label mb-2" htmlFor="wallpaper-brightness">
+                  壁纸明暗
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="wallpaper-brightness"
+                    type="range"
+                    className="range-field flex-1"
+                    min={WALLPAPER_BRIGHTNESS_LIMITS.min}
+                    max={WALLPAPER_BRIGHTNESS_LIMITS.max}
+                    step={0.05}
+                    value={wallpaperBrightness}
+                    onChange={(e) => onWallpaperBrightnessChange(Number(e.target.value))}
+                  />
+                  <span className="text-muted w-14 text-right text-xs">
+                    {wallpaperBrightness.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <p className="text-caption mt-2">
-              选一张本地图片当整页背景，按原图铺满、不做任何处理（只存本机，不上传）。
+              选一张本地图片当整页背景，只存本机、不上传。模糊与明暗只改壁纸本身，不影响卡片通透度；
+              默认 0 与 1 即原图。
               壁纸与上面的背景材质只能二选一：设了壁纸，材质就停用；删掉壁纸，材质自动恢复。
             </p>
             {wallpaper.notice !== null && <p className="text-caption mt-1">{wallpaper.notice}</p>}
@@ -959,6 +1026,9 @@ export function App() {
   const [wallpaperBlob, setWallpaperBlob] = useState<Blob | null>(null);
   /** 铺底用的 object URL：直接指向原图；null = 不铺底 */
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  /** 壁纸自身的模糊半径 px（0 = 原图）与明暗（1 = 原样）；只存本机浏览器 */
+  const [wallpaperBlur, setWallpaperBlur] = useState<number>(() => readWallpaperBlur());
+  const [wallpaperBrightness, setWallpaperBrightness] = useState<number>(() => readWallpaperBrightness());
   const [wallpaperBusy, setWallpaperBusy] = useState(false);
   /** 需要用户知道的一句话（如本地存储不可用）；null = 不显示 */
   const [wallpaperNotice, setWallpaperNotice] = useState<string | null>(null);
@@ -1419,7 +1489,14 @@ useEffect(() => {
           两者共用这一层，因此观感完全一致——别为预设图另开一层，否则可读性处理会分叉。 */}
       {pageWallpaperUrl !== null && (
         <div className="imagora-wallpaper" aria-hidden="true">
-          <div className="imagora-wallpaper__image" style={{ backgroundImage: `url("${pageWallpaperUrl}")` }} />
+          <div
+            className="imagora-wallpaper__image"
+            style={{
+              backgroundImage: `url("${pageWallpaperUrl}")`,
+              // 整条 filter 由 JS 拼好再注入：CSS 里嵌 var() 会被构建期压缩器丢弃
+              filter: wallpaperFilter(wallpaperBlur, wallpaperBrightness),
+            }}
+          />
         </div>
       )}
       <TitleBar
@@ -1439,6 +1516,16 @@ useEffect(() => {
           accentHue={accentHue}
           onAccentHueChange={handleAccentHueChange}
           wallpaper={{ hasImage: wallpaperActive, busy: wallpaperBusy, notice: wallpaperNotice }}
+          wallpaperBlur={wallpaperBlur}
+          onWallpaperBlurChange={(value) => {
+            setWallpaperBlur(value);
+            saveWallpaperBlur(value);
+          }}
+          wallpaperBrightness={wallpaperBrightness}
+          onWallpaperBrightnessChange={(value) => {
+            setWallpaperBrightness(value);
+            saveWallpaperBrightness(value);
+          }}
           onWallpaperFile={(file) => void handleWallpaperFile(file)}
           onWallpaperClear={handleWallpaperClear}
           backgroundPreset={backgroundPreset}
