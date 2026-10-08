@@ -1,7 +1,8 @@
 # 第 2 步接口设计 · 配置写入
 
-> 配套：[配置编辑器 UI 交互设计](config-editor-ui-design.md)
-> 本文件是实现前的接口约定；实现完成后回填差异。
+> 配套：[配置弹窗 UI 交互设计](config-editor-ui-design.md)
+> 本文件是接口契约（单一事实来源）。**服务端能写的字段比界面用到的多**：
+> 界面只落 `profile` 与 `model`（见配套文档第 1 节），其余字段留给脚本 / CLI，契约不变。
 
 ## 1. 写配置接口
 
@@ -161,6 +162,8 @@ def apply_env_changes(path, changes, expected_mtime):
 | mtime 匹配 | 200 正常写入 |
 | 密钥 write-only | 写完后 `GET /api/config` 响应里**搜不到该 key 的值** |
 | `POST /api/config/secret` | 确认清空后该行被注释掉，且响应不返回原值 |
+| 切 profile | 写 `ACTIVE_PROFILE`，注释与未改的键保留；未注册的来源 400 且磁盘不变 |
+| 切 profile + 改字段同批 | 字段覆盖键按**选中**的来源拼（`MODEL_VOLC`），**不落到**当前生效的那个（`MODEL_WANWU`）——否则切过去后覆盖失效，表现为「切换成功但模型没变」 |
 | 路径逃逸 | profile 名含 `../` 时 400 |
 
 ## 6. 已知不做

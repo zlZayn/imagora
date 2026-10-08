@@ -1,7 +1,7 @@
 # docs/ — 辅助文档索引
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — 设计圣经：不变决策 / 数据流 / 契约 / 防错清单
-- [`config-editor-ui-design.md`](config-editor-ui-design.md) — 配置编辑器交互设计（字段与写入目标 / 线框 / 保存状态机 / 争议取舍）
+- [`config-editor-ui-design.md`](config-editor-ui-design.md) — 配置弹窗交互设计（为什么只留两个选择器 / 字段与写入目标 / 联动与保存状态机 / 争议取舍）
 - [`config-write-api-design.md`](config-write-api-design.md) — 配置写入接口契约（请求响应 / 三层防护 / 令牌下发 / mtime 冲突）
 - [`prompt-import-format.md`](prompt-import-format.md) — 通用粘贴导入格式（`=== 标题 ===` + 代码围栏 + `ratio: N:M`）
 - [`ecom-prompt-import-format.md`](ecom-prompt-import-format.md) — 电商专用模板（固定轮播/详情批次）

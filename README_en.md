@@ -100,8 +100,8 @@ Failed records show why they failed in the panel (missing reference images are c
 | | |
 | --- | --- |
 | Multiple providers | Endpoint, model, sizes, and prices live side by side in one config file and switch with a single line; the title bar shows which one is active |
-| Edit config in the UI | Model chip in the top bar → config editor: change endpoint / model / path / key, written back to your local `.env`; anything changed is flagged as pending restart |
-| Or just edit the file | The editor and a text editor touch the **same file**; there is one config, not a second copy in the browser |
+| Switch config in the UI | Model chip in the top bar → config dialog: **pick** a provider and a model from the known lists, written back to your local `.env`; marked as pending restart |
+| Everything else: edit the file | Endpoint / path / key are write-once — use a text editor on `config.json` (factory catalog) and `.env` (local overrides); the dialog and the files touch the **same data**, there is no second copy in the browser |
 
 ### Appearance
 
@@ -126,7 +126,7 @@ Copy-Item .env.example .env
 # Edit .env and fill in the key for the active profile, e.g. API_KEY_WANWU=sk-your-key
 ```
 
-`.env` is git-ignored and never enters the repository. You can also skip this and enter a key later from the config editor behind the model chip in the top bar — it writes to your local `.env` as well.
+`.env` is git-ignored and never enters the repository. **The key is not entered in the UI** (the dialog only picks a provider and a model) — changing a key means editing this line in a text editor. The dialog shows whether the active provider has a key set.
 
 > **Optional local mirror**　Dependencies install from the official PyPI. If that is slow where you are,
 > add `index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"` to your **machine-level**
