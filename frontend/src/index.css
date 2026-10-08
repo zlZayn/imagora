@@ -146,25 +146,51 @@ html {
   --mark-ink: 8%;        /* 编号水印浓度（很低，隐隐约约）*/
   --chip-sm-h: 18px;     /* 小角标高度 */
 
-  /* —— 表面（容器底色）——同级容器共用同一套 150deg 微渐变：同角度、同色系、同强度量级，
-   * 层次只靠档位区分（卡片 --surface-card < 面板 --surface-panel），
-   * 不再出现「同排有的纯白、有的渐变」或角度各异（145deg / 160deg）的观感断层。
-   * 卡片用半透明（透出 body 底色，更轻）；面板用近实色（承载图与日志，需稳定底色）。
+  /* —— 表面（容器底色）——六档角色，全部由 src/surface.ts 算好后内联注入。
    *
-   * 两个表面都掺入主色相（--accent-hue，App 换色时写到根元素）：
-   * 卡片占整页大部分面积，只调 body 底色收益很小，把表面也带上主色才是「整页有色」的关键。
-   * 明度压在 96% 以上，仍近白，因此正文与图片的对比不受影响。 */
-  --surface-card: linear-gradient(
-    150deg,
-    hsl(var(--accent-hue, 0) 26% 99.2% / 0.66),
-    hsl(var(--accent-hue, 0) 30% 96.8% / 0.46)
-  );
-  --surface-panel: linear-gradient(
-    150deg,
-    hsl(var(--accent-hue, 0) 30% 98.4% / 0.72),
-    hsl(var(--accent-hue, 0) 34% 94.8% / 0.54)
-  );
+   * 这里的值是**兜底**（JS 注入前的那一帧）：按 hue 0 / 通透度 0 算出来的，
+   * 与 surface.ts 同源，数字由脚本复算生成，别手改。
+   *
+   * 两个正交的轴（详见 surface.ts 文件头）：
+   *   tint（掺色）决定「这个面是什么色」，按角色分配：外壳多、内容区少、画布为 0；
+   *   alpha（不透明度）由用户的「通透度」滑杆统一拉动。
+   *
+   * 老实现的坑：token 写 hsl(hue 30% 98.4% / a)，98.4% 亮度 + 30% 饱和度算出来离纯白
+   * 只有 2/255 —— **数学上不可见**，看到的"跟色"全来自 alpha 低、页面底色透上来。
+   * 于是任何需要不透明的面（弹窗、列表行）颜色就消失，同屏出现"左卡是粉的、右台面是白的"。
+   * 现在改为解出真实 RGB，掺色量有了直观含义（0.10 ≈ 离白 15/255）。
+   *
+   * 嵌套不变量：**内层不许比外层更透**，否则壁纸从容器中间透出一个洞。
+   * 默认通透度下 卡片 0.47 < 台面 0.85 < 浮层 0.94（surface.test.ts 锁住这条）。 */
+  --surface-base: linear-gradient(150deg, rgba(253, 240, 240, 0.92), rgba(253, 234, 234, 0.78));
+  --surface-card: linear-gradient(150deg, rgba(253, 240, 240, 0.9), rgba(253, 235, 235, 0.68));
+  --surface-panel: linear-gradient(150deg, rgba(253, 240, 240, 0.97), rgba(253, 234, 234, 0.92));
+  --surface-float: linear-gradient(150deg, rgba(254, 247, 247, 0.99), rgba(254, 244, 244, 0.96));
+  --surface-inset: linear-gradient(150deg, rgba(255, 251, 251, 0.9), rgba(254, 250, 250, 0.9));
+  --surface-plain: linear-gradient(150deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.9));
+
+  /* 毛玻璃：恒 none（壁纸要原样，见 surface.ts 的 blurFor）。任何容器都不许硬编码 blur()。 */
+  --surface-blur: none;
+
+  /* —— 遮罩（弹窗背后的隔离层）——不掺主体色：它是"压暗"，带色会让弹窗底色发脏。
+   * 曾有两条各写各的（弹窗 blur(10px)/冷色 .62，生成历史 blur(6px)/暖色 .48），
+   * 同一个应用里两种遮罩观感，属历史遗留；现统一为这一组。
+   * 模糊只在这里用：它是"把注意力切走"的隔离手段，与"容器不许糊壁纸"不冲突。 */
+  --scrim-bg: rgba(20, 26, 31, 0.62);
+  --scrim-bg-nested: rgba(20, 26, 31, 0.44);
+  --scrim-blur: blur(10px) saturate(0.9);
 }
+
+/* —— 表面角色类 ——
+ * TSX 里要给一个容器上表面时，挂这几个类，**不要写 Tailwind 的 bg-white / bg-neutral-* **：
+ * bg-* 生成的是 background-color，接不了渐变 token，而且写死颜色就不再跟随主体色。
+ * 角色怎么选见 src/surface.ts 的 ROLES 与 SURFACE_ROLE_DOC。 */
+.surface-base { background: var(--surface-base); }
+.surface-card { background: var(--surface-card); }
+.surface-panel { background: var(--surface-panel); }
+.surface-float { background: var(--surface-float); }
+.surface-inset { background: var(--surface-inset); }
+.surface-plain { background: var(--surface-plain); }
 
 /* 字段标签统一块级：inline 时标签盒随父级基线漂移，左右两栏首行会错开数 px
  * （实测左栏比右栏低 3px）；块级后标签顶部即内容起点，跨栏自然对齐。 */
@@ -273,7 +299,8 @@ html {
   padding: 7px 10px;
   border-radius: var(--r-control);
   border: 1px solid rgba(31, 41, 55, 0.12);
-  background: rgba(255, 255, 255, 0.6);
+  /* 浮层档：它叠在结果台面之上 */
+  background: var(--surface-float);
   color: rgba(23, 32, 43, 0.72);
   font-size: 11.5px;
   line-height: 1.5;
@@ -384,7 +411,8 @@ html[data-wallpaper="on"] select {
   border: 1px solid color-mix(in srgb, var(--color-brand) 15%, rgba(255,255,255,.65));
   background: color-mix(in srgb, var(--color-brand) 7%, rgba(255,255,255,.62));
   box-shadow: inset 0 1px rgba(255,255,255,.8), 0 3px 12px rgba(35,42,50,.045);
-  backdrop-filter: blur(12px) saturate(125%);
+  -webkit-backdrop-filter: var(--surface-blur, none);
+  backdrop-filter: var(--surface-blur, none);
 }
 /* 窗口角标窗口号：曾单独走等宽 11px/650 + 字距，结果顶栏里只有它一个字体不一样
  * （2026-10-03 统一）——回到 .chip 基底即可，只保留固定宽度让窗口号位置稳定。 */
@@ -445,10 +473,12 @@ html[data-wallpaper="on"] select {
 .studio-canvas {
   border-color: rgba(31, 41, 55, 0.12) !important;
   border-radius: 18px !important;
-  /* 与经典输出区同为「承载内容的台面」→ 面板级表面。
-     此前是硬编码暖白（252,252,250 固定色相），主体色怎么改它都不参与，
-     是这几个模块里最明显的一块「不跟着变」。 */
-  background: var(--surface-panel) !important;
+  /* 画布主体是**看图的台面** —— 唯一有意不跟随主体色的容器。
+     带色会干扰对生成图本身颜色的判断（同屏比对两张图时尤其明显），
+     所以走中性档 `--surface-plain`（掺色为 0，只受通透度影响）。
+     此前是硬编码暖白 rgba(252,252,250,.72)：既不跟随、也不是刻意的中性，
+     只是个漏网的写死值；现在把"不跟随"变成显式选择，并用测试锁住。 */
+  background: var(--surface-plain) !important;
   box-shadow: 0 18px 45px rgba(31, 41, 55, 0.09), inset 0 1px rgba(255, 255, 255, 0.9) !important;
 }
 .studio-canvas .react-flow__renderer {
@@ -464,7 +494,7 @@ html[data-wallpaper="on"] select {
   width: 30px;
   height: 30px;
   border: 0;
-  background: rgba(255, 255, 255, 0.84);
+  background: var(--surface-float);
   color: #52606f;
 }
 .studio-canvas .react-flow__controls-button:hover { background: color-mix(in srgb, var(--color-brand) 10%, white); color: var(--color-brand); }
@@ -495,10 +525,10 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   -webkit-backdrop-filter: var(--surface-blur, none);
   backdrop-filter: var(--surface-blur, none);
 }
-/* 输入框：半透明白 + 毛玻璃。底色由 App 按「通透度」内联注入（--field-bg），
+/* 输入框：半透明白 + 毛玻璃。底色由 App 按「通透度」内联注入（--surface-inset），
    缺省值仅供 JS 加载前兜底。 */
-.field-control { border-color: rgba(31, 41, 55, 0.14); background: var(--field-bg, rgba(255, 255, 255, 0.7)); }
-/* 输入框在有壁纸时也直接读 --field-bg（全透时接近透明），
+.field-control { border-color: rgba(31, 41, 55, 0.14); background: var(--surface-inset, rgba(255, 255, 255, 0.7)); }
+/* 输入框在有壁纸时也直接读 --surface-inset（全透时接近透明），
    靠 1px 描边 + 聚焦环标出边界，不再叠一层白底挡住壁纸。 */
 .field-control:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand) 13%, transparent); }
 .btn-primary { border-radius: 11px; box-shadow: 0 8px 18px color-mix(in srgb, var(--color-brand) 18%, transparent); }
@@ -543,7 +573,7 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .classic-result-panel .result-gallery > a {
   border-radius: 12px;
   padding: 7px;
-  background: rgba(255, 255, 255, .72);
+  background: var(--surface-float);
   border-color: rgba(31, 41, 55, .12);
 }
 .classic-result-panel .result-gallery p,
@@ -564,14 +594,14 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
  * 限宽与横向滚动隐藏在文件后段单独定义（本类仍保留）。 */
 .studio-canvas .node-pop {
   border-color: rgba(32,43,51,.13) !important;
-  background: rgba(255,255,255,.88) !important;
+  background: var(--surface-float) !important;
   box-shadow: 0 12px 26px rgba(33,44,53,.12), inset 0 1px rgba(255,255,255,.9) !important;
 }
 .studio-canvas .node-pop.node-selected {
   border-color: var(--color-brand) !important;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 16%, transparent), 0 14px 30px rgba(33,44,53,.16) !important;
 }
-.studio-canvas .node-pop .field-control { background: rgba(247,249,249,.9); }
+.studio-canvas .node-pop .field-control { background: var(--surface-inset); }
 .studio-canvas .react-flow__edge-path { stroke: #7c8994; stroke-width: 1.5; }
 .studio-canvas .react-flow__edge.selected .react-flow__edge-path { stroke: var(--color-brand); stroke-width: 2.5; }
 .studio-canvas .react-flow__handle { box-shadow: 0 0 0 3px rgba(255,255,255,.85); }
@@ -590,10 +620,11 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   display: grid;
   place-items: center;
   padding: clamp(12px, 2vw, 24px);
-  background: rgba(20,26,31,.62) !important;
-  backdrop-filter: blur(10px) saturate(.9);
+  background: var(--scrim-bg) !important;
+  -webkit-backdrop-filter: var(--scrim-blur);
+  backdrop-filter: var(--scrim-blur);
 }
-.modal-shell--nested { z-index: 60; background: rgba(20,26,31,.44) !important; }
+.modal-shell--nested { z-index: 60; background: var(--scrim-bg-nested) !important; }
 .studio-modal,
 .modal-panel {
   width: min(100%, 42rem);
@@ -634,12 +665,12 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .modal-subtitle { margin-top: 4px; max-width: 58ch; color: rgba(23,32,43,.6); font-size: 12px; line-height: 1.55; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .modal-empty { padding: 24px 12px; color: rgba(23,32,43,.38); font-size: 12px; text-align: center; }
-.workflow-list { border: 1px solid rgba(31,41,55,.12); border-radius: var(--r-control); background: rgba(255,255,255,.6); }
+.workflow-list { border: 1px solid rgba(31,41,55,.12); border-radius: var(--r-control); background: var(--surface-float); }
 .workflow-list__item { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; color: #3f4953; font-size: 12px; text-align: left; transition: color .18s ease, background-color .18s ease; }
 .workflow-list__item:hover,
 .workflow-list__item:focus-visible { color: var(--color-brand); background: color-mix(in srgb, var(--color-brand) 7%, transparent); }
 .workflow-list__meta { flex: none; color: rgba(23,32,43,.42); font-size: 11px; font-variant-numeric: tabular-nums; }
-.select-list { border: 1px solid rgba(31,41,55,.14); border-radius: var(--r-control); background: rgba(255,255,255,.98); padding: 4px; box-shadow: 0 18px 40px rgba(15,20,25,.14); }
+.select-list { border: 1px solid rgba(31,41,55,.14); border-radius: var(--r-control); background: var(--surface-float); padding: 4px; box-shadow: 0 18px 40px rgba(15,20,25,.14); }
 .select-option { display: flex; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 7px; color: #3f4953; font-size: 13px; cursor: pointer; }
 .select-option.is-active { color: var(--color-brand); background: color-mix(in srgb, var(--color-brand) 7%, transparent); }
 .select-option.is-selected { color: var(--color-brand); font-weight: 600; }
@@ -647,7 +678,7 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .prompt-import-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: rgba(23,32,43,.58); font-size: 12px; }
 .prompt-import-summary__error,
 .prompt-import-issue { color: #c83f3f; }
-.prompt-import-card { margin-top: 8px; padding: 10px 12px; border: 1px solid rgba(31,41,55,.1); border-radius: var(--r-control); background: rgba(255,255,255,.64); }
+.prompt-import-card { margin-top: 8px; padding: 10px 12px; border: 1px solid rgba(31,41,55,.1); border-radius: var(--r-control); background: var(--surface-float); }
 .prompt-import-card__meta { display: flex; flex-wrap: wrap; gap: 8px; color: rgba(23,32,43,.5); font-size: 11px; }
 .prompt-import-card__meta strong { color: #17202b; }
 .prompt-import-card__fallback { color: #a46108; }
@@ -711,10 +742,10 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 /* Page-specific expressions: one system, three moods.
  * 经典输出区的表面已并入 .classic-result-panel 主定义（含 --surface-panel），此处不再重复覆盖。 */
 
-.history-overlay { background: rgba(30,30,28,.48) !important; backdrop-filter: blur(6px); }
-.history-modal { border: 1px solid rgba(31,41,55,.12); border-radius: 18px !important; background: #f4f1eb !important; box-shadow: 0 24px 70px rgba(25,25,22,.22) !important; }
-.history-modal > header { background: rgba(255,255,255,.72); border-color: rgba(31,41,55,.1); }
-.history-modal ul > li { border-color: rgba(31,41,55,.11); background: rgba(255,255,255,.72); transition: transform .2s ease, box-shadow .2s ease; }
+.history-overlay { background: var(--scrim-bg) !important; -webkit-backdrop-filter: var(--scrim-blur); backdrop-filter: var(--scrim-blur); }
+.history-modal { border: 1px solid rgba(31,41,55,.12); border-radius: 18px !important; background: var(--surface-panel) !important; box-shadow: 0 24px 70px rgba(25,25,22,.22) !important; }
+.history-modal > header { background: var(--surface-float); border-color: rgba(31,41,55,.1); }
+.history-modal ul > li { border-color: rgba(31,41,55,.11); background: var(--surface-float); transition: transform .2s ease, box-shadow .2s ease; }
 .history-modal ul > li:hover,
 .history-modal ul > li:focus-within { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(31,41,55,.08); }
 
@@ -735,7 +766,8 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
   padding: 3px;
   border-radius: var(--r-pill);
   border: 1px solid rgba(31,41,55,.1);
-  background: rgba(255,255,255,.72);
+  /* 骨架档：它是顶栏里的分段控件底 */
+  background: var(--surface-base);
 }
 .mode-switch__item {
   display: inline-flex;
@@ -779,7 +811,6 @@ html[data-canvas-bounds="off"] .studio-canvas .react-flow__renderer {
 .api-settings-trigger.is-active:hover:not(:disabled),
 .api-settings-trigger.is-active:focus-visible { color: #fff !important; }
 .api-settings-modal { color: #17202b; }
-.api-settings-modal .field-control { background: rgba(255,255,255,.86); }
 
 /* ============ 公共组件类：表单 / 按钮 / 卡片 统一 ============ */
 @layer components {

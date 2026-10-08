@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（330 用例）
+npm test           # vitest run（338 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -44,8 +44,8 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | --- | --- | --- |
 | 尺寸阶梯 | `--h-ctl` · `--h-field` · `--h-cta` | 顶栏控件 28 · 表单控件 38 · 主行动 46 |
 | 圆角阶梯 | `--r-pill` · `--r-card` · `--r-control` | 胶囊 · 容器 16 · 控件 10 |
-| 表面 | `--surface-card` · `--surface-panel` · `--field-bg` · `--surface-blur` | 由 App 用 `surfaceTokens(色相, 通透度)` 在 **JS 里算成字面量后内联注入**（与 `--color-brand` 同路）；通透度拉到 1 时卡片/面板 alpha 仅约 0.05（接近全透明），输入框另有 `FIELD_ALPHA_FLOOR = 0.25` 底线。两条硬约束（模糊绝不随通透度增长、CSS 里不写「函数内嵌 var()」）见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 9.4 第 7、8 条 |
-| 表面分层 | 卡片级 `--surface-card` → 骨架容器；面板级 `--surface-panel` → 台面 | **新容器先归角色再选档，别写硬编码白**。骨架 = 顶栏 `.studio-header`、经典三张输入卡、画布工具栏 `.studio-toolbar`；台面 = 经典输出区 `.classic-result-panel`、画布主体 `.studio-canvas`、弹窗 `.modal-panel`。判据只有两条：① 是否跟随主体色与通透度（硬编码 `rgba(255,255,255,…)` 必然不跟）；② 毛玻璃是否走 `var(--surface-blur)`（当前恒 `none`，硬编码 `blur()` 等于只有它一处把壁纸糊掉）。2026-10-03 前顶栏 / 工具栏 / 画布主体三处各自硬编码，换主体色时整块不参与 —— 全站统一时逐条核对过 |
+| 表面 | `--surface-base` · `--surface-card` · `--surface-panel` · `--surface-float` · `--surface-inset` · `--surface-plain` · `--surface-blur` · `--scrim-*` | **全部由 [surface.ts](src/surface.ts) 算好后注入**，它是容器底色的唯一产地。两个正交的轴：**掺色 `tint`**（这个面是什么色，按角色分配）与**不透明度 `alpha`**（用户的「通透度」滑杆）。老实现的坑：token 写 `hsl(hue 30% 98.4% / a)`，算出来离纯白只有 **2/255**，数学上不可见 —— 看到的「跟色」全来自 alpha 低、页面底色透上来，于是任何需要不透明的面（弹窗、列表行）颜色就消失（同屏出现「左卡是粉的、右台面是白的」）。现改为解出真实 RGB，`tint 0.10` ≈ 离白 **15/255**。两条硬约束（模糊绝不随通透度增长、CSS 里不写「函数内嵌 var()」）见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 9.4 第 7、8 条 |
+| 表面分层 | 六档角色（见 [surface.ts](src/surface.ts) 的 `ROLES` / `SURFACE_ROLE_DOC`）：`base` 骨架 → `card` 大面衬底 → `panel` 台面 → `float` 浮层 → `inset` 内嵌；`plain` **中性**（画布主体，看图台面，刻意不跟随主体色） | **新容器先按角色选档**：骨架（顶栏 / 工具栏）`base`，经典三张输入卡 `card`，输出区 / 弹窗外壳 / 生成历史外壳 `panel`，下拉 / 列表行 / 节点卡 / 缩略图 / 最近提示词 `float`，输入框 `inset`。TSX 里挂 `.surface-*` 角色类（**别写 Tailwind 的 `bg-white`** —— 它生成 `background-color`，接不了渐变 token，且写死就不再跟随）。**嵌套不变量：内层不许比外层更透**（否则壁纸从容器中间透出一个洞），默认通透度下 卡片 0.47 < 台面 0.85 < 浮层 0.94。判据与护栏：[surfaceAudit.test.ts](src/surfaceAudit.test.ts) 解析 `index.css` **与全部 `.tsx`**，任何未登记的写死底色 / 硬编码 `blur()` 直接红（豁免要写理由，白名单按「文件+类名」精确匹配，不做全局放行） |
 | 通用滑杆 | `.range-field` | 外观弹窗的参数滑杆（通透度用它；与主体色滑杆同形，轨道保持中性） |
 | 角落装饰 | `.corner-deco` · `.corner-rings` · `.corner-note` | 编号 / 弧环 / 镜像小字 |
 | 最近提示词 | `.recent-prompt` | 结果区空态一键复用的提示词行：单行截断，完整内容走 title 悬停 |

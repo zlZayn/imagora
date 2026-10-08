@@ -243,7 +243,7 @@ export function HistoryGallery({
   return (
     <>
       <ModalShell title="生成历史" onClose={onClose} className="history-modal modal-panel--history corner-rings" overlayClassName="history-overlay">
-        <header className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-4 py-3">
+        <header className="flex flex-wrap items-center gap-2 border-b border-neutral-200 surface-float px-4 py-3">
           <h2 className="mr-2 text-sm font-semibold">生成历史</h2>
           <input
             value={query}
@@ -290,7 +290,7 @@ export function HistoryGallery({
               <ul className="grid grid-cols-2 gap-3">
               {items.map((item, index) => {
                 return (
-                <li key={`${item.time}-${item.output}-${index}`} className="flex gap-3 rounded-lg border border-neutral-200 bg-white p-3">
+                <li key={`${item.time}-${item.output}-${index}`} className="flex gap-3 rounded-lg border border-neutral-200 surface-float p-3">
                   <div className="w-40 min-h-36 flex-none self-stretch overflow-hidden bg-neutral-100">
                     {item.url ? (
                       <a

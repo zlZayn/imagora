@@ -267,7 +267,7 @@ export function useCanvasDrop<N extends Node = Node, E extends Edge = Edge>({
         >
           <div
             ref={dropChipInnerRef}
-            className={`canvas-drop-chip flex items-center gap-2 rounded-full border border-brand/40 bg-white/95 px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-md ${dropIntent ? "show" : ""}`}
+            className={`canvas-drop-chip surface-float flex items-center gap-2 rounded-full border border-brand/40 px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-md ${dropIntent ? "show" : ""}`}
           >
             <span className="drop-chip-icon drop-chip-icon--create">
               {dropIntent === "prompt" ? (

@@ -11,7 +11,13 @@ import {
   saveBackgroundPreset,
   type BackgroundPresetId,
 } from "./backgroundPreset";
-import { SURFACE_TRANSPARENCY_LIMITS, readSurfaceTransparency, saveSurfaceTransparency, surfaceTokens } from "./surface";
+import {
+  SURFACE_TRANSPARENCY_LIMITS,
+  readSurfaceTransparency,
+  saveSurfaceTransparency,
+  surfaceTokens,
+  surfaceVarList,
+} from "./surface";
 import {
   WALLPAPER_BLUR_LIMITS,
   WALLPAPER_BRIGHTNESS_LIMITS,
@@ -877,11 +883,12 @@ useEffect(() => {
   const root = document.documentElement.style;
   root.setProperty("--color-brand", accent.brand);
   root.setProperty("--color-brand-dark", accent.brandDark);
-  root.setProperty("--surface-card", surface.card);
-  root.setProperty("--surface-panel", surface.panel);
-  root.setProperty("--field-bg", surface.field);
-  root.setProperty("--surface-blur", surface.blur);
-}, [accent.brand, accent.brandDark, surface.card, surface.panel, surface.field, surface.blur]);
+  // 遍历 surfaceVarList：新增角色时 .imagora-app 与根元素两处一起生效，不会漏一处
+  // （弹窗走 Portal 挂在 body 下，读不到 .imagora-app 上的变量 —— 见 ARCHITECTURE 9.4 第 9 条）
+  for (const [name, value] of surfaceVarList(surface)) {
+    root.setProperty(name, value);
+  }
+}, [accent.brand, accent.brandDark, surface]);
   /** 界面模式：经典表单 / 无限画布（?mode=canvas 直达画布） */
   const [mode, setMode] = useState<"classic" | "canvas">(() =>
     new URLSearchParams(window.location.search).get("mode") === "canvas" ? "canvas" : "classic",
@@ -1180,10 +1187,7 @@ useEffect(() => {
         {
           "--color-brand": accent.brand,
           "--color-brand-dark": accent.brandDark,
-          "--surface-card": surface.card,
-          "--surface-panel": surface.panel,
-          "--field-bg": surface.field,
-          "--surface-blur": surface.blur,
+          ...Object.fromEntries(surfaceVarList(surface)),
         } as CSSProperties
       }
     >
