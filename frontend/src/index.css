@@ -402,9 +402,14 @@ html[data-wallpaper="on"] select {
   padding: 10px 14px;
   border: 1px solid rgba(31, 41, 55, 0.08) !important;
   border-radius: var(--r-card);
-  background: rgba(255, 255, 255, 0.72);
+  /* 表面走 token：顶栏是骨架容器，与经典三卡同级（此前硬编码纯白，
+     换个主体色整条顶栏纹丝不动，跟下面几张紫调卡并排就露馅）。 */
+  background: var(--surface-card);
   box-shadow: 0 10px 34px rgba(28, 34, 43, 0.06), inset 0 1px rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(16px);
+  /* 毛玻璃同样走 token（当前恒为 none）：此前硬编码 blur(16px)，
+     与「壁纸不糊」的既定取舍冲突——铺了壁纸只有顶栏把它糊掉。 */
+  -webkit-backdrop-filter: var(--surface-blur, none);
+  backdrop-filter: var(--surface-blur, none);
 }
 /* 顶栏控件等高：品牌区 / 徽章 / 分段切换 / 幽灵按钮统一 28px，共用一条水平基线 */
 .studio-header .btn-ghost,
@@ -425,9 +430,11 @@ html[data-wallpaper="on"] select {
   padding: 9px 10px;
   border: 1px solid rgba(31, 41, 55, 0.09);
   border-radius: 13px;
-  background: rgba(255, 255, 255, 0.58);
+  /* 与顶栏同为骨架容器 → 卡片级表面（此前是另一档硬编码白，比顶栏还透） */
+  background: var(--surface-card);
   box-shadow: 0 6px 20px rgba(31, 41, 55, 0.045);
-  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: var(--surface-blur, none);
+  backdrop-filter: var(--surface-blur, none);
 }
 .studio-toolbar > div:first-child {
   padding-right: 10px;
@@ -438,7 +445,10 @@ html[data-wallpaper="on"] select {
 .studio-canvas {
   border-color: rgba(31, 41, 55, 0.12) !important;
   border-radius: 18px !important;
-  background: rgba(252, 252, 250, 0.72) !important;
+  /* 与经典输出区同为「承载内容的台面」→ 面板级表面。
+     此前是硬编码暖白（252,252,250 固定色相），主体色怎么改它都不参与，
+     是这几个模块里最明显的一块「不跟着变」。 */
+  background: var(--surface-panel) !important;
   box-shadow: 0 18px 45px rgba(31, 41, 55, 0.09), inset 0 1px rgba(255, 255, 255, 0.9) !important;
 }
 .studio-canvas .react-flow__renderer {

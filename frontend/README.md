@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite + Tailwind v4 + React Flow（`@xyflow/react`）。�
 npm install
 npm run dev        # 开发模式（热更新；需后端已启动，见下）
 npm run build      # tsc --noEmit + vite build → dist/（git 忽略，由后端服务托管）
-npm test           # vitest run（324 用例）
+npm test           # vitest run（330 用例）
 npm run lint       # eslint
 npx tsc --noEmit   # 类型检查
 ```
@@ -45,15 +45,16 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 尺寸阶梯 | `--h-ctl` · `--h-field` · `--h-cta` | 顶栏控件 28 · 表单控件 38 · 主行动 46 |
 | 圆角阶梯 | `--r-pill` · `--r-card` · `--r-control` | 胶囊 · 容器 16 · 控件 10 |
 | 表面 | `--surface-card` · `--surface-panel` · `--field-bg` · `--surface-blur` | 由 App 用 `surfaceTokens(色相, 通透度)` 在 **JS 里算成字面量后内联注入**（与 `--color-brand` 同路）；通透度拉到 1 时卡片/面板 alpha 仅约 0.05（接近全透明），输入框另有 `FIELD_ALPHA_FLOOR = 0.25` 底线。两条硬约束（模糊绝不随通透度增长、CSS 里不写「函数内嵌 var()」）见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 9.4 第 7、8 条 |
+| 表面分层 | 卡片级 `--surface-card` → 骨架容器；面板级 `--surface-panel` → 台面 | **新容器先归角色再选档，别写硬编码白**。骨架 = 顶栏 `.studio-header`、经典三张输入卡、画布工具栏 `.studio-toolbar`；台面 = 经典输出区 `.classic-result-panel`、画布主体 `.studio-canvas`、弹窗 `.modal-panel`。判据只有两条：① 是否跟随主体色与通透度（硬编码 `rgba(255,255,255,…)` 必然不跟）；② 毛玻璃是否走 `var(--surface-blur)`（当前恒 `none`，硬编码 `blur()` 等于只有它一处把壁纸糊掉）。2026-10-03 前顶栏 / 工具栏 / 画布主体三处各自硬编码，换主体色时整块不参与 —— 全站统一时逐条核对过 |
 | 通用滑杆 | `.range-field` | 外观弹窗的参数滑杆（通透度用它；与主体色滑杆同形，轨道保持中性） |
 | 角落装饰 | `.corner-deco` · `.corner-rings` · `.corner-note` | 编号 / 弧环 / 镜像小字 |
 | 最近提示词 | `.recent-prompt` | 结果区空态一键复用的提示词行：单行截断，完整内容走 title 悬停 |
 | 行内角标 | `.chip`（`--sm` `--dot` `--brand` `--quiet` `--danger`） | 顶栏 28 · 小号 18 |
 | 分段控件 | `.tabs`（模态页签） · `.mode-switch`（顶栏模式） | 同源视觉，尺寸走 `--h-ctl` |
-| 模态内容区 | `.modal-body` | 高度过渡（`--panel-h` 驱动）+ 滚动条占位 + `[data-growing]` 变高裁切 |
+| 模态内容区 | `.modal-body` | 面板是 `max-height` + `overflow:hidden` 的 **flex 列**，内容区靠 `flex: 1 1 auto` + `min-height: 0` 才能被压到内容高度以下并自滚；`scrollbar-gutter: stable` 预留滚动条位、不横向位移。**别改回块级布局**：块级下内容区高度不受约束，`scrollHeight === clientHeight` 永远不触发滚动，超出部分被面板静默裁掉（实测 1100×620：panelClientH 531 / panelScrollH 716 / canScroll false）。原文写的 `--panel-h` 与 `[data-growing]` 早已不存在，2026-10-03 更正 |
 | 只读值表 | `.spec-list` + `__row` / `__key` / `__val` / `__src` | 「值 + 来源」两行式排版 |
 | 背景材质 | `html[data-bg="…"]` + `.bg-swatches` / `.bg-swatch`（`--accent` `--plain`） | 整页背景材质预设；材质只在 `--bg-color` / `--bg-image` / `--bg-size` 三个变量里声明一次，`html[data-bg]` 与选择器色块**共用同一组声明**；铺法是 `repeat`（纹理通道），**大图不许走这里**（会平铺出接缝）；页面底色只能用 `--accent-hue`（`--color-brand` 在 `.imagora-app` 上，body 读不到） |
-| 我的壁纸 | `.imagora-wallpaper` + `__image` | 整页背景层：固定铺满、置底不挡交互；cover 铺底，**不缩放、不重编码**。`filter` 不在 CSS 里写死，由 `wallpaperAdjust.ts` 的 `wallpaperFilter(模糊, 明暗)` 拼成整条内联注入（降噪 + 用户两条滑杆，默认 0/1 即原图）——CSS 嵌 `var()` 会被压缩器丢弃，见 ARCHITECTURE 9.4 第 8 条。**不许用半透明白纱**，白纱会把图提亮变灰，等于第二次「看不清」；有壁纸时 `html[data-wallpaper="on"] body` 让出页面底色、并给 `.panel-card` / `.classic-result-panel` 内的文字补极淡白色 text-shadow（该规则须排在预设之后才压得住）。**整页背景图只有这一条来源**（内置预设壁纸已移除，只支持用户自己上传） |
+| 我的壁纸 | `.imagora-wallpaper` + `__image` | 整页背景层：固定铺满、置底不挡交互；cover 铺底，**不缩放、不重编码**。`filter` 不在 CSS 里写死，由 `wallpaperAdjust.ts` 的 `wallpaperFilter(模糊, 明暗)` 拼成整条内联注入（降噪 + 用户两条滑杆，默认 0/1 即原图）——CSS 嵌 `var()` 会被压缩器丢弃，见 ARCHITECTURE 9.4 第 8 条。**不许用半透明白纱**，白纱会把图提亮变灰，等于第二次「看不清」；有壁纸时 `html[data-wallpaper="on"] body` 让出页面底色、并给所有走表面 token 的容器（`.panel-card` / `.classic-result-panel` / `.studio-header` / `.studio-toolbar` / `.studio-canvas`）内的文字补极淡白色 text-shadow（该规则须排在预设之后才压得住）。**整页背景图只有这一条来源**（内置预设壁纸已移除，只支持用户自己上传） |
 | 开关 | `.switch` | 布尔开关（原生 checkbox + 轨道圆钮，状态只走 `:checked`）；画布边界开关用它 |
 | 画布边界 | `html[data-canvas-bounds="off"] .studio-canvas` | 关闭时收掉画布边框 / 底色 / 投影与渲染层底色晕，与页面背景融为一体 |
 | 滚动条 | `--sb-size` · `--sb-thumb` · `--sb-track` | 全局统管；轨道 transparent = 跟随所在容器底色 |
@@ -140,6 +141,12 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 - `writeConfig()`：写 `.env`（带 `X-Config-Token`）；409 = 文件被外部修改，不静默覆盖
 - `clearConfigSecret()`：清空密钥（独立出口，必须 `confirm: true`）
 - 契约见 [../docs/config-write-api-design.md](../docs/config-write-api-design.md)
+
+### [popupLayer.ts](src/popupLayer.ts)
+- 职责：**浮层计数**——`pushPopup` / `popPopup` / `hasOpenPopup` / `resetPopupCount`
+- 解决的问题：`.modal-shell` 的 Esc 监听挂在 document 的 **capture 阶段**，比浮层自己的 `onKeyDown` 先跑。不判浮层的话，展开下拉时按 Esc 会**连弹窗一起关掉** —— 用户的手感是「我只想收起下拉，结果正在填的窗口没了」。`Select` 展开时 push、收起时 pop，`ModalShell` 关窗前先问 `hasOpenPopup()`，因此需要两次 Esc（先收浮层、再关弹窗）
+- 可计数：多余 `pop` 做了负数保护，否则 `hasOpenPopup()` 会永远为真、弹窗再也关不掉
+- 改后跑 `npm test`
 
 ### [surface.ts](src/surface.ts)
 - 职责：卡片表面材质——`surfaceTokens(色相, 通透度)` 产出 `--surface-card` / `--surface-panel` / `--field-bg` 三个字面量 CSS 值 + `--surface-blur`；`blurFor` 是模糊半径的唯一出处（**当前恒返回 `none`**：壁纸要原样清晰；函数保留只为「由 JS 注入整条字面量」这条路不破）；`WALLPAPER_IMAGE_FILTER` 是壁纸降噪滤镜常量（由 `wallpaperAdjust.ts` 的 `wallpaperFilter` 消费，CSS 侧不再重复写值）；`--surface-panel` 的消费方是 `.modal-panel`（弹窗与卡片共用一套材质 token，2026-10-03 起不再写死背景色）；`FIELD_ALPHA_FLOOR` 是输入框不透明度底线（0.25）；`readSurfaceTransparency` / `saveSurfaceTransparency` 存通透度（0 最实，1 最透）

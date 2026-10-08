@@ -47,7 +47,7 @@ Imagora 是本地单机工具，运行时分三层，方向单一：
 | `core/` | 后端核心逻辑（见 2.2），全部无 HTTP 依赖的纯业务模块；**双件**：规则层 core/AGENTS.md + 文件索引 core/README.md |
 | `frontend/` | React SPA（见 2.3）；**双件**：frontend/AGENTS.md（规则）+ frontend/README.md（索引） |
 | `scripts/` | 独立运维脚本：`migrate.py`（存储一步到最新，默认只报告、`--apply` 才落盘备份校验）；**双件**：scripts/AGENTS.md + scripts/README.md |
-| `tests/` | 后端 pytest（345 用例）+ 前端 vitest（324 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
+| `tests/` | 后端 pytest（345 用例）+ 前端 vitest（330 用例），全部不调上游；**双件**：tests/AGENTS.md + tests/README.md（逐文件覆盖） |
 | `docs/` | 设计圣经 `ARCHITECTURE.md`（本文档）+ `prompt-import-format.md` / `ecom-prompt-import-format.md`（格式规范）；**双件**：docs/AGENTS.md + docs/README.md |
 | `assets/` | **文档配图**（只服务 markdown 渲染，不是应用资源）：`screenshots/` 放 README「界面一览」的界面截图；**双件**：assets/AGENTS.md + assets/README.md |
 | `_ui-audit/` | 开发期 UI 审计图（本机产物，git 忽略）：由 [scripts/capture.py](../scripts/capture.py) 生成，与门面配图 `assets/screenshots/` 不是一回事 |
@@ -468,6 +468,9 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 10. **弹窗表面写死颜色 = 换色只换一半**。现象：换主体色 / 调通透度 / 选背景材质之后，页面变了而弹窗（生成历史 / 工作流 / API 配置）不变，像两套界面。根因：`.modal-panel` 的 `background` 是写死的 `rgba(251,251,248,.97) !important`，不读任何 token。规范：**弹窗表面必须读 `--surface-panel`**，与卡片共用同一套材质 token（`surface.ts` 的 `surfaceTokens` 算好后内联注入）；兜底值与 `BASE.panelTop` 对齐（hue 0 / 不透明档），JS 未注入时也不跑偏。判据：改材质后在弹窗打开态比对 `getComputedStyle('.modal-panel').getPropertyValue('--surface-panel')` 与卡片侧的 `--surface-card` 是否同色相同档位。
 11. **滚动容器的水平内边距小于焦点环外扩量，左侧的环被裁掉**。现象：点开下拉框，聚焦特效左边被切平、右边正常（右边只是当时多写了一个 4px）。根因：`overflow-y: auto` 只裁到 padding box，而 `button:focus-visible` 的环是 `outline 2px + offset 3px = 5px`、`.field-control:focus` 的 `box-shadow` 是 4px；`.modal-body` 左侧内边距为 0 时元素左沿与容器左沿重合，向左的部分整条被裁。规范：**滚动容器的 `padding-inline` 不小于环的外扩量**，且两侧同值（`.modal-body` 取 6px）；不要靠在调用处写单边 `pr-*` 打补丁，那只会把「两边都裁」变成「左右不对称」。
 
+12. **模块表面各自硬编码 = 换主体色只变一半**。现象：换成紫色主体色后，经典表单三张卡与输出区跟着变，顶栏、画布工具栏、画布主体纹丝不动 —— 同一屏里一半紫调、一半偏白，像是两套界面。根因：`.studio-header` 是 `rgba(255,255,255,0.72)`、`.studio-toolbar` 是 `rgba(255,255,255,0.58)`、`.studio-canvas` 是 `rgba(252,252,250,0.72)`，三处都写死了固定色（最后那个连色相都固定成暖白），而卡片走的是 `--surface-card` / `--surface-panel`。规范：**新容器先归角色、再选档，不写硬编码色**。骨架容器（顶栏、输入卡、画布工具栏）用卡片级 `--surface-card`；承载内容的台面（经典输出区、画布主体、弹窗）用面板级 `--surface-panel`。同一条也管毛玻璃：必须走 `var(--surface-blur, none)`（当前恒 `none`），硬编码 `blur(12px)` 会让这一处单独把壁纸糊掉，与第 7 条直接冲突（顶栏 `blur(16px)`、工具栏 `blur(12px)` 都踩过）。判据（可复跑）：同一模块在 `--accent-hue` 取 0 与 285 两档下的 `getComputedStyle().backgroundImage` 必须不同（硬编码色不变），且 `backdropFilter` 一律为 `none`。
+13. **弹窗内的浮层被 Esc 抢关**。现象：配置弹窗里展开下拉，按 Esc 想收起下拉，结果**整个弹窗被关掉**，正在填的内容全丢。根因：`ModalShell` 的 Esc 监听挂在 `document` 上且是 **capture 阶段**（`addEventListener("keydown", h, true)`），比浮层自己挂在触发元素上的 `onKeyDown` 先跑；`preventDefault()` 只能拦默认行为，拦不住已经排在前面的监听。规范：**关窗类全局快捷键要先问「有浮层吗」**——浮层打开时 `Select` 调 `pushPopup()`、关闭时 `popPopup()`，`ModalShell` 在关窗前 `hasOpenPopup()` 为真就让给浮层，因此需要两次 Esc（先收浮层、再关弹窗）。计数必须做负数保护，否则多余的 `pop` 会让 `hasOpenPopup()` 永远为真、弹窗**再也关不掉**（比原 bug 更糟）。测试：`popupLayer.test.ts`（含负数保护）+ `ModalShell.test.tsx` 的交互回归（已验证去掉守卫会失败）。
+
 ### 9.5 配置写入
 
 1. **界面写配置文件会污染 git 状态，且可能在冲突时静默丢数据**。现象：改的是一个本机偏好（我用的哪家接口），动的却是 git 跟踪的 `config.json`。规范：`config.json` 是**出厂目录**（只读），本机偏好一律写 `.env` 的 `<KEY>_<PROFILE>` 覆盖键，见 4.4。
@@ -499,7 +502,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 ### 10.1 单元测试
 
 - 后端 pytest：**345 用例**（Windows 含 5 个专属测试，CI 必须 `windows-latest`；默认 tmp 路径的 WinError 5 历史坑已随目录重建恢复，见 AGENTS「活跃坑」）
-- 前端 vitest：**324 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
+- 前端 vitest：**330 用例**；`tsc --noEmit` + `vite build` 成功；`npm run lint` / `uv run ruff check .` 均零告警
 - 文档完整性：`python scripts/check_docs.py`（相对链接可解析 + AGENTS/tests-README/ARCHITECTURE/frontend-README 的测试计数与源码一致；改任何文档后必跑，见 [scripts/README.md](../scripts/README.md)）
 - **逐文件用例 / 覆盖范围 / 变更影响路由（完整表）见 [tests/README.md](../tests/README.md) 文件索引**
 
