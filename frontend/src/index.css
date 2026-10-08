@@ -65,8 +65,12 @@ body {
   background-repeat: repeat;
   transition: transform 0.12s ease, box-shadow 0.15s ease;
 }
-.bg-swatch:hover {
+.bg-swatch:hover:not(:disabled) {
   transform: translateY(-1px);
+}
+/* 停用态（另一项背景已生效时）：不可点、不响应 hover 抬升 */
+.bg-swatch:disabled {
+  cursor: not-allowed;
 }
 .bg-swatch.is-on {
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(23, 32, 43, 0.45);

@@ -165,25 +165,35 @@ function AppearanceModal({
             )}
           </div>
 
-          {/* 背景底色：只有两项预置（跟随主体色 / 纯白）；整页大图只走下面的「我的壁纸」，不再有内置预设壁纸 */}
+          {/* 背景底色：只有两项预置（跟随主体色 / 纯白）。与下面的「我的壁纸」互斥——
+              壁纸铺在整页最底层，材质底色会被它整个盖掉，两者并存等于「看着能选、实际无效」，
+              所以壁纸生效时这一栏直接禁用，并把原因写在下面。 */}
           <div className="border-t border-neutral-200/80 pt-4">
-            <p className="field-label mb-2">背景材质</p>
-            <div className="bg-swatches">
+            <div className="mb-2 flex items-baseline justify-between">
+              <p className="field-label">背景材质</p>
+              {wallpaper.hasImage && <span className="text-caption">已被壁纸取代</span>}
+            </div>
+            <div className={`bg-swatches ${wallpaper.hasImage ? "opacity-45" : ""}`}>
               {BACKGROUND_PRESETS.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
-                  title={preset.hint}
+                  disabled={wallpaper.hasImage}
+                  title={wallpaper.hasImage ? "有壁纸时改不了背景材质" : preset.hint}
                   aria-label={preset.label}
-                  aria-pressed={backgroundPreset === preset.id}
-                  className={`bg-swatch bg-swatch--${preset.id} ${backgroundPreset === preset.id ? "is-on" : ""}`}
+                  aria-pressed={backgroundPreset === preset.id && !wallpaper.hasImage}
+                  className={`bg-swatch bg-swatch--${preset.id} ${
+                    backgroundPreset === preset.id && !wallpaper.hasImage ? "is-on" : ""
+                  }`}
                   onClick={() => onBackgroundPresetChange(preset.id)}
                 />
               ))}
             </div>
 
             <p className="text-caption mt-2">
-              {BACKGROUND_PRESETS.find((preset) => preset.id === backgroundPreset)?.hint ?? ""}
+              {wallpaper.hasImage
+                ? "删掉下面的壁纸后，这里就能重新选了。"
+                : (BACKGROUND_PRESETS.find((preset) => preset.id === backgroundPreset)?.hint ?? "")}
             </p>
           </div>
 
@@ -221,6 +231,7 @@ function AppearanceModal({
 
             <p className="text-caption mt-2">
               选一张本地图片当整页背景，按原图铺满、不做任何处理（只存本机，不上传）。
+              壁纸与上面的背景材质只能二选一：设了壁纸，材质就停用；删掉壁纸，材质自动恢复。
             </p>
             {wallpaper.notice !== null && <p className="text-caption mt-1">{wallpaper.notice}</p>}
           </div>
