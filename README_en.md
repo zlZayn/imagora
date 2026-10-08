@@ -107,7 +107,7 @@ Failed records can be rerun: "Rerun" for a single one, or "Rerun failed" at the 
 | | |
 | --- | --- |
 | Accent color | A set of presets plus hue fine-tuning; windows shift color by number automatically, and the tab icon follows |
-| Background | Several light materials, a built-in wallpaper, or your own image |
+| Background | Two light base tones (accent-following or plain white); page wallpaper from your own image |
 | Card transparency | Can be pulled to nearly fully transparent; input fields keep a readability floor so text never floats on a busy background |
 | Canvas border | Can be turned off so the canvas blends into the page background |
 

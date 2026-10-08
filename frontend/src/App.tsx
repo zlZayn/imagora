@@ -6,9 +6,7 @@ import { ACCENT_PRESETS, accentForWindow, accentFromHue, hueForWindow, readAccen
 import { clearWallpaperImage, purgeLegacyWallpaperSettings, readWallpaperImage, saveWallpaperImage } from "./wallpaperStore";
 import { readCanvasBounds, saveCanvasBounds } from "./canvasBounds";
 import {
-  PRESET_MATERIALS,
-  PRESET_WALLPAPERS,
-  presetWallpaperOf,
+  BACKGROUND_PRESETS,
   readBackgroundPreset,
   saveBackgroundPreset,
   type BackgroundPresetId,
@@ -191,11 +189,11 @@ function AppearanceModal({
             </button>
           )}
 
-          {/* 背景：两种铺法分开写清——上面是材质（repeat 的纯色/纹理），下面是内置壁纸（cover 大图） */}
+          {/* 背景底色：只有两项预置（跟随主体色 / 纯白）；整页大图只走下面的「我的壁纸」，不再有内置预设壁纸 */}
           <div className="border-t border-neutral-200/80 pt-4">
             <p className="field-label mb-2">背景材质</p>
             <div className="bg-swatches">
-              {PRESET_MATERIALS.map((preset) => (
+              {BACKGROUND_PRESETS.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
@@ -208,32 +206,9 @@ function AppearanceModal({
               ))}
             </div>
 
-            {/* 第二组标签：不复用 .field-label 的 mt-4，避免与 Tailwind 工具类的层叠顺序打架 */}
-            <div className="mt-4 mb-2">
-              <p className="field-label">预设壁纸</p>
-            </div>
-            <div className="bg-walls">
-              {PRESET_WALLPAPERS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  title={preset.hint}
-                  aria-label={preset.label}
-                  aria-pressed={backgroundPreset === preset.id}
-                  className={`bg-wall bg-wall--${preset.id} ${backgroundPreset === preset.id ? "is-on" : ""}`}
-                  onClick={() => onBackgroundPresetChange(preset.id)}
-                >
-                  <span className="bg-wall__name">{preset.label}</span>
-                </button>
-              ))}
-            </div>
-
             <p className="text-caption mt-2">
-              {PRESET_MATERIALS.concat(PRESET_WALLPAPERS).find((preset) => preset.id === backgroundPreset)?.hint ?? ""}
+              {BACKGROUND_PRESETS.find((preset) => preset.id === backgroundPreset)?.hint ?? ""}
             </p>
-            {presetWallpaperOf(backgroundPreset) !== null && wallpaper.hasImage && (
-              <p className="text-caption mt-1">预设壁纸盖住了你的自选壁纸；删掉自选壁纸也还是这张预设图。</p>
-            )}
           </div>
 
           {/* 我的壁纸：按原图直接铺满，不缩放、不模糊、不压暗（图本体存 IndexedDB，只在本机） */}
@@ -1031,20 +1006,9 @@ export function App() {
     };
   }, [wallpaperBlob]);
 
-  /** 预设壁纸（内置大图）的 URL；选的是材质时为 null */
-  const presetWallpaperUrl = presetWallpaperOf(backgroundPreset);
-
-  /**
-   * 铺在整页底下的那张图：**预设壁纸优先于我的壁纸**。
-   *
-   * 优先级为什么这么定：预设壁纸是「用户刚点的那一下」，自选壁纸是更早留下的文件。
-   * 点了预设却看不到任何变化，会让人以为坏了；反过来（自选盖住预设）至少用户知道
-   * 自己存过一张图，弹窗里也有一句话告诉他怎么回到预设。
-   *
-   * 两者铺的是**同一层、同一套处理**（cover 原图 + 降噪 + 卡片文字描边 + 卡片全透），
-   * 所以「内置预设」和「我的壁纸」观感完全一致，不额外分叉。
-   */
-  const pageWallpaperUrl = presetWallpaperUrl ?? wallpaperUrl;
+  /** 铺在整页底下的那张图：只剩「我的壁纸」这一条来源（内置预设壁纸已移除）。
+   *  按原图 cover 铺底 + 降噪滤镜，可读性处理全在 index.css 的 .imagora-wallpaper 一层里。 */
+  const pageWallpaperUrl = wallpaperUrl;
   const pageWallpaperActive = pageWallpaperUrl !== null;
 
   /** 有壁纸（预设或自选）时：页面底色让位于壁纸（CSS 读 html[data-wallpaper]），前景元素照旧跟随主体色。

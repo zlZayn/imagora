@@ -57,9 +57,8 @@ CI 在 push 后自动跑，红叉处理顺序：`gh run view <id>` 看哪个 job
 - [ ] 门面首屏图标：[frontend/src/brand/logo.svg](frontend/src/brand/logo.svg) 是单色 `#475569` 且无底板，GitHub 深色模式下对比约 2.4:1、偏暗（浅色模式正常，不是图裂）。要么给图标加底色、要么换一枚带底的图、要么首屏不放图——现状是"接受"，见 2026-09-29 README 重写那轮
 - [ ] CLI 与网页端功能不对等（预算闸门 / 历史与花费回读 / 重跑失败项 / 取消 / 提示词导入格式 / 切 profile，全清单在 [issue #35](https://github.com/zlZayn/imagora/issues/35)）：其中**预算闸门**最要紧——`gen` / `batch` 直连 `generate_image`，不看 `dailyLimit` 也不看 `singleRunLimit`，与门面宣传的「预算保护」不一致，补闸门会改变 CLI 成功/失败语义，**等拍板**；其余各项按该 issue 清单逐项定
 - [ ] 拆分 [frontend/src/components/CanvasPage.tsx](frontend/src/components/CanvasPage.tsx)：**先补行为基线测试**（当前覆盖薄、裸拆风险高），再分步拆、每步独立验证，CI + E2E 兜底；不急于一次拆完，也不混进严格开关批次
-- [ ] **内置壁纸作为预设是否合适，待议**（cslkkl 的外观体系贡献，2026-09-29 登记）：背景材质已收敛为 跟随主体色 + 纯白 两项（2026-10-03，四个纹理预设移除）；待议的是 2 张内置壁纸 `frontend/public/wallpapers/dragon.jpg`（青玉游龙）+ `tiger.jpg`（晨曦神兽），共 795 KB 且已入库——要再想三点：① 入库体积（两张近 800 KB 常驻仓库）；② 预设普适性（具体题材的图当内置预设，是否人人愿意看到）；③ 资源策略（内置图入库 vs 用户自选壁纸存 IndexedDB 不入库，是否该统一）。两条路渲染同源、行为已正确，这里只议"要不要留作预设"；**现在不改代码、不动壁纸文件**
 - [ ] 链接检查两套并存：[scripts/check_docs.py](scripts/check_docs.py) 的链接项与 skill 工具 `check-markdown-links.py` 功能重叠；2026-09-30 决定先保留——check_docs.py 已接进 CI，skill 工具只在本地跑，整掉会让 CI 失去链接校验
-- 无其他（8-23 备份清理；8-24 文档体系重构 + CI 完善；9-22 成本看板 + 预算保护 + 重跑失败项；9-29 `check_docs.py` 接进 CI 前端 job）
+- 无其他（8-23 备份清理；8-24 文档体系重构 + CI 完善；9-22 成本看板 + 预算保护 + 重跑失败项；9-29 `check_docs.py` 接进 CI 前端 job；10-03 UI 统一批次：选中操作栏回归统一样式 / 帮助入口进左下角控件 / 窗口角标字体统一 / API Key 走顶栏状态角标 / 背景材质收敛为两项 / 内置预设壁纸移除——两条壁纸图转 `personal/`（git 忽略，个人自用））
 
 ## 活跃坑 / 注意
 

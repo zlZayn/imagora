@@ -72,51 +72,9 @@ body {
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(23, 32, 43, 0.45);
 }
 
-/* 预设壁纸：与材质色块并列的「大图」按钮。
- * 图片是 public/wallpapers 下的静态文件（走站点根路径），构建期原样拷进 dist，
- * 不经打包器改写，所以这里可以直接写字面量路径。
- * 尺寸刻意比色块大：材质要的是「底色是什么感觉」，壁纸要的是「这张图长什么样」，
- * 34px 的方片看不出龙和神兽的区别。
- * 高亮框与 .bg-swatch.is-on 同一套（白内圈 + 墨外圈），两类选择器观感统一。 */
-.bg-walls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.bg-wall {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-  padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.14);
-  border-radius: var(--r-control);
-  background-color: #dfe3e8;
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
-  cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.15s ease;
-}
-.bg-wall:hover { transform: translateY(-1px); }
-.bg-wall.is-on {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(23, 32, 43, 0.45);
-}
-/* 名字压在图上：底部渐隐黑条保证任何亮度的图上都读得出（不做 hover 才显示，触屏没有 hover） */
-.bg-wall__name {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 12px 8px 5px;
-  background: linear-gradient(to top, rgba(12, 16, 22, 0.72), transparent);
-  color: #fff;
-  font-size: 11px;
-  line-height: 1.2;
-  letter-spacing: 0.02em;
-  text-align: left;
-}
-.bg-wall--dragon { background-image: url("/wallpapers/dragon.jpg"); }
-.bg-wall--tiger { background-image: url("/wallpapers/tiger.jpg"); }
+/* 内置预设壁纸（.bg-walls / .bg-wall / .bg-wall--dragon / --tiger）已删除（2026-10-03）：
+ * 两张近 800 KB 的图常驻仓库、且具体题材不适合当所有人的默认选项。
+ * 整页背景图现在只走「我的壁纸」一条路（用户自己上传，原图存 IndexedDB，不入库）。 */
 
 /* ============ 滚动条：一处定义，全站统一（页面 / 模态 / 列表共用） ============
  * 轨道一律 transparent：滚动条的「背景」就是它所在的容器底色——
