@@ -181,7 +181,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 
 - **拖拽添加（文件 / 工具栏按钮，共用同一落点示意）**：拖本地图片（可多张）到画布任意位置松开即添加，或把「新建提示词卡片 / 新建图片组」按钮拖出到画布松开即建（**拖到画布外松手则取消**；点击仍自动居中）。接线统一收敛在 `useCanvasDrop` hook（意图解析/落点换算/示意/守卫），纯逻辑在 `canvasDrop.ts`，节点构建在 `workflow.ts:buildPromptNode/buildGroupNode`（与点击新建同一构建）。落点 = **鼠标松开处**（`screenToFlowPosition` 换算），批次内沿用 `canvasEntriesToNodes` 横向排开；文件走 `isImageFile` 过滤 + `POST /api/canvas/upload`，工具栏拖走自定义 dataTransfer 类型（`application/x-imagora-canvas`，值 prompt/group）。
   - **落点示意**：跟随光标的小胶囊（portal 到 body + fixed 定位，工具栏拖出可全局跟随），图标/文案按意图区分（图片数量 / 「松开新建提示词卡片」等）；**图标双态 + 文案随位置实时切换**——画布内 = 新建类型图标（Type/Layers/Plus）+「松开新建…」，画布外 = 红色 X +「松开取消」（`is-outside` 类与 textContent 直接写 DOM）；位置由 JS 直接写外层 transform（高频 dragover 不触发 React 渲染）、数量从 `dataTransfer.items`（kind==="file"）统计——**dragover 阶段 `dataTransfer.files` 为空**（浏览器延迟到 drop 才填充）；拖入时画布切系统 `copy` 光标（`.canvas-drop-active`）。
-  - **防护**：dragenter/leave 计数平衡防闪烁（仅文件拖拽）；拖放接管挂在**整个工作区**（含工具栏/帮助栏），UI 上不出现浏览器禁止标志——文件拖入落点在画布外夹紧到画布边缘（`dropPointFromEvent`），**工具栏拖出画布外松手即取消**（drop 前 `isInsideRect` 判定，不再夹紧放置）；意图判定带 `dropIntentRef` 回退（真实浏览器 dragover 阶段 getData 偶发为空）；窗口级只拦截携带 Files 的拖拽（防落画布外触发浏览器打开文件导航）；`dragend`/失焦复位拖拽状态；drop 前先判定意图，文本/其他拖拽**放行**（输入框原生行为不受影响）；弹窗打开时暂停接管。
+  - **防护**：dragenter/leave 计数平衡防闪烁（仅文件拖拽）；拖放接管挂在**整个工作区**（含工具栏），UI 上不出现浏览器禁止标志——文件拖入落点在画布外夹紧到画布边缘（`dropPointFromEvent`），**工具栏拖出画布外松手即取消**（drop 前 `isInsideRect` 判定，不再夹紧放置）；意图判定带 `dropIntentRef` 回退（真实浏览器 dragover 阶段 getData 偶发为空）；窗口级只拦截携带 Files 的拖拽（防落画布外触发浏览器打开文件导航）；`dragend`/失焦复位拖拽状态；drop 前先判定意图，文本/其他拖拽**放行**（输入框原生行为不受影响）；弹窗打开时暂停接管。
 - **右键拖拽框选**：右键按下→拖拽→松开，起点/终点用 `screenToFlowPosition` 换算，松开时按「节点完全包含于选框」落定选中；`mouseup` 挂 window（画布外松开也生效）。
 - **右键菜单屏蔽**：window 捕获层**无状态**屏蔽非输入区 contextmenu（文本框/输入框保留原生菜单），不依赖任何时序标志。
 - **选中操作栏**：任意选中 ≥1 个节点后右上角出现——运行所选（只跑提示词卡片）/ 自动整理（局部重排）/ 自动连线（只补选中节点之间的边，未选中节点不受影响）/ 设置输出路径 / 删除所选。样式为**半透明毛玻璃**（bg-white/20 + backdrop-blur-md），选中操作时基本不遮挡画布内容；按钮透明化细节见 8.4 按钮体系。
@@ -394,7 +394,7 @@ React Flow v12（`@xyflow/react`）受控模式：`nodes` / `edges` 状态由 `C
 5. **pointer capture 重定向 click**。现象：预览弹窗点击关闭误判/失效。根因：放大态拖拽的 setPointerCapture 会把 click target 重定向到容器。规范：关闭判定用 pointerdown 的**真实按下元素**；放大态区分点击与拖拽用位移阈值（>5px 才算拖拽），未移动且按在空白 = 点击关闭。测试：E2E「放大后点图片边缘空白关闭」。
 6. **拦截型交互吞掉点击**。现象：容器 stopPropagation 后点击无处可去。规范：任何拦截 pointerdown 的交互必须自证「点击 vs 拖拽」，并在两种缩放态下都可关闭。
 7. **全局监听器残留**。现象：卸载后仍触发 setState。规范：effect 内注册的 window 监听必须成对 removeEventListener 清理。
-8. **工具栏拖出画布外误建**。现象：把「新建提示词卡片/图片组」拖到画布外（工具栏/帮助栏/空白）松手仍新建（旧行为落点夹紧到画布边缘）。规范：工具栏拖出 drop 前判定落点是否在画布容器内（`isInsideRect`），画布外松手即取消、不夹紧放置；示意随位置切换「松开取消」文案 + 红色 X 图标（内层胶囊 `is-outside` 类 + textContent，高频 dragover 只写 DOM 不渲染）；文件拖入仍夹紧放置（上传语义不受影响）。测试：E2E 第 11 段（画布外松手取消 + 图标/文案切换 + 拖回画布仍新建）。
+8. **工具栏拖出画布外误建**。现象：把「新建提示词卡片/图片组」拖到画布外（工具栏/空白）松手仍新建（旧行为落点夹紧到画布边缘）。规范：工具栏拖出 drop 前判定落点是否在画布容器内（`isInsideRect`），画布外松手即取消、不夹紧放置；示意随位置切换「松开取消」文案 + 红色 X 图标（内层胶囊 `is-outside` 类 + textContent，高频 dragover 只写 DOM 不渲染）；文件拖入仍夹紧放置（上传语义不受影响）。测试：E2E 第 11 段（画布外松手取消 + 图标/文案切换 + 拖回画布仍新建）。
 
 ### 9.3 状态与引用
 

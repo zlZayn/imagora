@@ -47,7 +47,6 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 | 表面 | `--surface-card` · `--surface-panel` · `--field-bg` · `--surface-blur` | 由 App 用 `surfaceTokens(色相, 通透度)` 在 **JS 里算成字面量后内联注入**（与 `--color-brand` 同路）；通透度拉到 1 时卡片/面板 alpha 仅约 0.05（接近全透明），输入框另有 `FIELD_ALPHA_FLOOR = 0.25` 底线。两条硬约束（模糊绝不随通透度增长、CSS 里不写「函数内嵌 var()」）见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 9.4 第 7、8 条 |
 | 通用滑杆 | `.range-field` | 外观弹窗的参数滑杆（通透度用它；与主体色滑杆同形，轨道保持中性） |
 | 角落装饰 | `.corner-deco` · `.corner-rings` · `.corner-note` | 编号 / 弧环 / 镜像小字 |
-| 快捷键面板 | `.help-more` + `__btn` / `__panel` | 画布页操作帮助右侧的 `?`；原生 `details/summary`，无需组件状态 |
 | 最近提示词 | `.recent-prompt` | 结果区空态一键复用的提示词行：单行截断，完整内容走 title 悬停 |
 | 行内角标 | `.chip`（`--sm` `--dot` `--brand` `--quiet` `--danger`） | 顶栏 28 · 小号 18 |
 | 分段控件 | `.tabs`（模态页签） · `.mode-switch`（顶栏模式） | 同源视觉，尺寸走 `--h-ctl` |
@@ -191,7 +190,7 @@ E2E（画布交互回归，真实浏览器；36 断言）：
 
 ### 组件（components/；改后跑 `npm test` + E2E）
 
-- [`CanvasPage.tsx`](src/components/CanvasPage.tsx) — 无限画布主页面（React Flow 集成、选中操作栏、历史面板入口）
+- [`CanvasPage.tsx`](src/components/CanvasPage.tsx) — 无限画布主页面（React Flow 集成、选中操作栏、操作帮助弹窗、历史面板入口）
 - [`CanvasNodes.tsx`](src/components/CanvasNodes.tsx) — 三类节点（图片/图片组/提示词卡）+ `ActionButton`（nodrag 胶囊按钮）；`StatusLight` 状态灯 running 恒定「生成中」，`ElapsedText` 秒数文字以 `startedAtMs` 自计时（防逐秒重渲染，见 ARCHITECTURE 5.3）
 - [`WorkflowModals.tsx`](src/components/WorkflowModals.tsx) — 保存/加载/导入弹窗 + **`ZoomModal` 全屏预览**（createPortal 到 body，画布 / 经典表单 / 生产历史共用；Portal 根截停 click 冒泡，防误关外层宿主遮罩）
 - [`ResultPanel.tsx`](src/components/ResultPanel.tsx) — 经典表单结果区 5 态容器：主图形层 absolute 居中钉死 + 副信息层底部独立生长（行增减不挤动主图形）；切换交叉淡化（swap-in/swap-out，旧层保留 200ms）；排队/生成中/失败/已取消/透传 Gallery；生成中图标本体按自身颜色呼吸光（`icon-breathe`）

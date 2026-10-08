@@ -441,49 +441,10 @@ html[data-wallpaper="on"] select {
   text-shadow: none;
 }
 
-/* ============ 画布页快捷键面板（操作帮助右侧的 ?） ============
- * 原生 details/summary，无需组件状态；面板绝对定位浮在画布上沿之上。 */
-.help-more { position: relative; }
-.help-more__btn {
-  cursor: pointer;
-  list-style: none;
-  height: var(--chip-sm-h);
-  width: var(--chip-sm-h);
-  padding: 0;
-  justify-content: center;
-  font-weight: 700;
-  user-select: none;
-}
-.help-more__btn::-webkit-details-marker { display: none; }
-.help-more[open] .help-more__btn {
-  background: color-mix(in srgb, var(--color-brand) 12%, transparent);
-  color: var(--color-brand);
-}
-.help-more__panel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  z-index: 50;
-  width: 560px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 12px 14px;
-  border-radius: var(--r-card);
-  background: var(--surface-card);
-  border: 1px solid rgba(31, 41, 55, 0.13);
-  box-shadow: 0 10px 28px rgba(31, 41, 55, 0.12);
-  font-size: 11.5px;
-  line-height: 1.65;
-  color: rgba(23, 32, 43, 0.66);
-}
-.help-more__panel b {
-  display: inline-block;
-  min-width: 46px;
-  margin-right: 6px;
-  color: rgba(23, 32, 43, 0.82);
-  font-weight: 600;
-}
+/* 画布操作帮助（2026-10-03）：入口是左下角控件组里的 ControlButton，内容走统一弹窗基座
+ * （ModalShell：Portal + Esc/点击遮罩关闭 + 焦点圈闭与归还），因此这里不再需要浮层样式。
+ * 旧写法（.help-more 的 details/summary 浮层）已删除——它 z-index:50 却处在 z-index:auto 的
+ * 层叠上下文里，被带 isolation:isolate 的画布整体盖住，透出来只剩一层淡影，读不清也点不到。 */
 .window-chip,
 .profile-chip {
   border: 1px solid color-mix(in srgb, var(--color-brand) 15%, rgba(255,255,255,.65));
@@ -542,13 +503,6 @@ html[data-wallpaper="on"] select {
 }
 .studio-toolbar .btn-ghost { color: rgba(23, 32, 43, 0.72); }
 .studio-toolbar .btn-ghost:hover:not(:disabled) { color: #fff; }
-.studio-help {
-  margin: 0 4px;
-  min-height: 20px;
-  color: rgba(23, 32, 43, 0.43) !important;
-  letter-spacing: 0.01em;
-}
-.studio-help .font-medium { color: rgba(23, 32, 43, 0.66) !important; letter-spacing: 0.08em; }
 .studio-canvas {
   border-color: rgba(31, 41, 55, 0.12) !important;
   border-radius: 18px !important;
